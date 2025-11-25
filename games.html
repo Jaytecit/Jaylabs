@@ -140,6 +140,50 @@
             box-shadow: 0 0 12px rgba(0, 217, 255, 0.35);
             width: fit-content;
         }
+        .dev-note {
+            margin-top: 1.8rem;
+            padding: 1.2rem 1.3rem;
+            border-radius: 1rem;
+            border: 1px dashed rgba(0, 217, 255, 0.3);
+            background: linear-gradient(135deg, rgba(0, 217, 255, 0.08), rgba(255, 107, 0, 0.06));
+            box-shadow: 0 0 18px rgba(0, 0, 0, 0.35);
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 0.9rem 1rem;
+            align-items: center;
+        }
+        .dev-note h3 {
+            margin: 0;
+            font-size: 1.05rem;
+            letter-spacing: 0.02em;
+        }
+        .dev-note p {
+            margin: 0.2rem 0 0;
+            color: var(--text-2);
+            font-size: 0.95rem;
+        }
+        .dev-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.45rem 0.75rem;
+            border-radius: 999px;
+            border: 1px solid rgba(0, 217, 255, 0.6);
+            color: var(--text-1);
+            text-decoration: none;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            background: rgba(0, 217, 255, 0.12);
+            box-shadow: 0 0 14px rgba(0, 217, 255, 0.25);
+            width: fit-content;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .dev-link:hover {
+            transform: translateY(-1px);
+            box-shadow:
+                0 0 20px rgba(0, 217, 255, 0.32),
+                0 0 30px rgba(255, 107, 0, 0.25);
+        }
         .play-label {
             margin-top: 0.5rem;
             font-size: 0.85rem;
@@ -198,6 +242,19 @@
                     <span>Launch in new tab</span>
                 </div>
             </a>
+        </section>
+
+        <section class="dev-note">
+            <div class="pill">Open Source</div>
+            <div>
+                <h3>Build, remix, or give feedback</h3>
+                <p>
+                    Games code lives on GitHub under MIT. Fork it, open issues, or ship improvements—credit appreciated.
+                </p>
+                <a class="dev-link" href="https://github.com/Jaytecit/Jaylabs" target="_blank" rel="noopener">
+                    View the code on GitHub &#8599;
+                </a>
+            </div>
         </section>
     </main>
 </body>
