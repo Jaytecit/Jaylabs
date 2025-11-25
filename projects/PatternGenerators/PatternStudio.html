@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Harmonograph Studio v11 — Audio Reactive</title>
+<style>
+  /* ---------- Theme ---------- */
+  :root{
+    --bg-primary:#0a0a0f; --bg-secondary:#151520; --bg-panel:rgba(20,25,35,.85);
+    --border:rgba(100,200,255,.2); --text:#e2e8f0; --muted:#94a3b8;
+    --b:#64c8ff; --p:#a855f7; --pk:#ec4899; --g:#10b981; --r:#ef4444;
+    --glow:rgba(100,200,255,.3);
+  }
+  *{box-sizing:border-box} html,body{height:100%}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Inter,system-ui,sans-serif;
+    background:linear-gradient(135deg,var(--bg-primary),#1a1a2e); color:var(--text); overflow:hidden;
+  }
+  .grid{
+    display:grid; grid-template-columns:360px 1fr 360px; grid-template-rows:60px 1fr;
+    grid-template-areas:"hd hd hd" "l c r"; height:100%;
+  }
+  header{
+    grid-area:hd; display:flex; align-items:center; justify-content:space-between; padding:0 16px;
+    background:var(--bg-panel); border-bottom:1px solid var(--border); backdrop-filter:blur(16px);
+  }
+  .logo{font-weight:800; letter-spacing:.3px; background:linear-gradient(45deg,var(--b),var(--p));
+    -webkit-background-clip:text; background-clip:text; color:transparent; font-size:18px}
+  .btn{
+    appearance:none; border:1px solid var(--border); border-radius:10px; padding:8px 14px;
+    background:rgba(100,200,255,.08); color:var(--text); cursor:pointer; transition:.2s; font-size:14px;
+  }
+  .btn:hover{border-color:var(--b); box-shadow:0 0 16px var(--glow)}
+  .btn.primary{border:none; background:linear-gradient(45deg,var(--b),var(--p))}
+  .btn.warn{border:none; background:linear-gradient(45deg,var(--r),var(--pk))}
+  .panel{
+    background:var(--bg-panel); border:1px solid var(--border); padding:14px; overflow:auto; backdrop-filter:blur(16px)
+  }
+  .left{grid-area:l} .right{grid-area:r}
+  .canvas-wrap{grid-area:c; display:flex; align-items:center; justify-content:center; position:relative; padding:10px}
+  canvas{background:#000; border:2px solid var(--border); border-radius:12px; box-shadow:0 0 40px var(--glow); max-width:100%; max-height:100%}
+  .indicator{position:absolute; top:14px; left:14px; font-size:12px; color:var(--b); background:var(--bg-panel); border:1px solid var(--border);
+    border-radius:8px; padding:6px 10px}
+  .audio-indicator{top:46px; color:var(--g); display:none}
+  .audio-indicator.active{display:block}
+  .overlay{position:absolute; right:14px; top:14px; display:flex; gap:8px; flex-direction:column}
+  .bar{height:4px; background:rgba(100,200,255,.12); border-radius:4px; overflow:hidden; width:260px}
+  .fill{height:100%; width:0%; background:linear-gradient(90deg,var(--b),var(--p))}
+  /* Tabs */
+  .tabs{display:flex; gap:6px; border-bottom:1px solid var(--border); margin-bottom:10px}
+  .tab{padding:10px 12px; cursor:pointer; border-bottom:2px solid transparent; color:#c7d2fe}
+  .tab.active{border-color:var(--b); color:var(--b)}
+  .section{border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:12px; background:rgba(0,0,0,.17)}
+  .title{font-weight:700; color:var(--b); margin-bottom:8px; display:flex; gap:8px; align-items:center}
+  label{font-size:12px; color:var(--muted); display:block; margin:8px 0 4px}
+  .row{display:flex; align-items:center; gap:10px}
+  input[type="range"]{flex:1}
+  .val{min-width:56px; text-align:right; font-size:12px; color:var(--b)}
+  select,.text{
+    width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg-secondary); color:var(--text)
+  }
+  .sub{border-left:2px solid var(--border); margin-left:8px; padding-left:10px; display:none}
+  .sub.active{display:block}
+  .pill{display:flex; align-items:center; gap:8px; margin:6px 0}
+  .levels{display:flex; gap:4px; height:18px; margin-top:4px}
+  .lv{flex:1; background:rgba(255,255,255,.15); border-radius:3px; overflow:hidden}
+  .lv>.f{height:100%; width:0%; background:#fff; transition:width .08s}
+  .spectrum{width:100%; height:64px; border:1px solid var(--border); border-radius:6px; background:rgba(0,0,0,.35); display:block}
+  .color-prev,.glow-prev{height:28px; border:1px solid var(--border); border-radius:6px; margin-top:6px}
+  .kbd{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; opacity:.8}
+  /* Scrollbar */
+  .panel::-webkit-scrollbar{width:8px} .panel::-webkit-scrollbar-thumb{background:var(--b); border-radius:6px}
+</style>
+</head>
+<body>
+  <div class="grid">
+    <header>
+      <div class="logo">⟡ Harmonograph Studio v11</div>
+      <div class="row">
+        <button class="btn" id="save">Save PNG</button>
+        <button class="btn" id="random">Randomize</button>
+        <button class="btn primary" id="generate">Generate</button>
+      </div>
+    </header>
+
+    <!-- LEFT -->
+    <aside class="panel left">
+      <div class="tabs">
+        <div class="tab active" data-tab="patterns">Patterns</div>
+        <div class="tab" data-tab="osc">Oscillators</div>
+        <div class="tab" data-tab="presets">Presets</div>
+      </div>
+
+      <!-- Patterns -->
+      <div class="tabc" id="patterns" style="display:block">
+        <div class="section">
+          <div class="title">🎨 Pattern Mode</div>
+          <label>Mathematical Pattern</label>
+          <select id="pattern">
+            <option value="harmonograph">Classic Harmonograph</option>
+            <option value="lissajous">Lissajous Curves</option>
+            <option value="spirograph">Spirograph</option>
+            <option value="coupled">Coupled Pendulums</option>
+            <option value="chaos">Chaos Attractor</option>
+            <option value="rose">Mathematical Rose</option>
+            <option value="audio">🎵 Audio Reactive</option>
+          </select>
+        </div>
+
+        <!-- Audio controls -->
+        <div class="section" id="audioBlock" style="display:none">
+          <div class="title" style="color:var(--pk)">🎵 Audio Reactive</div>
+          <div class="row" style="gap:8px">
+            <button class="btn warn" id="loadAudio">📁 Load Audio</button>
+            <button class="btn warn" id="playPause" disabled>▶️ Play</button>
+            <button class="btn" id="demoBeats">🥁 Demo Beats</button>
+            <button class="btn" id="demoMelody">🎹 Demo Melody</button>
+            <input type="file" id="fileInput" accept="audio/*" hidden />
+          </div>
+          <div id="audioStatus" class="kbd" style="margin:6px 0">Audio: No file loaded</div>
+
+          <div id="playerWrap" style="display:none; margin:6px 0 8px">
+            <audio id="player" controls style="width:100%"></audio>
+            <div class="row" style="justify-content:space-between; font-size:11px; color:var(--muted)">
+              <span id="tCur">0:00</span><span id="tTot">0:00</span>
+            </div>
+          </div>
+
+          <label>Audio Mode (influences params)</label>
+          <select id="audioMode">
+            <option value="realtime">Real-time Reactive (Harmonograph)</option>
+            <option value="musical">Musical Harmony (Lissajous)</option>
+            <option value="rhythmic">Rhythm Sync (Spirograph)</option>
+            <option value="spectral">Spectral Chaos (Lorenz)</option>
+          </select>
+
+          <label>Overall Sensitivity</label>
+          <div class="row">
+            <input type="range" id="audioSense" min="0.1" max="3" step="0.1" value="1"/>
+            <div class="val" id="audioSenseV">1.0</div>
+          </div>
+
+          <label>Visual Update Rate (FPS)</label>
+          <div class="row">
+            <input type="range" id="audioFPS" min="1" max="60" step="1" value="30"/>
+            <div class="val" id="audioFPSV">30</div>
+          </div>
+
+          <div class="row" style="justify-content:space-between; font-size:11px; color:var(--muted)"><span>Bass</span><span>Mid</span><span>Treble</span><span>Vol</span></div>
+          <div class="levels">
+            <div class="lv"><div class="f" id="lvBass" style="background:#ff6262"></div></div>
+            <div class="lv"><div class="f" id="lvMid" style="background:#4ade80"></div></div>
+            <div class="lv"><div class="f" id="lvTre" style="background:#60a5fa"></div></div>
+            <div class="lv"><div class="f" id="lvVol" style="background:#fff"></div></div>
+          </div>
+
+          <label>Frequency Spectrum</label>
+          <canvas id="spectrum" class="spectrum" width="640" height="64"></canvas>
+
+          <div class="section" style="margin-top:10px; border-color:rgba(236,72,153,.5)">
+            <div class="title" style="color:var(--pk)">🎛️ Audio Parameter Links</div>
+
+            <div class="pill"><input id="linkWidth" type="checkbox"/> <label for="linkWidth" style="margin:0">Link Line Width</label></div>
+            <div class="sub" id="linkWidthSub">
+              <label>Audio Feature</label>
+              <select id="widthFeat">
+                <option value="volume">Volume</option><option value="bass" selected>Bass</option>
+                <option value="mid">Mid</option><option value="treble">Treble</option><option value="rhythm">Rhythm</option>
+              </select>
+              <label>Sensitivity</label>
+              <div class="row"><input type="range" id="widthSens" min="0.1" max="5" step="0.1" value="1"/><div class="val" id="widthSensV">1.0</div></div>
+              <label>Min / Max (px)</label>
+              <div class="row"><input type="range" id="widthMin" min="0.1" max="5" step="0.1" value="0.5"/><div class="val" id="widthMinV">0.5</div></div>
+              <div class="row"><input type="range" id="widthMax" min="0.1" max="10" step="0.1" value="3"/><div class="val" id="widthMaxV">3.0</div></div>
+            </div>
+
+            <div class="pill"><input id="linkHue" type="checkbox"/> <label for="linkHue" style="margin:0">Link Base Hue</label></div>
+            <div class="sub" id="linkHueSub">
+              <label>Audio Feature</label>
+              <select id="hueFeat">
+                <option value="volume">Volume</option><option value="bass">Bass</option><option value="mid">Mid</option>
+                <option value="treble" selected>Treble</option><option value="centroid">Spectral Centroid</option><option value="pitchN">Pitch (norm.)</option>
+              </select>
+              <label>Hue Shift (deg)</label>
+              <div class="row"><input type="range" id="hueShift" min="0" max="360" step="1" value="90"/><div class="val" id="hueShiftV">90°</div></div>
+            </div>
+
+            <div class="pill"><input id="linkDecay" type="checkbox"/> <label for="linkDecay" style="margin:0">Link Global Decay</label></div>
+            <div class="sub" id="linkDecaySub">
+              <label>Audio Feature</label>
+              <select id="decayFeat">
+                <option value="volume">Volume</option><option value="bass">Bass</option><option value="mid">Mid</option>
+                <option value="treble">Treble</option><option value="rhythm" selected>Rhythm</option>
+              </select>
+              <label>Sensitivity</label>
+              <div class="row"><input type="range" id="decaySens" min="0.1" max="5" step="0.1" value="1"/><div class="val" id="decaySensV">1.0</div></div>
+              <label>Min / Max</label>
+              <div class="row"><input type="range" id="decayMin" min="0" max="0.1" step="0.0001" value="0.001"/><div class="val" id="decayMinV">0.0010</div></div>
+              <div class="row"><input type="range" id="decayMax" min="0" max="0.1" step="0.0001" value="0.02"/><div class="val" id="decayMaxV">0.0200</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pattern-specific sections -->
+        <div class="section ps" id="lissajousSec" style="display:none">
+          <div class="title">📐 Lissajous</div>
+          <label>Frequency Ratio A : B</label>
+          <div class="row"><input type="range" id="lisA" min="1" max="20" step="1" value="3"><div class="val" id="lisAV">3</div>
+            <span class="kbd">:</span>
+            <input type="range" id="lisB" min="1" max="20" step="1" value="4"><div class="val" id="lisBV">4</div>
+          </div>
+          <label>Phase Offset</label>
+          <div class="row"><input type="range" id="lisPhase" min="0" max="360" step="1" value="90"><div class="val" id="lisPV">90°</div></div>
+        </div>
+
+        <div class="section ps" id="spiroSec" style="display:none">
+          <div class="title">⚙️ Spirograph</div>
+          <label>Outer Radius (R)</label><div class="row"><input type="range" id="spR" min="50" max="220" step="1" value="120"><div class="val" id="spRV">120</div></div>
+          <label>Inner Radius (r)</label><div class="row"><input type="range" id="spr" min="10" max="110" step="1" value="45"><div class="val" id="sprV">45</div></div>
+          <label>Pen Distance (d)</label><div class="row"><input type="range" id="spd" min="10" max="160" step="1" value="80"><div class="val" id="spdV">80</div></div>
+        </div>
+
+        <div class="section ps" id="coupledSec" style="display:none">
+          <div class="title">🔗 Coupled Pendulums</div>
+          <label>Coupling Strength</label><div class="row"><input type="range" id="cpK" min="0" max="1" step="0.01" value="0.1"><div class="val" id="cpKV">0.10</div></div>
+          <label>Mass Ratio</label><div class="row"><input type="range" id="cpM" min="0.1" max="5" step="0.1" value="1"><div class="val" id="cpMV">1.0</div></div>
+        </div>
+
+        <div class="section ps" id="chaosSec" style="display:none">
+          <div class="title">🌀 Chaos Attractors</div>
+          <label>Type</label>
+          <select id="chType">
+            <option value="lorenz">Lorenz</option>
+            <option value="rossler">Rössler</option>
+            <option value="henon">Hénon</option>
+          </select>
+          <label>σ</label><div class="row"><input type="range" id="chS" min="5" max="15" step="0.1" value="10"><div class="val" id="chSV">10.0</div></div>
+          <label>ρ</label><div class="row"><input type="range" id="chR" min="20" max="35" step="0.1" value="28"><div class="val" id="chRV">28.0</div></div>
+          <label>β</label><div class="row"><input type="range" id="chB" min="1" max="4" step="0.1" value="2.667"><div class="val" id="chBV">2.667</div></div>
+        </div>
+
+        <div class="section ps" id="roseSec" style="display:none">
+          <div class="title">🌹 Rose</div>
+          <label>Petals (n)</label><div class="row"><input type="range" id="roN" min="1" max="20" step="1" value="5"><div class="val" id="roNV">5</div></div>
+          <label>Denominator (d)</label><div class="row"><input type="range" id="roD" min="1" max="20" step="1" value="3"><div class="val" id="roDV">3</div></div>
+          <label>Scale</label><div class="row"><input type="range" id="roS" min="50" max="260" step="1" value="150"><div class="val" id="roSV">150</div></div>
+        </div>
+      </div>
+
+      <!-- Oscillators -->
+      <div class="tabc" id="osc">
+        <div class="section">
+          <div class="title">🌊 Global</div>
+          <label>Global Decay Rate</label><div class="row"><input type="range" id="gDecay" min="0" max="0.1" step="0.0001" value="0.005"><div class="val" id="gDecayV">0.0050</div></div>
+          <div class="pill"><input id="enGDecay" type="checkbox" checked> <label for="enGDecay" style="margin:0">Enable Global Decay</label></div>
+          <label>Rotation (°/time)</label><div class="row"><input type="range" id="rot" min="-90" max="90" step="0.1" value="0"><div class="val" id="rotV">0°</div></div>
+          <div class="pill"><input id="enRot" type="checkbox"> <label for="enRot" style="margin:0">Enable Rotation</label></div>
+        </div>
+
+        <div class="section">
+          <div class="title">📈 X Pendulum</div>
+          <div class="pill"><input id="enX" type="checkbox" checked> <label for="enX" style="margin:0">Enable</label></div>
+          <label>Frequency</label><div class="row"><input type="range" id="fx" min="0.01" max="10" step="0.01" value="2"><div class="val" id="fxV">2.00</div></div>
+          <label>Phase (°)</label><div class="row"><input type="range" id="phx" min="0" max="360" step="1" value="0"><div class="val" id="phxV">0°</div></div>
+          <label>Amplitude</label><div class="row"><input type="range" id="ax" min="0" max="400" step="1" value="200"><div class="val" id="axV">200</div></div>
+          <label>Damping</label><div class="row"><input type="range" id="dx" min="0" max="0.05" step="0.0001" value="0.001"><div class="val" id="dxV">0.0010</div></div>
+        </div>
+
+        <div class="section">
+          <div class="title">📊 Y Pendulum</div>
+          <div class="pill"><input id="enY" type="checkbox" checked> <label for="enY" style="margin:0">Enable</label></div>
+          <label>Frequency</label><div class="row"><input type="range" id="fy" min="0.01" max="10" step="0.01" value="3"><div class="val" id="fyV">3.00</div></div>
+          <label>Phase (°)</label><div class="row"><input type="range" id="phy" min="0" max="360" step="1" value="90"><div class="val" id="phyV">90°</div></div>
+          <label>Amplitude</label><div class="row"><input type="range" id="ay" min="0" max="400" step="1" value="200"><div class="val" id="ayV">200</div></div>
+          <label>Damping</label><div class="row"><input type="range" id="dy" min="0" max="0.05" step="0.0001" value="0.001"><div class="val" id="dyV">0.0010</div></div>
+        </div>
+      </div>
+
+      <!-- Presets -->
+      <div class="tabc" id="presets">
+        <div class="section">
+          <div class="title">🎨 Classic Presets</div>
+          <div class="row" style="flex-wrap:wrap; gap:8px">
+            <button class="btn p" data-pre="flower">🌸 Flower</button>
+            <button class="btn p" data-pre="spiral">🌀 Spiral</button>
+            <button class="btn p" data-pre="star">⭐ Star</button>
+            <button class="btn p" data-pre="infinity">∞ Infinity</button>
+            <button class="btn p" data-pre="chaos">⚡ Chaos</button>
+            <button class="btn p" data-pre="waves">🌊 Waves</button>
+          </div>
+        </div>
+        <div class="section">
+          <div class="title">🔬 Math Presets</div>
+          <div class="row" style="flex-wrap:wrap; gap:8px">
+            <button class="btn p" data-pre="liss_3_4">📐 Lissajous 3:4</button>
+            <button class="btn p" data-pre="spiro">⚙️ Spirograph</button>
+            <button class="btn p" data-pre="coupled">🔗 Coupled</button>
+            <button class="btn p" data-pre="lorenz">🦋 Lorenz</button>
+            <button class="btn p" data-pre="rose5">🌹 Rose 5</button>
+            <button class="btn p" data-pre="golden">φ Golden</button>
+          </div>
+        </div>
+        <div class="section">
+          <div class="title">🎵 Audio Presets</div>
+          <div class="row" style="flex-wrap:wrap; gap:8px">
+            <button class="btn p" data-pre="audio_live">🎤 Live Audio</button>
+            <button class="btn p" data-pre="audio_musical">🎹 Musical</button>
+            <button class="btn p" data-pre="audio_spectral">🌀 Spectral</button>
+            <button class="btn p" data-pre="audio_rhythm">🥁 Rhythm</button>
+          </div>
+          <div class="kbd" style="margin-top:6px; text-align:center">Audio presets need a file or demo running.</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CANVAS -->
+    <div class="canvas-wrap">
+      <div class="indicator" id="modeLabel">Classic Harmonograph</div>
+      <div class="indicator audio-indicator" id="audLabel">🎵 Audio Active</div>
+      <canvas id="cv"></canvas>
+      <div class="overlay">
+        <div class="bar"><div class="fill" id="prog"></div></div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <aside class="panel right">
+      <div class="tabs">
+        <div class="tab active" data-tab="colors">Colors</div>
+        <div class="tab" data-tab="fx">Effects</div>
+      </div>
+
+      <div class="tabc" id="colors" style="display:block">
+        <div class="section">
+          <div class="title">🎨 Base Color</div>
+          <label>Hue</label><div class="row"><input type="range" id="h" min="0" max="360" step="1" value="0"><div class="val" id="hV">0°</div></div>
+          <label>Saturation</label><div class="row"><input type="range" id="s" min="0" max="100" step="1" value="100"><div class="val" id="sV">100%</div></div>
+          <label>Lightness</label><div class="row"><input type="range" id="l" min="0" max="100" step="1" value="50"><div class="val" id="lV">50%</div></div>
+          <div class="color-prev" id="colorPrev"></div>
+        </div>
+
+        <div class="section">
+          <div class="title">🌈 Dynamic Colors</div>
+          <div class="pill"><input id="hueTime" type="checkbox"><label for="hueTime" style="margin:0">Cycle Hue by Time</label></div>
+          <div class="sub" id="hueTimeSub">
+            <label>Hue Cycle Speed</label><div class="row"><input type="range" id="hueSpeed" min="-100" max="100" step="0.1" value="10"><div class="val" id="hueSpeedV">10</div></div>
+          </div>
+
+          <div class="pill"><input id="hueAngle" type="checkbox"><label for="hueAngle" style="margin:0">Cycle Hue by Angle</label></div>
+          <div class="sub" id="hueAngleSub">
+            <label>Angle Hue Sensitivity</label><div class="row"><input type="range" id="angSens" min="-10" max="10" step="0.1" value="1"><div class="val" id="angSensV">1.0</div></div>
+          </div>
+
+          <div class="pill"><input id="hueVel" type="checkbox"><label for="hueVel" style="margin:0">Cycle Hue by Velocity</label></div>
+          <div class="sub" id="hueVelSub">
+            <label>Velocity Hue Sensitivity</label><div class="row"><input type="range" id="velHue" min="0" max="720" step="10" value="360"><div class="val" id="velHueV">360</div></div>
+            <label>Min Velocity</label><div class="row"><input type="range" id="vMin" min="0" max="200" step="1" value="0"><div class="val" id="vMinV">0</div></div>
+            <label>Max Velocity</label><div class="row"><input type="range" id="vMax" min="10" max="1000" step="10" value="200"><div class="val" id="vMaxV">200</div></div>
+          </div>
+
+          <div class="pill"><input id="satTime" type="checkbox"><label for="satTime" style="margin:0">Cycle Saturation by Time</label></div>
+          <div class="sub" id="satTimeSub">
+            <label>Saturation Speed</label><div class="row"><input type="range" id="satSp" min="-50" max="50" step="0.1" value="5"><div class="val" id="satSpV">5</div></div>
+            <label>Min / Max (%)</label><div class="row"><input type="range" id="satMin" min="0" max="100" step="1" value="20"><div class="val" id="satMinV">20%</div></div>
+            <div class="row"><input type="range" id="satMax" min="0" max="100" step="1" value="100"><div class="val" id="satMaxV">100%</div></div>
+          </div>
+
+          <div class="pill"><input id="lightTime" type="checkbox"><label for="lightTime" style="margin:0">Cycle Lightness by Time</label></div>
+          <div class="sub" id="lightTimeSub">
+            <label>Lightness Speed</label><div class="row"><input type="range" id="ligSp" min="-50" max="50" step="0.1" value="5"><div class="val" id="ligSpV">5</div></div>
+            <label>Min / Max (%)</label><div class="row"><input type="range" id="ligMin" min="0" max="100" step="1" value="20"><div class="val" id="ligMinV">20%</div></div>
+            <div class="row"><input type="range" id="ligMax" min="0" max="100" step="1" value="80"><div class="val" id="ligMaxV">80%</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabc" id="fx">
+        <div class="section">
+          <div class="title">✨ Visual Effects</div>
+          <div class="pill"><input id="enGlow" type="checkbox"><label for="enGlow" style="margin:0">Enable Glow</label></div>
+          <div class="sub" id="glowSub">
+            <label>Glow Radius</label><div class="row"><input type="range" id="glowRad" min="0" max="30" step="1" value="5"><div class="val" id="glowRadV">5px</div></div>
+            <label>Glow Hue / Sat / Light</label>
+            <div class="row"><input type="range" id="gh" min="0" max="360" step="1" value="0"><div class="val" id="ghV">0°</div></div>
+            <div class="row"><input type="range" id="gs" min="0" max="100" step="1" value="0"><div class="val" id="gsV">0%</div></div>
+            <div class="row"><input type="range" id="gl" min="0" max="100" step="1" value="100"><div class="val" id="glV">100%</div></div>
+            <div class="glow-prev" id="glowPrev"></div>
+          </div>
+
+          <div class="pill"><input id="enBlur" type="checkbox"><label for="enBlur" style="margin:0">Motion Blur</label></div>
+          <div class="sub" id="blurSub">
+            <label>Blur Amount</label><div class="row"><input type="range" id="blurAmount" min="0" max="10" step="0.1" value="0"><div class="val" id="blurAmountV">0px</div></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="title">🎛️ Drawing</div>
+          <label>Duration</label><div class="row"><input type="range" id="duration" min="1" max="300" step="1" value="50"><div class="val" id="durationV">50</div></div>
+          <label>Line Width</label><div class="row"><input type="range" id="lineWidth" min="0.1" max="5" step="0.1" value="1"><div class="val" id="lineWidthV">1.0px</div></div>
+          <label>Time Step</label><div class="row"><input type="range" id="dt" min="0.001" max="0.02" step="0.001" value="0.005"><div class="val" id="dtV">0.005</div></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+<script type="module">
+/* =========================== Utilities =========================== */
+const $ = (id)=>document.getElementById(id);
+const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+const hsl=(h,s,l)=>`hsl(${(h%360+360)%360} ${s}% ${l}%)`;
+const hslToHex=(h,s,l)=>{
+  l/=100; const a=(s*Math.min(l,1-l))/100;
+  const f=n=>{const k=(n+h/30)%12; const c=l-a*Math.max(Math.min(k-3,9-k,1),-1);
+    return Math.round(255*c).toString(16).padStart(2,"0");};
+  return `#${f(0)}${f(8)}${f(4)}`;
+};
+function mulberry32(seed){return function(){let t = seed += 0x6D2B79F5; t=Math.imul(t^t>>>15,t|1); t^=t+Math.imul(t^t>>>7,t|61); return ((t^t>>>14)>>>0)/4294967296;}}
+const fmt=(x,d=2)=>Number(x).toFixed(d);
+
+/* =========================== Audio Engine =========================== */
+class AudioEngine{
+  constructor(){
+    this.ctx=null; this.an=null; this.src=null; this.player=$('player');
+    this.freqBuf=null; this.bufLen=0; this.data={volume:0,bass:0,mid:0,treble:0,centroid:0,pitch:0,pitchN:0,rhythm:0};
+    this._lastV=0; this.active=false; this.demoNodes=null; this.maxPitch=5000;
+    this._init();
+  }
+  async _init(){
+    try{
+      this.ctx=new (window.AudioContext||window.webkitAudioContext)();
+      this.an=this.ctx.createAnalyser(); this.an.fftSize=2048; this.an.smoothingTimeConstant=.8;
+      this.bufLen=this.an.frequencyBinCount; this.freqBuf=new Uint8Array(this.bufLen);
+      this._wirePlayer();
+    }catch(e){console.error('Audio init',e)}
+  }
+  _wirePlayer(){
+    const p=this.player; if(!p) return;
+    p.addEventListener('loadedmetadata',()=>{
+      $('tTot').textContent=this._fmtTime(p.duration); $('playPause').disabled=false;
+      $('playerWrap').style.display='block'; $('audioStatus').textContent='Audio: File loaded ✓'; $('audioStatus').style.color='var(--g)';
+    });
+    p.addEventListener('timeupdate',()=>{$('tCur').textContent=this._fmtTime(p.currentTime)});
+    p.addEventListener('play', async ()=>{
+      await this._ensureConnected(); this.active=true; $('audLabel').classList.add('active');
+    });
+    const stopUI=()=>{$('playPause').textContent='▶️ Play'; this.active=false; $('audLabel').classList.remove('active')};
+    p.addEventListener('pause',stopUI); p.addEventListener('ended',stopUI);
+  }
+  _fmtTime(s){return isNaN(s)?'0:00':`${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,'0')}`}
+  async _ensureConnected(){
+    if(this.ctx.state==='suspended') await this.ctx.resume();
+    if(!this.src){ this.src=this.ctx.createMediaElementSource(this.player); this.src.connect(this.an); this.src.connect(this.ctx.destination); }
+  }
+  loadFile(file){
+    if(!file) return; const url=URL.createObjectURL(file); this.player.src=url; this.player.load();
+    $('audioStatus').textContent=`Loading: ${file.name}`; $('audioStatus').style.color='var(--b)';
+  }
+  togglePlay(){ if(this.player.paused){ this.player.play(); $('playPause').textContent='⏸️ Pause'; } else { this.player.pause(); } }
+
+  stopAllDemos(){
+    if(this.demoNodes){ this.demoNodes.forEach(n=>{try{n.stop(0)}catch{} try{n.disconnect()}catch{}}); this.demoNodes=null; }
+  }
+  async startDemoBeats(){
+    await this._prepDemo(); const now=this.ctx.currentTime;
+    const out=this.ctx.createGain(); out.gain.value=0.35; out.connect(this.an); out.connect(this.ctx.destination);
+    const kick=this.ctx.createOscillator(); kick.type='sine'; const g1=this.ctx.createGain(); g1.gain.setValueAtTime(0,out.context.currentTime);
+    kick.frequency.setValueAtTime(150,now); kick.frequency.exponentialRampToValueAtTime(50,now+.05);
+    g1.gain.setValueAtTime(1,now); g1.gain.exponentialRampToValueAtTime(0.001,now+.12); kick.connect(g1).connect(out); kick.start(now); kick.stop(now+.15);
+    // Looping beat with scheduled events
+    const scheduleBeat=(t)=>{const k=this.ctx.createOscillator(); k.type='sine'; const gg=this.ctx.createGain(); gg.gain.value=0; k.connect(gg).connect(out);
+      k.frequency.setValueAtTime(160,t); k.frequency.exponentialRampToValueAtTime(55,t+.05); gg.gain.setValueAtTime(1,t); gg.gain.exponentialRampToValueAtTime(0.001,t+.12); k.start(t); k.stop(t+.15);};
+    // Hat
+    const hatBuf=this.ctx.createBuffer(1,22050,44100);
+    const ch=hatBuf.getChannelData(0); for(let i=0;i<ch.length;i++){ch[i]=(Math.random()*2-1)*Math.pow(1-i/ch.length,4);}
+    const hat=()=>{const src=this.ctx.createBufferSource(); src.buffer=hatBuf; const bp=this.ctx.createBiquadFilter(); bp.type='highpass'; bp.frequency.value=8000; src.connect(bp).connect(out); src.start(); src.stop(this.ctx.currentTime+.03);};
+    const timer=setInterval(()=>{const t=this.ctx.currentTime+.05; scheduleBeat(t); setTimeout(hat,100); setTimeout(hat,400);}, 600);
+    this.demoNodes=[{stop:()=>clearInterval(timer),disconnect:()=>{}}];
+    $('audLabel').classList.add('active'); this.active=true;
+  }
+  async startDemoMelody(){
+    await this._prepDemo(); const out=this.ctx.createGain(); out.gain.value=0.25; out.connect(this.an); out.connect(this.ctx.destination);
+    const notes=[261.63,293.66,329.63,349.23,392.00,440.00,493.88,523.25]; // C major
+    const now=this.ctx.currentTime; let t=now+.05;
+    const osc=(f,d=0.3,type='sine')=>{const o=this.ctx.createOscillator(); o.type=type; o.frequency.value=f; const g=this.ctx.createGain();
+      g.gain.value=0; o.connect(g).connect(out); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.9,t+.02); g.gain.linearRampToValueAtTime(.0001,t+d);
+      o.start(t); o.stop(t+d+.02); return o; };
+    const seq=[]; for(let i=0;i<24;i++){const f=notes[(i*2)%notes.length]; seq.push(osc(f,0.28,i%4? 'triangle':'sine')); t+=0.3;}
+    this.demoNodes=seq;
+    $('audLabel').classList.add('active'); this.active=true;
+  }
+  async _prepDemo(){ if(this.ctx.state==='suspended') await this.ctx.resume(); this.stopAllDemos(); this.player.pause(); }
+
+  tick(){
+    if(!this.an || !this.freqBuf) return this.data;
+    this.an.getByteFrequencyData(this.freqBuf);
+    // Volume (RMS)
+    let sum=0; for(let i=0;i<this.bufLen;i++) sum += this.freqBuf[i]*this.freqBuf[i];
+    const vol=Math.sqrt(sum/this.bufLen)/255; this.data.volume=vol;
+    // Bands
+    const bEnd=Math.floor(this.bufLen*0.1), mEnd=Math.floor(this.bufLen*0.4);
+    let b=0; for(let i=0;i<bEnd;i++) b+=this.freqBuf[i]; this.data.bass=bEnd? (b/bEnd)/255 : 0;
+    let m=0; for(let i=bEnd;i<mEnd;i++) m+=this.freqBuf[i]; this.data.mid=mEnd-bEnd? (m/(mEnd-bEnd))/255 : 0;
+    let t=0; for(let i=mEnd;i<this.bufLen;i++) t+=this.freqBuf[i]; this.data.treble=this.bufLen-mEnd? (t/(this.bufLen-mEnd))/255 : 0;
+    // Centroid + pitch proxy
+    let w=0,mag=0,maxV=0,maxI=0; for(let i=0;i<this.bufLen;i++){const v=this.freqBuf[i]; w+=i*v; mag+=v; if(v>maxV){maxV=v;maxI=i;}}
+    this.data.centroid = mag>0 ? (w/mag)/this.bufLen : 0;
+    const ny=this.ctx? this.ctx.sampleRate/2 : 22050; const estPitch = (maxI * ny / this.bufLen) || 0;
+    this.data.pitch = estPitch; this.data.pitchN = Math.min(1, estPitch / this.maxPitch);
+    // Rhythm (onset)
+    const rv=Math.abs(vol-(this._lastV ?? vol))*10; this.data.rhythm = clamp(rv,0,1); this._lastV=vol;
+    return this.data;
+  }
+}
+
+/* =========================== Pattern Generators =========================== */
+const Patterns={
+  harmonograph(p,t){
+    const gd=p.enGDecay ? p.gDecay : 0;
+    const X=p.enX? p.ax*Math.exp(-(p.dx+gd)*t)*Math.cos(2*Math.PI*p.fx*t+p.phx*Math.PI/180) : 0;
+    const Y=p.enY? p.ay*Math.exp(-(p.dy+gd)*t)*Math.cos(2*Math.PI*p.fy*t+p.phy*Math.PI/180) : 0;
+    return {x:X,y:Y};
+  },
+  lissajous(p,t){
+    const a=p.lisA||3, b=p.lisB||4, ph=(p.lisPhase||90)*Math.PI/180, sc=Math.min(p.ax||200,p.ay||200);
+    return {x:sc*Math.sin(a*t+ph), y:sc*Math.sin(b*t)};
+  },
+  spirograph(p,t){
+    const R=p.spR||120, r=p.spr||45, d=p.spd||80, k=(R-r)/r;
+    return {x:(R-r)*Math.cos(t)+d*Math.cos(k*t), y:(R-r)*Math.sin(t)-d*Math.sin(k*t)};
+  },
+  coupled(p,t){
+    const k=p.cpK||0.1, m=p.cpM||1, f1=p.fx||2, f2=p.fy||3;
+    const w1=(2*Math.PI*f1)**2, w2=(2*Math.PI*f2)**2, r=Math.sqrt((w1-w2)**2+4*k*k);
+    const wp=Math.sqrt((w1+w2+2*k+r)/2), wm=Math.sqrt((w1+w2+2*k-r)/2);
+    const A1=(p.ax||200)/2, A2=(p.ay||200)/(2*m);
+    return {x:A1*(Math.cos(wp*t)+Math.cos(wm*t)), y:A2*(Math.cos(wp*t)-Math.cos(wm*t))};
+  },
+  chaos(p,t,st){
+    const dt=p.dt||0.005; st.c??={x:0.1,y:0.1,z:0.1}; const s=st.c;
+    if(p.chType==='rossler'){ const a=0.2,b=0.2,c=5.7; const dx=-s.y-s.z, dy=s.x+a*s.y, dz=b+s.z*(s.x-c); s.x+=dx*dt; s.y+=dy*dt; s.z+=dz*dt; return{x:s.x*15,y:s.y*15};}
+    if(p.chType==='henon'){ const a=1.4,b=0.3; const nx=1-a*s.x*s.x+s.y, ny=b*s.x; s.x=nx; s.y=ny; return{x:s.x*150,y:s.y*150};}
+    const sg=p.chS||10,rh=p.chR||28,bt=p.chB||8/3; const dx=sg*(s.y-s.x), dy=s.x*(rh-s.z)-s.y, dz=s.x*s.y-bt*s.z; s.x+=dx*dt; s.y+=dy*dt; s.z+=dz*dt;
+    return {x:s.x*8, y:s.z*8-200};
+  },
+  rose(p,t){
+    const n=p.roN||5,d=p.roD||3,k=n/d, sc=p.roS||150, r=sc*Math.cos(k*t); return {x:r*Math.cos(t), y:r*Math.sin(t)};
+  }
+};
+
+/* =========================== Renderer =========================== */
+class Renderer{
+  constructor(canvas,audio){
+    this.cv=canvas; this.ctx=canvas.getContext('2d'); this.audio=audio;
+    this.running=false; this.t=0; this.prev={x:0,y:0}; this.cur={x:0,y:0}; this.state={}; this.prog=$('prog');
+    this.params = this.defaultParams();
+    this._resize(); new ResizeObserver(()=>this._resize()).observe(this.cv.parentElement);
+    this._audioTimer=null; this._audioFPS=30; this._lastAudioTick=0;
+  }
+  defaultParams(){
+    return {
+      mode:'harmonograph', duration:50, dt:0.005, lineWidth:1,
+      // Global
+      enGDecay:true, gDecay:0.005, enRot:false, rot:0,
+      // X/Y
+      enX:true, fx:2, phx:0, ax:200, dx:0.001,
+      enY:true, fy:3, phy:90, ay:200, dy:0.001,
+      // Lissajous
+      lisA:3, lisB:4, lisPhase:90,
+      // Spiro
+      spR:120, spr:45, spd:80,
+      // Coupled
+      cpK:0.1, cpM:1,
+      // Chaos
+      chType:'lorenz', chS:10, chR:28, chB:2.667,
+      // Rose
+      roN:5, roD:3, roS:150,
+      // Color
+      h:0, s:100, l:50,
+      hueTime:false, hueSpeed:10,
+      hueAngle:false, angSens:1,
+      hueVel:false, velHue:360, vMin:0, vMax:200,
+      satTime:false, satSp:5, satMin:20, satMax:100,
+      lightTime:false, ligSp:5, ligMin:20, ligMax:80,
+      // FX
+      enGlow:false, glowRad:5, gh:0, gs:0, gl:100, enBlur:false, blurAmount:0,
+      // Audio links
+      linkWidth:false, widthFeat:'bass', widthSens:1, widthMin:.5, widthMax:3,
+      linkHue:false, hueFeat:'treble', hueShift:90,
+      linkDecay:false, decayFeat:'rhythm', decaySens:1, decayMin:0.001, decayMax:0.02,
+    };
+  }
+  setParams(p){ Object.assign(this.params,p); }
+
+  _resize(){
+    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    const w = Math.floor(this.cv.parentElement.clientWidth - 20);
+    const h = Math.floor(this.cv.parentElement.clientHeight - 20);
+    const s = Math.max(300, Math.min(w,h));
+    this.cv.style.width = s+'px'; this.cv.style.height = s+'px';
+    this.cv.width = Math.round(s*dpr); this.cv.height = Math.round(s*dpr);
+    this.ctx.setTransform(dpr,0,0,dpr,0,0);
+    this.clear();
+  }
+  clear(){ this.ctx.fillStyle='#000'; this.ctx.fillRect(0,0,this.cv.width, this.cv.height); }
+  start(){
+    if(this.running) this.stop();
+    this.t=0; this.state={}; this.prev={x:0,y:0}; this.cur={x:0,y:0};
+    this.clear(); this.running=true; this._loopStart=performance.now(); this._raf = requestAnimationFrame(this._loop.bind(this));
+    this._startAudioTicker();
+  }
+  stop(){ this.running=false; cancelAnimationFrame(this._raf); this._stopAudioTicker(); }
+  _startAudioTicker(){
+    clearInterval(this._audioTimer);
+    const fps = clamp(this._audioFPS,1,60);
+    this._audioTimer = setInterval(()=>this._audioUpdate(), 1000/fps);
+  }
+  _stopAudioTicker(){ clearInterval(this._audioTimer); }
+  setAudioFPS(fps){ this._audioFPS=fps; if(this.running){ this._startAudioTicker(); } }
+  _audioUpdate(){
+    // Draw spectrum + levels if audio active
+    const s=$('spectrum'); if(!s) return;
+    const ctx=s.getContext('2d');
+    const d=this.audio.tick();
+    // Levels UI
+    $('lvBass').style.width=(d.bass*100).toFixed(0)+'%';
+    $('lvMid').style.width=(d.mid*100).toFixed(0)+'%';
+    $('lvTre').style.width=(d.treble*100).toFixed(0)+'%';
+    $('lvVol').style.width=(d.volume*100).toFixed(0)+'%';
+    // Spectrum
+    ctx.clearRect(0,0,s.width,s.height);
+    if(this.audio.freqBuf){
+      const arr=this.audio.freqBuf;
+      const barW=Math.max(1, Math.floor(s.width/arr.length));
+      for(let i=0;i<arr.length;i++){
+        const v = arr[i]/255; const h = v*s.height;
+        ctx.fillStyle = `hsl(${Math.round(200+160*v)}, 80%, ${40+40*v}%)`;
+        ctx.fillRect(i*barW, s.height-h, barW-1, h);
+      }
+    }
+  }
+
+  _applyAudioLinks(base){
+    const A=this.audio.data; const p=this.params; const feat=(k)=>(A[k]??0);
+    const linked={...base};
+    if(p.linkWidth){
+      const x=feat(mapFeat(p.widthFeat)); const lw = p.widthMin + x*p.widthSens*(p.widthMax-p.widthMin);
+      linked.lineWidth = clamp(lw, p.widthMin, p.widthMax);
+    }
+    if(p.linkHue){
+      const x=feat(mapFeat(p.hueFeat)); linked.h = (base.h + x*p.hueShift) % 360;
+    }
+    if(p.linkDecay){
+      const x=feat(mapFeat(p.decayFeat)); const d = p.decayMin + x*p.decaySens*(p.decayMax-p.decayMin);
+      linked.gDecay = clamp(d, p.decayMin, p.decayMax); linked.enGDecay = true;
+    }
+    return linked;
+    function mapFeat(f){
+      return ({volume:'volume', bass:'bass', mid:'mid', treble:'treble', rhythm:'rhythm', centroid:'centroid', pitchN:'pitchN'})[f]||'volume';
+    }
+  }
+
+  _currentColor(base){
+    const p=base; let {h,s,l}=p;
+    // Time hue
+    if(p.hueTime) h = (h + this.t*p.hueSpeed) % 360;
+    // Angle hue
+    if(p.hueAngle && this.t>0){
+      const dx=this.cur.x-this.prev.x, dy=this.cur.y-this.prev.y;
+      if(dx||dy){ const ang = Math.atan2(dy,dx)*180/Math.PI; h = (h + ang*p.angSens) % 360; }
+    }
+    // Velocity hue
+    if(p.hueVel && this.t>0){
+      const dx=this.cur.x-this.prev.x, dy=this.cur.y-this.prev.y, dist=Math.hypot(dx,dy);
+      const vel = dist/(p.dt||0.005); const nV = clamp((vel-p.vMin)/(p.vMax-p.vMin),0,1);
+      h = (h + nV*p.velHue) % 360;
+    }
+    // Saturation time
+    if(p.satTime){
+      const osc=(Math.sin(this.t*(p.satSp||5)*Math.PI/180)+1)/2;
+      s = clamp(p.satMin + osc*(p.satMax-p.satMin),0,100);
+    }
+    // Lightness time
+    if(p.lightTime){
+      const osc=(Math.sin(this.t*(p.ligSp||5)*Math.PI/180)+1)/2;
+      l = clamp(p.ligMin + osc*(p.ligMax-p.ligMin),0,100);
+    }
+    return {h,s,l};
+  }
+
+  _loop(){
+    if(!this.running) return;
+    const p = this.params.mode==='audio' ? this._applyAudioLinks(this.params) : this.params;
+
+    // Motion blur (frame fade)
+    if(p.enBlur && p.blurAmount>0){
+      this.ctx.save(); this.ctx.globalCompositeOperation='destination-out';
+      this.ctx.fillStyle=`rgba(0,0,0,${clamp(p.blurAmount/50,0,0.3)})`; this.ctx.fillRect(0,0,this.cv.width, this.cv.height); this.ctx.restore();
+    }
+
+    // Compute position
+    const gen = ({
+      harmonograph:Patterns.harmonograph,
+      lissajous:Patterns.lissajous,
+      spirograph:Patterns.spirograph,
+      coupled:Patterns.coupled,
+      chaos:Patterns.chaos,
+      rose:Patterns.rose,
+      audio:Patterns.harmonograph
+    })[p.mode];
+    let pos = gen(p, this.t, this.state);
+
+    // Rotation
+    if(p.enRot && p.rot!==0){
+      const a=p.rot*Math.PI/180*this.t, ca=Math.cos(a), sa=Math.sin(a);
+      pos = {x:pos.x*ca - pos.y*sa, y:pos.x*sa + pos.y*ca};
+    }
+
+    // Map to canvas center
+    const cx=this.cv.clientWidth/2, cy=this.cv.clientHeight/2;
+    this.cur.x = cx + pos.x; this.cur.y = cy + pos.y;
+
+    // Stroke
+    if(this.t>0){
+      const c = this._currentColor(p);
+      const col = hslToHex(c.h,c.s,c.l);
+      if(p.enGlow && p.glowRad>0){
+        this.ctx.shadowColor = hslToHex(p.gh,p.gs,p.gl);
+        this.ctx.shadowBlur = p.glowRad;
+      } else { this.ctx.shadowBlur=0; }
+      this.ctx.filter = (p.enBlur && p.blurAmount>0) ? `blur(${p.blurAmount}px)` : 'none';
+      this.ctx.beginPath();
+      this.ctx.moveTo(this.prev.x, this.prev.y);
+      this.ctx.lineTo(this.cur.x, this.cur.y);
+      this.ctx.strokeStyle = col;
+      this.ctx.lineWidth = p.lineWidth;
+      this.ctx.lineCap = 'round';
+      this.ctx.stroke();
+    }
+
+    this.prev.x=this.cur.x; this.prev.y=this.cur.y;
+    this.t += p.dt;
+
+    // Progress bar
+    $('prog').style.width = clamp((this.t/p.duration)*100,0,100)+'%';
+
+    if(this.t<=p.duration){ this._raf = requestAnimationFrame(this._loop.bind(this)); }
+    else { this.stop(); }
+  }
+}
+
+/* =========================== UI Controller =========================== */
+const audio = new AudioEngine();
+const cv = $('cv'); const engine = new Renderer(cv, audio);
+
+function bindRange(id, fmtFn=(v)=>v, onChange){
+  const el=$(id), v=$(`${id}V`); const update=(val)=>{ if(v) v.textContent=fmtFn(val); if(onChange) onChange(val); };
+  el.addEventListener('input',()=>{ update(el.value); });
+  update(el.value);
+}
+function toggleSub(chkId, subId){ const c=$(chkId), s=$(subId); const set=()=>{ s.classList.toggle('active', c.checked); }; c.addEventListener('change', set); set(); }
+function show(id,vis){ $(id).style.display = vis? 'block' : 'none'; }
+
+function wireTabs(){
+  document.querySelectorAll('.tab').forEach(tab=>{
+    tab.addEventListener('click',()=>{
+      tab.parentElement.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+      tab.classList.add('active');
+      const target = tab.dataset.tab;
+      const wrap = tab.closest('aside') || document.body;
+      wrap.querySelectorAll('.tabc').forEach(c=>c.style.display='none');
+      $(target).style.display='block';
+    });
+  });
+}
+
+function readParams(){
+  const p=engine.params;
+  // pattern
+  p.mode = $('pattern').value;
+  // global
+  p.gDecay=+$('gDecay').value; p.enGDecay=$('enGDecay').checked; p.rot=+$('rot').value; p.enRot=$('enRot').checked;
+  // xy
+  p.enX=$('enX').checked; p.fx=+$('fx').value; p.phx=+$('phx').value; p.ax=+$('ax').value; p.dx=+$('dx').value;
+  p.enY=$('enY').checked; p.fy=+$('fy').value; p.phy=+$('phy').value; p.ay=+$('ay').value; p.dy=+$('dy').value;
+  // lis
+  p.lisA=+$('lisA').value; p.lisB=+$('lisB').value; p.lisPhase=+$('lisPhase').value;
+  // spiro
+  p.spR=+$('spR').value; p.spr=+$('spr').value; p.spd=+$('spd').value;
+  // coupled
+  p.cpK=+$('cpK').value; p.cpM=+$('cpM').value;
+  // chaos
+  p.chType=$('chType').value; p.chS=+$('chS').value; p.chR=+$('chR').value; p.chB=+$('chB').value;
+  // rose
+  p.roN=+$('roN').value; p.roD=+$('roD').value; p.roS=+$('roS').value;
+  // color
+  p.h=+$('h').value; p.s=+$('s').value; p.l=+$('l').value;
+  p.hueTime=$('hueTime').checked; p.hueSpeed=+$('hueSpeed').value;
+  p.hueAngle=$('hueAngle').checked; p.angSens=+$('angSens').value;
+  p.hueVel=$('hueVel').checked; p.velHue=+$('velHue').value; p.vMin=+$('vMin').value; p.vMax=+$('vMax').value;
+  p.satTime=$('satTime').checked; p.satSp=+$('satSp').value; p.satMin=+$('satMin').value; p.satMax=+$('satMax').value;
+  p.lightTime=$('lightTime').checked; p.ligSp=+$('ligSp').value; p.ligMin=+$('ligMin').value; p.ligMax=+$('ligMax').value;
+  // fx
+  p.enGlow=$('enGlow').checked; p.glowRad=+$('glowRad').value; p.gh=+$('gh').value; p.gs=+$('gs').value; p.gl=+$('gl').value;
+  p.enBlur=$('enBlur').checked; p.blurAmount=+$('blurAmount').value;
+  p.duration=+$('duration').value; p.dt=+$('dt').value; p.lineWidth=+$('lineWidth').value;
+  // audio links
+  p.linkWidth=$('linkWidth').checked; p.widthFeat=$('widthFeat').value; p.widthSens=+$('widthSens').value; p.widthMin=+$('widthMin').value; p.widthMax=+$('widthMax').value;
+  p.linkHue=$('linkHue').checked; p.hueFeat=$('hueFeat').value; p.hueShift=+$('hueShift').value;
+  p.linkDecay=$('linkDecay').checked; p.decayFeat=$('decayFeat').value; p.decaySens=+$('decaySens').value; p.decayMin=+$('decayMin').value; p.decayMax=+$('decayMax').value;
+  engine.setParams(p);
+}
+
+function syncLabels(){
+  [['gDecay',v=>'0.'+String(v).split('.')[1]?.padEnd(4,'0')??v],
+   ['rot',v=>`${fmt(v,1)}°`],
+   ['fx',v=>fmt(v,2)],['phx',v=>`${v}°`],['ax'],['dx',v=>fmt(v,4)],
+   ['fy',v=>fmt(v,2)],['phy',v=>`${v}°`],['ay'],['dy',v=>fmt(v,4)],
+   ['lisA'],['lisB'],['lisPhase',v=>`${v}°`],
+   ['spR'],['spr'],['spd'],
+   ['cpK',v=>fmt(v,2)],['cpM',v=>fmt(v,1)],
+   ['chS'],['chR'],['chB',v=>fmt(v,3)],
+   ['roN'],['roD'],['roS'],
+   ['h',v=>`${v}°`],['s',v=>`${v}%`],['l',v=>`${v}%`],
+   ['hueSpeed'],['angSens',v=>fmt(v,1)],['velHue'],['vMin'],['vMax'],
+   ['satSp'],['satMin',v=>`${v}%`],['satMax',v=>`${v}%`],
+   ['ligSp'],['ligMin',v=>`${v}%`],['ligMax',v=>`${v}%`],
+   ['glowRad',v=>`${v}px`],['gh',v=>`${v}°`],['gs',v=>`${v}%`],['gl',v=>`${v}%`],['blurAmount',v=>`${v}px`],
+   ['duration'],['lineWidth',v=>`${v}px`],['dt'],
+   ['audioSense'],['audioFPS'],['widthSens'],['widthMin'],['widthMax'],['hueShift'],
+   ['decaySens'],['decayMin',v=>fmt(v,4)],['decayMax',v=>fmt(v,4)]
+  ].forEach(([id,fmtter])=>bindRange(id,(v)=>fmtter?fmtter(v):v));
+  const paintPrev=()=>{ $('colorPrev').style.background=hsl(engine.params.h,engine.params.s,engine.params.l);
+                        $('glowPrev').style.background=hsl(engine.params.gh,engine.params.gs,engine.params.gl); };
+  document.querySelectorAll('input[type="range"]').forEach(r=>r.addEventListener('input',()=>{readParams(); paintPrev();}));
+  document.querySelectorAll('input[type="checkbox"],select').forEach(c=>c.addEventListener('change',()=>{readParams(); paintPrev();}));
+  paintPrev();
+}
+
+function wireSubs(){
+  toggleSub('hueTime','hueTimeSub');
+  toggleSub('hueAngle','hueAngleSub');
+  toggleSub('hueVel','hueVelSub');
+  toggleSub('satTime','satTimeSub');
+  toggleSub('lightTime','lightTimeSub');
+  toggleSub('enGlow','glowSub');
+  toggleSub('enBlur','blurSub');
+  toggleSub('linkWidth','linkWidthSub');
+  toggleSub('linkHue','linkHueSub');
+  toggleSub('linkDecay','linkDecaySub');
+}
+
+function wirePatternSwitcher(){
+  const modeSel=$('pattern');
+  const map={
+    harmonograph:[],
+    lissajous:['lissajousSec'],
+    spirograph:['spiroSec'],
+    coupled:['coupledSec'],
+    chaos:['chaosSec'],
+    rose:['roseSec'],
+    audio:['audioBlock']
+  };
+  const label=$('modeLabel');
+  const update=()=>{
+    const m=modeSel.value;
+    document.querySelectorAll('.ps, #audioBlock').forEach(e=>e.style.display='none');
+    (map[m]||[]).forEach(id=>show(id,true));
+    label.textContent=modeSel.options[modeSel.selectedIndex].text;
+    show('audioBlock', m==='audio');
+    readParams();
+  };
+  modeSel.addEventListener('change',update); update();
+}
+
+function wireButtons(){
+  $('generate').addEventListener('click',()=>{
+    readParams(); engine.start(); $('generate').textContent='Stop'; $('generate').classList.add('warn');
+    const stop=()=>{engine.stop(); $('generate').textContent='Generate'; $('generate').classList.remove('warn');
+      $('generate').removeEventListener('click',stop); wireButtons(); };
+    $('generate').removeEventListener('click',arguments.callee); $('generate').addEventListener('click',stop);
+  });
+
+  $('save').addEventListener('click',()=>{
+    // Save 2x PNG
+    const scale=2;
+    const w=cv.clientWidth, h=cv.clientHeight;
+    const s=document.createElement('canvas'); s.width=w*scale; s.height=h*scale;
+    const c=s.getContext('2d'); c.fillStyle='#000'; c.fillRect(0,0,s.width,s.height);
+    c.drawImage(cv,0,0,s.width,s.height);
+    const url=s.toDataURL('image/png'); const a=document.createElement('a'); a.href=url; a.download='harmonograph.png'; a.click();
+  });
+
+  $('random').addEventListener('click',()=>{
+    const seed=Math.floor(Math.random()*1e9); const rnd=mulberry32(seed);
+    const p=engine.params;
+    p.fx=+(1+rnd()*4).toFixed(2); p.fy=+(1+rnd()*4).toFixed(2);
+    p.phx=Math.floor(rnd()*360); p.phy=Math.floor(rnd()*360);
+    p.ax=Math.floor(120+rnd()*240); p.ay=Math.floor(120+rnd()*240);
+    p.h=Math.floor(rnd()*360); p.s=Math.floor(60+rnd()*40); p.l=Math.floor(30+rnd()*50);
+    p.lisA=1+Math.floor(rnd()*9); p.lisB=1+Math.floor(rnd()*9);
+    p.spR=80+Math.floor(rnd()*120); p.spr=20+Math.floor(rnd()*60); p.spd=20+Math.floor(rnd()*120);
+    p.cpK=+(rnd()).toFixed(2); p.cpM=+(0.5+rnd()*2).toFixed(2);
+    p.roN=1+Math.floor(rnd()*12); p.roD=1+Math.floor(rnd()*10); p.roS=100+Math.floor(rnd()*140);
+    updateInputsFromParams(); readParams();
+  });
+}
+
+function updateInputsFromParams(){
+  const p=engine.params; const set=(id,val)=>{ const el=$(id); if(!el) return; el.value=val; el.dispatchEvent(new Event('input',{bubbles:true})); };
+  const setC=(id,val)=>{ const el=$(id); if(!el) return; el.checked=!!val; el.dispatchEvent(new Event('change',{bubbles:true})); };
+  set('gDecay',p.gDecay); setC('enGDecay',p.enGDecay); set('rot',p.rot); setC('enRot',p.enRot);
+  setC('enX',p.enX); set('fx',p.fx); set('phx',p.phx); set('ax',p.ax); set('dx',p.dx);
+  setC('enY',p.enY); set('fy',p.fy); set('phy',p.phy); set('ay',p.ay); set('dy',p.dy);
+  set('lisA',p.lisA); set('lisB',p.lisB); set('lisPhase',p.lisPhase);
+  set('spR',p.spR); set('spr',p.spr); set('spd',p.spd);
+  set('cpK',p.cpK); set('cpM',p.cpM);
+  set('chS',p.chS); set('chR',p.chR); set('chB',p.chB); $('chType').value=p.chType;
+  set('roN',p.roN); set('roD',p.roD); set('roS',p.roS);
+  set('h',p.h); set('s',p.s); set('l',p.l);
+  setC('hueTime',p.hueTime); set('hueSpeed',p.hueSpeed);
+  setC('hueAngle',p.hueAngle); set('angSens',p.angSens);
+  setC('hueVel',p.hueVel); set('velHue',p.velHue); set('vMin',p.vMin); set('vMax',p.vMax);
+  setC('satTime',p.satTime); set('satSp',p.satSp); set('satMin',p.satMin); set('satMax',p.satMax);
+  setC('lightTime',p.lightTime); set('ligSp',p.ligSp); set('ligMin',p.ligMin); set('ligMax',p.ligMax);
+  setC('enGlow',p.enGlow); set('glowRad',p.glowRad); set('gh',p.gh); set('gs',p.gs); set('gl',p.gl);
+  setC('enBlur',p.enBlur); set('blurAmount',p.blurAmount);
+  set('duration',p.duration); set('dt',p.dt); set('lineWidth',p.lineWidth);
+  setC('linkWidth',p.linkWidth); $('widthFeat').value=p.widthFeat; set('widthSens',p.widthSens); set('widthMin',p.widthMin); set('widthMax',p.widthMax);
+  setC('linkHue',p.linkHue); $('hueFeat').value=p.hueFeat; set('hueShift',p.hueShift);
+  setC('linkDecay',p.linkDecay); $('decayFeat').value=p.decayFeat; set('decaySens',p.decaySens); set('decayMin',p.decayMin); set('decayMax',p.decayMax);
+}
+
+function wireAudioUI(){
+  $('audioSense').addEventListener('input',()=>{ $('audioSenseV').textContent=$('audioSense').value; });
+  $('audioFPS').addEventListener('input',()=>{ $('audioFPSV').textContent=$('audioFPS').value; engine.setAudioFPS(+$('audioFPS').value); });
+
+  $('loadAudio').addEventListener('click',()=>$('fileInput').click());
+  $('fileInput').addEventListener('change',(e)=>{
+    const f=e.target.files?.[0]; if(f){ audio.loadFile(f); }
+  });
+  $('playPause').addEventListener('click',()=>audio.togglePlay());
+  $('demoBeats').addEventListener('click',()=>audio.startDemoBeats());
+  $('demoMelody').addEventListener('click',()=>audio.startDemoMelody());
+}
+
+function wirePresets(){
+  document.querySelectorAll('.btn.p').forEach(b=>b.addEventListener('click',()=>{
+    const p=engine.params; const id=b.dataset.pre;
+    if(id==='flower'){ Object.assign(p,{mode:'harmonograph', fx:2.1, fy:3.2, phx:0, phy:90, ax:220, ay:220, h:320, s:90, l:60}); }
+    if(id==='spiral'){ Object.assign(p,{mode:'harmonograph', fx:2.5, fy:2.5, phx:0, phy:45, ax:250, ay:120, dx:0.003, dy:0.003, enRot:true, rot:8}); }
+    if(id==='star'){ Object.assign(p,{mode:'lissajous', lisA:5, lisB:4, lisPhase:90, ax:220, ay:220, h:50}); }
+    if(id==='infinity'){ Object.assign(p,{mode:'lissajous', lisA:2, lisB:1, lisPhase:90, ax:240, ay:240}); }
+    if(id==='chaos'){ Object.assign(p,{mode:'chaos', chType:'lorenz', chS:10, chR:28, chB:2.667, dt:0.003}); }
+    if(id==='waves'){ Object.assign(p,{mode:'spirograph', spR:160, spr:45, spd:90}); }
+    if(id==='liss_3_4'){ Object.assign(p,{mode:'lissajous', lisA:3, lisB:4, lisPhase:90}); }
+    if(id==='spiro'){ Object.assign(p,{mode:'spirograph', spR:140, spr:35, spd:85}); }
+    if(id==='coupled'){ Object.assign(p,{mode:'coupled', cpK:0.12, cpM:1.2}); }
+    if(id==='lorenz'){ Object.assign(p,{mode:'chaos', chType:'lorenz', chS:10, chR:28, chB:2.667}); }
+    if(id==='rose5'){ Object.assign(p,{mode:'rose', roN:5, roD:3, roS:160}); }
+    if(id==='golden'){ Object.assign(p,{mode:'lissajous', lisA:8, lisB:5, lisPhase:108}); }
+    if(id==='audio_live'){ $('pattern').value='audio'; }
+    if(id==='audio_musical'){ $('pattern').value='audio'; $('audioMode').value='musical'; }
+    if(id==='audio_spectral'){ $('pattern').value='audio'; $('audioMode').value='spectral'; }
+    if(id==='audio_rhythm'){ $('pattern').value='audio'; $('audioMode').value='rhythmic'; }
+    updateInputsFromParams(); $('pattern').dispatchEvent(new Event('change'));
+  }));
+}
+
+/* ======= Boot ======= */
+wireTabs(); wireSubs(); wirePatternSwitcher(); syncLabels(); wireButtons(); wireAudioUI(); wirePresets();
+readParams();
+
+// Reflect audio-driven preset base on every draw start
+const origStart = engine.start.bind(engine);
+engine.start = function(){
+  // Map audio mode to base params just before drawing
+  if(engine.params.mode==='audio'){
+    const s = +$('audioSense').value || 1;
+    const m = $('audioMode').value;
+    const A = audio.data;
+    if(m==='musical'){
+      // Choose two notes from bass/treble balance
+      const notes = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+      const n1 = notes[Math.floor(clamp(A.bass*12,0,11))];
+      const n2 = notes[Math.floor(clamp(A.treble*12,0,11))];
+      // derive ratio from names
+      const freq={C:261.63,'C#':277.18,D:293.66,'D#':311.13,E:329.63,F:349.23,'F#':369.99,G:392,'G#':415.3,A:440,'A#':466.16,B:493.88};
+      const r=(freq[n2]||392)/(freq[n1]||261.63);
+      // best small ratio approximation
+      let num=1,den=1; for(let d=1;d<=20;d++){ const test=Math.round(r*d); if(Math.abs(r-test/d)<0.01){num=test; den=d; break;} }
+      Object.assign(engine.params,{mode:'lissajous', lisA:clamp(num,1,20), lisB:clamp(den,1,20), lisPhase:90, ax:150+100*s, ay:150+100*s});
+    } else if(m==='spectral'){
+      Object.assign(engine.params,{mode:'chaos', chType:'lorenz',
+        chS:8+(A.bass*6*s), chR:24+(A.mid*8*s), chB:2+(A.treble*1.5*s), dt:0.001+(A.volume*0.004*s)});
+    } else if(m==='rhythmic'){
+      const beat=A.rhythm>0.5?1.2:1.0; Object.assign(engine.params,{mode:'spirograph',
+        spR:Math.floor(80+(A.volume*60*beat*s)), spr:Math.floor(20+(A.mid*40*beat*s)), spd:Math.floor(30+(A.treble*60*beat*s))});
+    } else {
+      // realtime harmonograph tweak
+      Object.assign(engine.params,{
+        fx: (0.5 + A.bass*4)*s, fy: (0.5 + A.treble*4)*s,
+        phx: A.mid*360, phy: (A.centroid*360+90)%360, ax:150+100*A.volume*s, ay:150+100*A.volume*s
+      });
+    }
+  }
+  origStart(); // go draw
+};
+
+// Save/restore session
+try{
+  const saved=localStorage.getItem('harmonograph_v11'); if(saved){ Object.assign(engine.params, JSON.parse(saved)); updateInputsFromParams(); readParams(); }
+}catch{}
+window.addEventListener('beforeunload',()=>{ try{ localStorage.setItem('harmonograph_v11', JSON.stringify(engine.params)); }catch{} });
+
+// Pattern title reflect
+$('pattern').addEventListener('change',()=>{
+  $('modeLabel').textContent=$('pattern').selectedOptions[0].textContent;
+  show('audioBlock', $('pattern').value==='audio');
+});
+
+// Audio panel visibility live
+show('audioBlock', $('pattern').value==='audio');
+</script>
+</body>
+</html>
