@@ -258,6 +258,124 @@
         let pendStateRK4 = null;
         let prevBobPositionsRK4 = [];
         let experienceStarted = false;
+        let prologueMusicTimeout = null;
+
+        // --- Audio ---
+        const audioState = {
+            ctx: null,
+            buffers: { prologue: null, main: null },
+            sources: { prologue: null, main: null },
+            pending: { prologue: false, main: false },
+            gains: { main: null }
+        };
+        let audioPrepared = false;
+
+        function getAudioContext() {
+            if(!audioState.ctx) {
+                audioState.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            return audioState.ctx;
+        }
+
+        async function preloadTrack(key, url) {
+            if(audioState.buffers[key]) return audioState.buffers[key];
+            const ctx = getAudioContext();
+            const res = await fetch(url);
+            const buf = await res.arrayBuffer();
+            audioState.buffers[key] = await ctx.decodeAudioData(buf);
+            return audioState.buffers[key];
+        }
+
+        function prepareAudio() {
+            if(audioPrepared) return;
+            audioPrepared = true;
+            preloadTrack('prologue', 'Prologue.mp3').catch(err => console.warn('Prologue preload failed', err));
+            preloadTrack('main', 'Main.wav').catch(err => console.warn('Main preload failed', err));
+
+            const unlock = () => {
+                const ctx = getAudioContext();
+                if(ctx.state === 'suspended') ctx.resume();
+                if(audioState.pending.prologue) {
+                    audioState.pending.prologue = false;
+                    playPrologueTrack();
+                }
+                if(audioState.pending.main) {
+                    audioState.pending.main = false;
+                    startMainLoop();
+                }
+            };
+            ['pointerdown', 'touchstart', 'keydown'].forEach(evt => {
+                window.addEventListener(evt, unlock, { once: true });
+            });
+        }
+
+        async function playPrologueTrack() {
+            if(audioState.sources.prologue) return;
+            try {
+                const ctx = getAudioContext();
+                if(ctx.state === 'suspended') {
+                    audioState.pending.prologue = true;
+                    return;
+                }
+                const buffer = await preloadTrack('prologue', 'Prologue.mp3');
+                const gain = ctx.createGain();
+                gain.gain.setValueAtTime(0.9, ctx.currentTime);
+                const source = ctx.createBufferSource();
+                source.buffer = buffer;
+                source.connect(gain).connect(ctx.destination);
+                source.start();
+                audioState.sources.prologue = source;
+                source.addEventListener('ended', () => {
+                    audioState.sources.prologue = null;
+                }, { once: true });
+            } catch(err) {
+                console.warn('Failed to play prologue track', err);
+            }
+        }
+
+        function stopPrologueTrack() {
+            const src = audioState.sources.prologue;
+            if(src) {
+                try { src.stop(); } catch(e) {}
+            }
+            audioState.sources.prologue = null;
+            audioState.pending.prologue = false;
+        }
+
+        async function startMainLoop() {
+            if(audioState.sources.main) return;
+            try {
+                const ctx = getAudioContext();
+                if(ctx.state === 'suspended') {
+                    audioState.pending.main = true;
+                    return;
+                }
+                const buffer = await preloadTrack('main', 'Main.wav');
+                const gain = ctx.createGain();
+                gain.gain.setValueAtTime(0.85, ctx.currentTime);
+                const source = ctx.createBufferSource();
+                source.buffer = buffer;
+                source.loop = true;
+                source.loopStart = 0;
+                source.loopEnd = buffer.duration;
+                source.connect(gain).connect(ctx.destination);
+                source.start();
+                audioState.sources.main = source;
+                audioState.gains.main = gain;
+            } catch(err) {
+                console.warn('Failed to start main loop', err);
+            }
+        }
+
+        function stopMainLoop() {
+            const src = audioState.sources.main;
+            if(src) {
+                try { src.stop(); } catch(e) {}
+            }
+            audioState.sources.main = null;
+            audioState.pending.main = false;
+            audioState.gains.main = null;
+        }
 
         // --- Analytic double pendulum (planar, RK4) ---
         function resetPendulumState() {
@@ -519,6 +637,7 @@
             mesh.userData.eyes = eyeGroup;
         }
 
+        prepareAudio();
         setupPrologue();
 
         function setupPrologue() {
@@ -532,6 +651,10 @@
                 startExperience();
                 return;
             }
+            if(prologueMusicTimeout) clearTimeout(prologueMusicTimeout);
+            prologueMusicTimeout = setTimeout(() => {
+                if(!experienceStarted) playPrologueTrack();
+            }, 5000);
             const crawl = overlay.querySelector('.prologue-scroll');
             const windowEl = overlay.querySelector('.prologue-window');
             overlay.addEventListener('click', startExperience);
@@ -564,7 +687,14 @@
         function startExperience() {
             if (experienceStarted) return;
             experienceStarted = true;
+            if(prologueMusicTimeout) {
+                clearTimeout(prologueMusicTimeout);
+                prologueMusicTimeout = null;
+            }
             const overlay = document.querySelector('.prologue-overlay');
+            getAudioContext().resume?.();
+            stopPrologueTrack();
+            startMainLoop();
             if (overlay) {
                 overlay.classList.add('prologue-fade');
                 setTimeout(() => overlay.remove(), 950);
@@ -1031,7 +1161,8 @@
                 sidePhase: Math.random() * Math.PI * 2,
                 color: mesh.userData.color,
                 goalZ,
-                isDead: false
+                isDead: false,
+                needsRemoval: false
             };
 
             body.addEventListener("collide", (e) => {
@@ -1091,9 +1222,7 @@
                     pendulumBody.angularVelocity.copy(preservedAngVel);
 
                     if (p.isDead) {
-                        world.removeBody(p.body);
-                        scene.remove(p.mesh);
-                        disposeObject(p.mesh);
+                        p.needsRemoval = true;
                     }
                 }
             });
@@ -1130,7 +1259,13 @@
 
             for(let i = pedestrians.length - 1; i >= 0; i--) {
                 const p = pedestrians[i];
-                if(p.isDead) { pedestrians.splice(i, 1); continue; }
+                if(p.isDead || p.needsRemoval) {
+                    world.removeBody(p.body);
+                    scene.remove(p.mesh);
+                    disposeObject(p.mesh);
+                    pedestrians.splice(i, 1);
+                    continue;
+                }
 
                 const radius = p.body.shapes?.[0]?.radius ?? 0.75;
 
