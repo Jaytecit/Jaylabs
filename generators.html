@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>JayLabs | Generators Hub</title>
+    <link rel="icon" type="image/png" href="images/Favicon.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap');
+        :root {
+            font-family: "Space Grotesk", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color-scheme: dark;
+            --bg-1: #050816;
+            --bg-2: #0a0f24;
+            --bg-3: #0b0826;
+            --accent-orange: #ff6b00;
+            --accent-cyan: #00d9ff;
+            --text-1: #f7f9ff;
+            --text-2: rgba(235, 245, 255, 0.82);
+            --glass: rgba(8, 10, 28, 0.55);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background:
+                radial-gradient(circle at 18% 18%, rgba(255, 107, 0, 0.14), transparent 36%),
+                radial-gradient(circle at 82% 82%, rgba(0, 217, 255, 0.14), transparent 40%),
+                linear-gradient(135deg, var(--bg-1) 0%, var(--bg-2) 38%, #060010 100%);
+            color: var(--text-1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 1.2rem;
+        }
+        main {
+            width: 100%;
+            max-width: 1100px;
+            background: var(--glass);
+            border: 1px solid rgba(255, 107, 0, 0.16);
+            border-radius: 1.1rem;
+            box-shadow:
+                0 18px 40px rgba(0, 0, 0, 0.7),
+                0 0 28px rgba(255, 107, 0, 0.18);
+            backdrop-filter: blur(10px);
+            padding: 1.8rem;
+        }
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1.4rem;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .logo-circle {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            border: 2px solid var(--accent-orange);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--text-1);
+            box-shadow:
+                0 0 10px rgba(255, 107, 0, 0.45),
+                0 0 16px rgba(0, 217, 255, 0.35);
+            background: rgba(255, 107, 0, 0.06);
+        }
+        .brand-text {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+        }
+        .brand-text span:first-child {
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            color: var(--accent-cyan);
+        }
+        .tagline {
+            margin: 0;
+            opacity: 0.82;
+            color: var(--text-2);
+        }
+        h1 { margin: 0; letter-spacing: 0.05em; }
+        .grid {
+            margin-top: 1.4rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1.4rem;
+        }
+        .card {
+            position: relative;
+            padding: 1.25rem 1.25rem 1.05rem;
+            border-radius: 1rem;
+            border: 1px solid rgba(0, 217, 255, 0.25);
+            background: radial-gradient(circle at 20% 20%, rgba(255, 107, 0, 0.18), rgba(0, 0, 0, 0.85));
+            text-decoration: none;
+            color: inherit;
+            display: flex;
+            flex-direction: column;
+            gap: 0.55rem;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.2s ease;
+            box-shadow:
+                0 0 18px rgba(0, 217, 255, 0.25),
+                0 0 28px rgba(255, 107, 0, 0.16);
+        }
+        .card:hover {
+            transform: translateY(-2px) scale(1.01);
+            box-shadow:
+                0 0 20px rgba(255, 107, 0, 0.32),
+                0 0 36px rgba(0, 217, 255, 0.3);
+            border-color: rgba(255, 107, 0, 0.68);
+            background: radial-gradient(circle at 25% 25%, rgba(0, 217, 255, 0.16), rgba(0, 0, 0, 0.82));
+        }
+        .card h2 { margin: 0; font-size: 1.12rem; letter-spacing: 0.02em; }
+        .card p { margin: 0; font-size: 0.93rem; color: var(--text-2); }
+        .pill {
+            margin-top: 0.1rem;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            opacity: 0.9;
+            color: var(--accent-cyan);
+            border: 1px solid rgba(0, 217, 255, 0.6);
+            padding: 0.2rem 0.55rem;
+            border-radius: 999px;
+            background: rgba(0, 217, 255, 0.08);
+            box-shadow: 0 0 12px rgba(0, 217, 255, 0.35);
+            width: fit-content;
+        }
+        .dev-note {
+            margin-top: 1.8rem;
+            padding: 1.2rem 1.3rem;
+            border-radius: 1rem;
+            border: 1px dashed rgba(0, 217, 255, 0.3);
+            background: linear-gradient(135deg, rgba(0, 217, 255, 0.08), rgba(255, 107, 0, 0.06));
+            box-shadow: 0 0 18px rgba(0, 0, 0, 0.35);
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 0.9rem 1rem;
+            align-items: center;
+        }
+        .dev-note h3 {
+            margin: 0;
+            font-size: 1.05rem;
+            letter-spacing: 0.02em;
+        }
+        .dev-note p {
+            margin: 0.2rem 0 0;
+            color: var(--text-2);
+            font-size: 0.95rem;
+        }
+        .dev-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.45rem 0.75rem;
+            border-radius: 999px;
+            border: 1px solid rgba(0, 217, 255, 0.6);
+            color: var(--text-1);
+            text-decoration: none;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            background: rgba(0, 217, 255, 0.12);
+            box-shadow: 0 0 14px rgba(0, 217, 255, 0.25);
+            width: fit-content;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .dev-link:hover {
+            transform: translateY(-1px);
+            box-shadow:
+                0 0 20px rgba(0, 217, 255, 0.32),
+                0 0 30px rgba(255, 107, 0, 0.25);
+        }
+        .play-label {
+            margin-top: 0.5rem;
+            font-size: 0.85rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            opacity: 0.92;
+            color: var(--text-2);
+        }
+        .play-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-cyan);
+        }
+        .back-link {
+            color: var(--accent-cyan);
+            text-decoration: none;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+        }
+        .back-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <main>
+        <header>
+            <div class="brand">
+                <div class="logo-circle">JL</div>
+                <div class="brand-text">
+                    <span>JayLabs</span>
+                    <h1>Generators Hub</h1>
+                </div>
+            </div>
+            <a class="back-link" href="index.html">&#8592; Back to Playground</a>
+        </header>
+        <p class="tagline">Pattern labs, audio-reactive visuals, and symmetry toys built for endless noodling.</p>
+
+        <section class="grid">
+            <a class="card" href="projects/PatternGenerators/PatternStudio.html" target="_blank" rel="noopener">
+                <div class="pill">Generator</div>
+                <h2>Harmonograph Studio</h2>
+                <p>Audio-reactive harmonograph lab: sculpt Lissajous curves, layer lights, and snapshot evolving patterns.</p>
+                <div class="play-label">
+                    <div class="play-dot"></div>
+                    <span>Launch in new tab</span>
+                </div>
+            </a>
+
+            <a class="card" href="projects/PatternGenerators/SpiroDeluxe.html" target="_blank" rel="noopener">
+                <div class="pill">Generator</div>
+                <h2>Spirograph Deluxe</h2>
+                <p>Customizable spirograph sandbox with layered rings, color palettes, and wild-mode motion controls.</p>
+                <div class="play-label">
+                    <div class="play-dot"></div>
+                    <span>Launch in new tab</span>
+                </div>
+            </a>
+        </section>
+
+        <section class="dev-note">
+            <div class="pill">Open Source</div>
+            <div>
+                <h3>Build, remix, or give feedback</h3>
+                <p>
+                    Generators code lives on GitHub under MIT. Fork it, open issues, or ship improvements—credit appreciated.
+                </p>
+                <a class="dev-link" href="https://github.com/Jaytecit/Jaylabs" target="_blank" rel="noopener">
+                    View the code on GitHub &#8599;
+                </a>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

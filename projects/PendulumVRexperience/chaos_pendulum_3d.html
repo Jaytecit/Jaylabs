@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>3D Chaos Pendulum Lab</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Pathway+Gothic+One&display=swap");
+    :root {
+      --ink: #e8f1ff;
+      --muted: #9db2c9;
+      --panel: rgba(10, 16, 30, 0.7);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --accent: #7ad7f0;
+      --accent-2: #ffb08c;
+      --bg-top: #0d172b;
+      --bg-bottom: #03060f;
+      --glow: 0 10px 45px rgba(0, 0, 0, 0.65);
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+body {
+  font-family: "Space Grotesk", "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: radial-gradient(120% 120% at 70% 20%, #102040, #071019 55%, #03060f 90%),
+              linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+  color: var(--ink);
+  overflow: hidden;
+}
+#panel.hidden { display: none; }
+    #app {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      grid-template-rows: 1fr;
+      gap: 14px;
+      padding: 14px;
+      height: 100%;
+    }
+    #app.panel-hidden { grid-template-columns: 1fr; }
+    #app.panel-hidden #viewport { grid-column: 1 / -1; }
+    #panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--glow);
+      backdrop-filter: blur(12px);
+      overflow-y: auto;
+    }
+    #viewport {
+      position: relative;
+      border-radius: var(--radius);
+      border: 1px solid var(--panel-border);
+      box-shadow: var(--glow);
+      overflow: hidden;
+      background: radial-gradient(120% 80% at 30% 20%, rgba(120, 200, 255, 0.08), rgba(0, 0, 0, 0.8));
+      height: 100%;
+      min-height: 420px;
+    }
+    .intro {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+      background: radial-gradient(160% 140% at 50% 50%, rgba(10,16,28,0.9), rgba(2,3,8,0.95));
+    }
+    .intro.hidden { display: none; }
+    .intro-panel {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      perspective: 600px;
+      color: #ffe6b8;
+      font-family: "Pathway Gothic One", "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+    }
+    .intro-title {
+      position: absolute;
+      top: 30px;
+      width: 100%;
+      text-align: center;
+      font-size: 56px;
+      letter-spacing: 2px;
+      color: #d4ffed;
+      text-shadow: 0 0 30px rgba(255,215,150,0.6);
+      z-index: 2;
+      pointer-events: none;
+      transition: transform 2s ease, opacity 2s ease;
+    }
+    .crawl {
+      position: absolute;
+      bottom: -200%;
+      width: 100%;
+      text-align: center;
+      font-size: 40px;
+      line-height: 1.7;
+      transform-origin: 50% 100%;
+      transform: rotateX(45deg) translateZ(0);
+      white-space: pre-wrap;
+      text-shadow: 0 0 20px rgba(0,0,0,0.9);
+    }
+    .intro-actions {
+      position: absolute;
+      top: 106px;
+      width: 100%;
+      text-align: center;
+      color: var(--muted);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: center;
+      transition: opacity 1.2s ease;
+    }
+    .intro .hint { font-size: 12px; opacity: 0.8; }
+    .intro button { background: #1d2b4f; }
+    .stars {
+      position: absolute;
+      inset: 0;
+      background-repeat: repeat;
+      pointer-events: none;
+    }
+    .stars1 { background-image: radial-gradient(1px 1px at 20px 30px, #fff, transparent), radial-gradient(1px 1px at 120px 80px, #b7e4ff, transparent); opacity: 0.5; }
+    .stars2 { background-image: radial-gradient(2px 2px at 60px 140px, #d0f0ff, transparent), radial-gradient(2px 2px at 200px 40px, #fff2c9, transparent); opacity: 0.35; animation: drift 40s linear infinite; }
+    @keyframes drift { from { transform: translate3d(0,0,0);} to { transform: translate3d(-120px,-80px,0);} }
+    .intro-pan .intro-title { transform: translateY(-40px); opacity: 0; }
+    .intro-pan .intro-actions { opacity: 0; }
+    .intro-pan { background: transparent; pointer-events: none; }
+    .intro-pan .stars { opacity: 0; transition: opacity 1.2s ease; }
+    canvas { display: block; }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .pill {
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .section { margin-bottom: 16px; }
+    .section h3 {
+      margin: 0 0 6px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 90px;
+      align-items: center;
+      gap: 8px;
+      margin: 8px 0;
+    }
+    label { font-size: 13px; color: var(--ink); }
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+    input[type="number"] {
+      width: 90px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--panel-border);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--ink);
+      font-size: 13px;
+    }
+    select {
+      width: 100%;
+      padding: 10px;
+      border-radius: 12px;
+      border: 1px solid var(--panel-border);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--ink);
+    }
+    button {
+      cursor: pointer;
+      border: 1px solid var(--panel-border);
+      background: linear-gradient(135deg, rgba(122, 215, 240, 0.14), rgba(255, 176, 140, 0.12));
+      color: var(--ink);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-weight: 600;
+      transition: transform 0.12s ease, filter 0.12s ease;
+    }
+    button:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .value {
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: right;
+    }
+    .footer {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.4;
+      border-top: 1px solid var(--panel-border);
+      padding-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="panel">
+      <h1>3D Chaos Pendulum <span id="simState" class="pill">running</span></h1>
+      <div class="section">
+        <div class="btn-row">
+          <button id="togglePlay">Pause</button>
+          <button id="reset">Reset</button>
+          <button id="kick">Kick</button>
+          <button id="toggleVR">VR</button>
+        </div>
+      </div>
+      <div class="section">
+        <h3>World</h3>
+        <div class="row">
+          <label for="gravity">Gravity</label>
+          <div>
+            <input id="gravity" type="range" min="1" max="20" step="0.1" value="9.8">
+            <div class="value" data-value="gravity">9.8 m/s^2</div>
+          </div>
+        </div>
+        <div class="row">
+          <label for="damping">Air drag</label>
+          <div>
+            <input id="damping" type="range" min="0" max="0.2" step="0.005" value="0.02">
+            <div class="value" data-value="damping">0.02</div>
+          </div>
+        </div>
+        <div class="row">
+          <label for="timescale">Time scale</label>
+          <div>
+            <input id="timescale" type="range" min="0.25" max="1.8" step="0.01" value="1">
+            <div class="value" data-value="timescale">1.00x</div>
+          </div>
+        </div>
+      </div>
+      <div class="section">
+        <h3>Rod 1 / Bob 1</h3>
+        <div class="row">
+          <label for="rod1Length">Rod length</label>
+          <div>
+            <input id="rod1Length" type="range" min="0.4" max="2.2" step="0.05" value="1.3">
+            <div class="value" data-value="rod1Length">1.30 m</div>
+          </div>
+        </div>
+        <div class="row">
+          <label for="bob1Mass">Mass</label>
+          <div>
+            <input id="bob1Mass" type="range" min="0.2" max="4" step="0.05" value="1.4">
+            <div class="value" data-value="bob1Mass">1.40 kg</div>
+          </div>
+        </div>
+        <div class="row">
+          <label for="bob1Radius">Radius</label>
+          <div>
+            <input id="bob1Radius" type="range" min="0.05" max="0.3" step="0.01" value="0.16">
+            <div class="value" data-value="bob1Radius">0.16 m</div>
+          </div>
+        </div>
+      </div>
+      <div class="section">
+        <h3>Rod 2 / Bob 2</h3>
+        <div class="row">
+          <label for="rod2Length">Rod length</label>
+          <div>
+            <input id="rod2Length" type="range" min="0.4" max="2.2" step="0.05" value="1.05">
+            <div class="value" data-value="rod2Length">1.05 m</div>
+          </div>
+        </div>
+        <div class="row">
+          <label for="bob2Mass">Mass</label>
+          <div>
+            <input id="bob2Mass" type="range" min="0.2" max="4" step="0.05" value="1.0">
+            <div class="value" data-value="bob2Mass">1.00 kg</div>
+          </div>
+        </div>
+        <div class="row">
+          <label for="bob2Radius">Radius</label>
+          <div>
+            <input id="bob2Radius" type="range" min="0.05" max="0.3" step="0.01" value="0.14">
+            <div class="value" data-value="bob2Radius">0.14 m</div>
+          </div>
+        </div>
+      </div>
+      <div class="section footer">
+        Double-pendulum physics with live controls. Bobs collide with each other, move through a particle field, and dodge or get hit by tracking missiles that explode on impact. Drag to orbit the camera; click-drag a bob to grab and move it, release to drop.
+      </div>
+    </div>
+    <div id="viewport"></div>
+    <div id="introWrap" class="intro hidden">
+      <div class="stars stars1"></div>
+      <div class="stars stars2"></div>
+      <div class="intro-panel">
+        <div class="intro-title">The Martoonium Wars 2034</div>
+        <div class="intro-actions">
+          <button id="skipIntro">Skip</button>
+          <span class="hint">Press any key or click to skip</span>
+        </div>
+        <div id="crawl" class="crawl"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+    import { VRButton } from "three/addons/webxr/VRButton.js";
+    import * as CANNON from "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js";
+
+    const particleSettings = {
+      count: 1400,
+      spread: 8,
+      size: 0.018,
+      damping: 0.985,
+      pushRadius: 1.4,
+      pushStrength: 1.8,
+      wind: { x: 0.9, y: 0.05, z: -0.6, strength: 1.4, swirl: 0.7 },
+    };
+
+    const missileSettings = {
+      minInterval: 0.9,
+      maxInterval: 2.0,
+      speed: 3.8,
+      radius: [0.1, 0.18],
+      mass: [0.35, 1.2],
+      restitution: 0.6,
+      friction: 0.05,
+    };
+
+    const state = {
+      running: true,
+      timeScale: 1,
+      gravity: 9.8,
+      damping: 0.02,
+      rod1: { length: 1.3, mass: 1.4, radius: 0.16 },
+      rod2: { length: 1.05, mass: 1.0, radius: 0.14 },
+      vrEnabled: false,
+    };
+
+    let scene, camera, renderer, controls, world, clock;
+    let anchorMesh;
+    let anchorBody, bob1Body, bob2Body;
+    let rods = [];
+    let constraints = [];
+    let particleGeo, particleMat, particles;
+    let particleVelocities;
+    let flash = 0;
+    let pendulumMaterial, pendulumSelfMaterial, missileMaterial, missileContact;
+    let missiles = [];
+    let missileTimer = 0;
+    const anchorHeight = 2.2;
+    const scratchVec3 = new THREE.Vector3();
+    const scratchVec4 = new THREE.Vector3();
+    const scratchVecUp = new THREE.Vector3(0, 1, 0);
+    const scratchVecRight = new THREE.Vector3();
+    const scratchQuat = new THREE.Quaternion();
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    const dragPlane = new THREE.Plane();
+    const dragPoint = new THREE.Vector3();
+    let vrButton;
+    let playerRig;
+    let lastFlatView = { pos: new THREE.Vector3(), target: new THREE.Vector3() };
+    let introActive = false;
+    let crawlStart = 0;
+    let panActive = false;
+    let panStart = 0;
+    const panDuration = 4000;
+    const panFrom = new THREE.Vector3();
+    const panTo = new THREE.Vector3();
+    const panFromTarget = new THREE.Vector3();
+    const panToTarget = new THREE.Vector3(0.2, 1.0, 0);
+    const targetSkyRadius = 900;
+    let uiVisible = false;
+    const hemiLights = [];
+    const spotLights = [];
+    let skyEnv = null;
+    let dragging = null;
+
+    initThree();
+    initWorld();
+    buildEnvironment();
+    rebuildPendulum();
+    bindUI();
+    startIntro();
+    fadeLights(0); // start dark
+
+    function initThree() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color("#050a16");
+      scene.fog = new THREE.FogExp2("#050a16", 0.02);
+
+      const viewport = document.getElementById("viewport");
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.xr.enabled = false;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.1;
+      viewport.appendChild(renderer.domElement);
+      vrButton = VRButton.createButton(renderer, {
+        requiredFeatures: ["local-floor"],
+        optionalFeatures: ["bounded-floor", "hand-tracking"],
+      });
+      vrButton.style.position = "absolute";
+      vrButton.style.right = "12px";
+      vrButton.style.bottom = "12px";
+      vrButton.style.display = "none";
+      viewport.appendChild(vrButton);
+
+      // Push far plane out so the oversized skybox sphere (scaled to ~1500) stays inside the frustum.
+      camera = new THREE.PerspectiveCamera(60, viewport.clientWidth / viewport.clientHeight, 0.1, 2000);
+      camera.position.set(6.5, 4.2, 6.5);
+      playerRig = new THREE.Group();
+      playerRig.add(camera);
+      scene.add(playerRig);
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.target.set(0.2, 1, 0);
+      renderer.xr.addEventListener("sessionstart", () => {
+        controls.enabled = false;
+        playerRig.position.copy(lastFlatView.pos);
+      });
+      renderer.xr.addEventListener("sessionend", () => {
+        controls.enabled = true;
+      });
+
+      const hemi = new THREE.HemisphereLight("#b5c8ff", "#0b0f1f", 0.0);
+      scene.add(hemi);
+      hemiLights.push(hemi);
+
+      const dir = new THREE.DirectionalLight("#fff", 0.0);
+      dir.position.set(3, 6, 4);
+      dir.castShadow = true;
+      dir.shadow.mapSize.set(2048, 2048);
+      dir.shadow.camera.near = 0.5;
+      dir.shadow.camera.far = 20;
+      dir.shadow.camera.left = -6;
+      dir.shadow.camera.right = 6;
+      dir.shadow.camera.top = 6;
+      dir.shadow.camera.bottom = -6;
+      scene.add(dir);
+
+      const fill = new THREE.SpotLight("#8ad6ff", 0.0, 15, Math.PI / 6, 0.2, 1.4);
+      fill.position.set(-4, 3, -2);
+      fill.castShadow = true;
+      scene.add(fill);
+      spotLights.push(fill);
+      spotLights.push(dir);
+
+      clock = new THREE.Clock();
+      window.addEventListener("resize", onResize);
+      renderer.setAnimationLoop(animate);
+      loadSpaceEnv();
+    }
+
+    function initWorld() {
+      world = new CANNON.World({
+        gravity: new CANNON.Vec3(0, -state.gravity, 0),
+      });
+      world.solver.iterations = 30;
+      world.broadphase = new CANNON.NaiveBroadphase();
+      world.allowSleep = true;
+    }
+
+    function buildEnvironment() {
+      createParticleField();
+      pendulumMaterial = new CANNON.Material("pendulum");
+      pendulumSelfMaterial = new CANNON.ContactMaterial(pendulumMaterial, pendulumMaterial, {
+        friction: 0.35,
+        restitution: 0.25,
+      });
+      world.addContactMaterial(pendulumSelfMaterial);
+
+      missileMaterial = new CANNON.Material("missile");
+      missileContact = new CANNON.ContactMaterial(pendulumMaterial, missileMaterial, {
+        friction: missileSettings.friction,
+        restitution: missileSettings.restitution,
+      });
+      world.addContactMaterial(missileContact);
+    }
+
+    function createParticleField() {
+      const count = particleSettings.count;
+      const spread = particleSettings.spread;
+      particleGeo = new THREE.BufferGeometry();
+      const positions = new Float32Array(count * 3);
+      particleVelocities = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        positions[i * 3] = (Math.random() - 0.5) * spread;
+        positions[i * 3 + 1] = Math.random() * spread * 0.6 + 0.2;
+        positions[i * 3 + 2] = (Math.random() - 0.5) * spread;
+        particleVelocities[i * 3] = particleSettings.wind.x * particleSettings.wind.strength * 0.5;
+        particleVelocities[i * 3 + 1] = particleSettings.wind.y * particleSettings.wind.strength * 0.5;
+        particleVelocities[i * 3 + 2] = particleSettings.wind.z * particleSettings.wind.strength * 0.5;
+      }
+      particleGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      particleMat = new THREE.PointsMaterial({
+        color: "#cfe3ff",
+        size: particleSettings.size,
+        transparent: true,
+        opacity: 0.4,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        sizeAttenuation: true,
+      });
+      particles = new THREE.Points(particleGeo, particleMat);
+      scene.add(particles);
+    }
+
+    function rebuildPendulum() {
+      disposePendulum();
+
+      const anchorRadius = 0.08;
+      const anchorPos = new CANNON.Vec3(0, anchorHeight, 0);
+
+      anchorBody = new CANNON.Body({ mass: 0, position: anchorPos, shape: new CANNON.Sphere(anchorRadius), material: pendulumMaterial });
+      world.addBody(anchorBody);
+
+      const bob1Shape = new CANNON.Sphere(state.rod1.radius);
+      const bob2Shape = new CANNON.Sphere(state.rod2.radius);
+      bob1Body = new CANNON.Body({
+        mass: state.rod1.mass,
+        shape: bob1Shape,
+        material: pendulumMaterial,
+        linearDamping: state.damping,
+        angularDamping: state.damping,
+      });
+      bob2Body = new CANNON.Body({
+        mass: state.rod2.mass,
+        shape: bob2Shape,
+        material: pendulumMaterial,
+        linearDamping: state.damping,
+        angularDamping: state.damping,
+      });
+
+      // Initial offset vectors to break planarity.
+      const v1 = randomDirection().scale(state.rod1.length + state.rod1.radius + anchorRadius);
+      const v2 = randomDirection().scale(state.rod2.length + state.rod2.radius + state.rod1.radius);
+      bob1Body.position.copy(anchorPos.vadd(v1));
+      bob2Body.position.copy(bob1Body.position.vadd(v2));
+      bob2Body.velocity.set(0, 0, 0);
+      bob1Body.velocity.set(0, 0, 0);
+
+      world.addBody(bob1Body);
+      world.addBody(bob2Body);
+
+      const c1 = new CANNON.DistanceConstraint(anchorBody, bob1Body, v1.length());
+      const c2 = new CANNON.DistanceConstraint(bob1Body, bob2Body, v2.length());
+      world.addConstraint(c1);
+      world.addConstraint(c2);
+      constraints.push(c1, c2);
+
+      // Visuals
+      anchorMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(anchorRadius * 1.05, 24, 16),
+        new THREE.MeshStandardMaterial({ color: "#9bd7ff", emissive: "#7dd1ff", emissiveIntensity: 0.4, metalness: 0.5, roughness: 0.3 })
+      );
+      anchorMesh.castShadow = true;
+      anchorMesh.receiveShadow = true;
+      scene.add(anchorMesh);
+
+      const bobMaterial = new THREE.MeshStandardMaterial({
+        color: "#e6f4ff",
+        metalness: 0.55,
+        roughness: 0.35,
+        emissive: "#4fc3ff",
+        emissiveIntensity: 0.12,
+      });
+      const bob1Mesh = new THREE.Mesh(new THREE.SphereGeometry(state.rod1.radius, 32, 22), bobMaterial.clone());
+      const bob2Mesh = new THREE.Mesh(new THREE.SphereGeometry(state.rod2.radius, 32, 22), bobMaterial.clone());
+      [bob1Mesh, bob2Mesh].forEach(m => { m.castShadow = true; m.receiveShadow = true; });
+
+      const rodMaterial = new THREE.MeshStandardMaterial({ color: "#9dd0ff", metalness: 0.65, roughness: 0.25 });
+      const rod1Mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1, 24), rodMaterial);
+      const rod2Mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 1, 24), rodMaterial);
+      rod1Mesh.castShadow = rod2Mesh.castShadow = true;
+      rod1Mesh.receiveShadow = rod2Mesh.receiveShadow = true;
+
+      rods = [rod1Mesh, rod2Mesh];
+      scene.add(bob1Mesh, bob2Mesh, rod1Mesh, rod2Mesh);
+
+      bob1Body.threemesh = bob1Mesh;
+      bob2Body.threemesh = bob2Mesh;
+      anchorMesh.position.copy(anchorBody.position);
+
+      bob1Body.addEventListener("collide", onImpact);
+      bob2Body.addEventListener("collide", onImpact);
+    }
+
+    function disposePendulum() {
+      constraints.forEach(c => world.removeConstraint(c));
+      constraints = [];
+      [bob1Body, bob2Body].forEach(b => {
+        if (!b) return;
+        if (b.threemesh) scene.remove(b.threemesh);
+        world.removeBody(b);
+      });
+      if (anchorBody) world.removeBody(anchorBody);
+      [anchorMesh].forEach(m => m && scene.remove(m));
+      rods.forEach(m => scene.remove(m));
+      rods = [];
+      anchorBody = bob1Body = bob2Body = null;
+      anchorMesh = null;
+    }
+
+    function randomDirection() {
+      const yaw = Math.random() * Math.PI * 2;
+      const pitch = 0.25 + Math.random() * 0.9;
+      const x = Math.sin(pitch) * Math.cos(yaw);
+      const z = Math.sin(pitch) * Math.sin(yaw);
+      const y = -Math.cos(pitch);
+      return new CANNON.Vec3(x, y, z);
+    }
+
+    function onImpact(event) {
+      const contact = event.contact;
+      if (!contact) return;
+      const worldPoint = new CANNON.Vec3();
+      if (contact.bi && contact.ri) {
+        contact.bi.position.vadd(contact.ri, worldPoint);
+      } else if (contact.bj && contact.rj) {
+        contact.bj.position.vadd(contact.rj, worldPoint);
+      }
+      const impact = Math.abs(contact.getImpactVelocityAlongNormal ? contact.getImpactVelocityAlongNormal() : 1);
+      disturbParticles(new THREE.Vector3(worldPoint.x, worldPoint.y, worldPoint.z), impact);
+    }
+
+    function disturbParticles(pos, magnitude = 1) {
+      if (!particles) return;
+      const positions = particleGeo.attributes.position.array;
+      const vels = particleVelocities;
+      const radius = particleSettings.pushRadius;
+      const rad2 = radius * radius;
+      for (let i = 0; i < positions.length; i += 3) {
+        const dx = positions[i] - pos.x;
+        const dy = positions[i + 1] - pos.y;
+        const dz = positions[i + 2] - pos.z;
+        const d2 = dx*dx + dy*dy + dz*dz;
+        if (d2 < rad2) {
+          const f = (1 - d2 / rad2) * particleSettings.pushStrength * magnitude;
+          vels[i] += dx * f;
+          vels[i + 1] += dy * f;
+          vels[i + 2] += dz * f;
+        }
+      }
+    }
+
+    function bindUI() {
+      const bindings = [
+        ["gravity", v => { state.gravity = v; world.gravity.set(0, -v, 0); }],
+        ["damping", v => { state.damping = v; [bob1Body, bob2Body].forEach(b => b && (b.linearDamping = b.angularDamping = v)); }],
+        ["timescale", v => { state.timeScale = v; }],
+        ["rod1Length", v => { state.rod1.length = v; rebuildPendulum(); }],
+        ["rod2Length", v => { state.rod2.length = v; rebuildPendulum(); }],
+        ["bob1Mass", v => { state.rod1.mass = v; rebuildPendulum(); }],
+        ["bob2Mass", v => { state.rod2.mass = v; rebuildPendulum(); }],
+        ["bob1Radius", v => { state.rod1.radius = v; rebuildPendulum(); }],
+        ["bob2Radius", v => { state.rod2.radius = v; rebuildPendulum(); }],
+      ];
+      bindings.forEach(([id, fn]) => {
+        const el = document.getElementById(id);
+        const valEl = document.querySelector(`[data-value="${id}"]`);
+        const formatter = getFormatter(id);
+        const update = () => {
+          const value = parseFloat(el.value);
+          valEl.textContent = formatter(value);
+          fn(value);
+        };
+        el.addEventListener("input", update);
+        update();
+      });
+
+      document.getElementById("togglePlay").addEventListener("click", () => {
+        state.running = !state.running;
+        document.getElementById("togglePlay").textContent = state.running ? "Pause" : "Play";
+        document.getElementById("simState").textContent = state.running ? "running" : "paused";
+      });
+
+      document.getElementById("reset").addEventListener("click", () => rebuildPendulum());
+      document.getElementById("kick").addEventListener("click", () => giveKick());
+      document.getElementById("toggleVR").addEventListener("click", () => {
+        if (state.vrEnabled) {
+          setVR(false);
+        } else {
+          camera.getWorldPosition(lastFlatView.pos);
+          if (controls && controls.target) lastFlatView.target.copy(controls.target);
+          setVR(true);
+          vrButton.click();
+        }
+      });
+      const dom = renderer.domElement;
+      dom.addEventListener("pointerdown", onPointerDown);
+      dom.addEventListener("pointermove", onPointerMove);
+      dom.addEventListener("pointerup", endDrag);
+      dom.addEventListener("pointerleave", endDrag);
+      document.getElementById("skipIntro").addEventListener("click", endIntro);
+      window.addEventListener("keydown", endIntro);
+      window.addEventListener("mousedown", endIntro);
+      window.addEventListener("keydown", e => {
+        if (e.key.toLowerCase() === "q") {
+          uiVisible = !uiVisible;
+          updateUIVisibility();
+        }
+      });
+    }
+
+    function getFormatter(id) {
+      if (id.includes("Length") || id.includes("Radius")) {
+        return v => `${v.toFixed(2)} m`;
+      }
+      if (id.includes("Mass")) return v => `${v.toFixed(2)} kg`;
+      if (id === "gravity") return v => `${v.toFixed(1)} m/s^2`;
+      if (id === "timescale") return v => `${v.toFixed(2)}x`;
+      return v => v.toFixed(3);
+    }
+
+    function giveKick() {
+      if (!bob2Body) return;
+      const force = new CANNON.Vec3(
+        (Math.random() - 0.5) * 12,
+        (Math.random() + 0.2) * 8,
+        (Math.random() - 0.5) * 12
+      );
+      bob2Body.applyImpulse(force, bob2Body.position);
+    }
+
+    function screenToNDC(event) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    }
+
+    function onPointerDown(event) {
+      if (!bob1Body || !bob2Body) return;
+      screenToNDC(event);
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects([bob1Body.threemesh, bob2Body.threemesh], false);
+      if (intersects.length === 0) return;
+      const hit = intersects[0];
+      const body = hit.object === bob1Body.threemesh ? bob1Body : bob2Body;
+      startDrag(body, hit.point);
+    }
+
+    function startDrag(body, point) {
+      dragPlane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()).normalize(), point);
+      dragging = { body };
+      controls.enabled = false;
+      body.velocity.setZero();
+      body.angularVelocity.setZero();
+      body.wakeUp();
+      updateDragPosition();
+    }
+
+    function onPointerMove(event) {
+      if (!dragging) return;
+      screenToNDC(event);
+      updateDragPosition();
+    }
+
+    function updateDragPosition() {
+      if (!dragging) return;
+      raycaster.setFromCamera(mouse, camera);
+      if (raycaster.ray.intersectPlane(dragPlane, dragPoint)) {
+        dragging.body.position.copy(dragPoint);
+        dragging.body.velocity.setZero();
+        dragging.body.angularVelocity.setZero();
+      }
+    }
+
+    function endDrag() {
+      if (!dragging) return;
+      dragging.body.wakeUp();
+      dragging = null;
+      controls.enabled = true;
+    }
+
+    function animate() {
+      const delta = Math.min(clock.getDelta(), 0.033) * state.timeScale;
+      if (state.running) {
+        applyMissileThrust(delta);
+        world.step(1 / 120, delta, 10);
+      }
+      controls.update();
+      if (dragging && dragging.body) {
+        dragging.body.velocity.setZero();
+        dragging.body.angularVelocity.setZero();
+      }
+      updateVRLocomotion(delta);
+
+      // Sync meshes
+      if (anchorMesh && anchorBody) anchorMesh.position.copy(anchorBody.position);
+      [bob1Body, bob2Body].forEach(body => {
+        if (!body || !body.threemesh) return;
+        const { x, y, z } = body.position;
+        body.threemesh.position.set(x, y, z);
+      });
+      updateRods();
+      updateParticles(delta);
+      updateMissiles(delta);
+      updateFlash(delta);
+      updateIntro();
+      updatePan();
+      if (skyEnv) {
+        skyEnv.position.copy(camera.position);
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    function updateRods() {
+      if (!anchorBody || !bob1Body || rods.length < 2) return;
+      const anchor = new THREE.Vector3(anchorBody.position.x, anchorBody.position.y, anchorBody.position.z);
+      const p1 = new THREE.Vector3(bob1Body.position.x, bob1Body.position.y, bob1Body.position.z);
+      const p2 = new THREE.Vector3(bob2Body.position.x, bob2Body.position.y, bob2Body.position.z);
+      orientRod(rods[0], anchor, p1);
+      orientRod(rods[1], p1, p2);
+    }
+
+    function orientRod(mesh, start, end) {
+      const dir = scratchVec3.subVectors(end, start);
+      const len = dir.length();
+      mesh.position.copy(start).addScaledVector(dir, 0.5);
+      mesh.scale.set(1, len, 1);
+      mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+    }
+
+    function updateParticles(dt) {
+      if (!particles) return;
+      const positions = particleGeo.attributes.position.array;
+      const vels = particleVelocities;
+      const count = particleSettings.count;
+      const spread = particleSettings.spread * 0.5;
+      const drag = particleSettings.damping;
+      const wind = particleSettings.wind;
+      const b1 = bob1Body ? bob1Body.position : null;
+      const b2 = bob2Body ? bob2Body.position : null;
+      const pb1 = bob1Body ? bob1Body.velocity : null;
+      const pb2 = bob2Body ? bob2Body.velocity : null;
+      const pushR = particleSettings.pushRadius;
+      const pushR2 = pushR * pushR;
+      for (let i = 0; i < count; i++) {
+        const idx = i * 3;
+        const x = positions[idx];
+        const y = positions[idx + 1];
+        const z = positions[idx + 2];
+        // push from bobs based on proximity and their velocity
+        if (b1) applyPush(x, y, z, b1, pb1, idx);
+        if (b2) applyPush(x, y, z, b2, pb2, idx);
+
+        vels[idx] = vels[idx] * drag + wind.x * wind.strength * dt;
+        vels[idx + 1] = vels[idx + 1] * drag + wind.y * wind.strength * dt;
+        vels[idx + 2] = vels[idx + 2] * drag + wind.z * wind.strength * dt;
+
+        // swirl component around origin for stream bend
+        scratchVec4.set(-z, 0, x).normalize().multiplyScalar(wind.swirl * dt);
+        vels[idx] += scratchVec4.x;
+        vels[idx + 1] += scratchVec4.y;
+        vels[idx + 2] += scratchVec4.z;
+
+        positions[idx] += vels[idx] * dt;
+        positions[idx + 1] += vels[idx + 1] * dt;
+        positions[idx + 2] += vels[idx + 2] * dt;
+
+        // wrap space
+        if (positions[idx] > spread) positions[idx] = -spread;
+        if (positions[idx] < -spread) positions[idx] = spread;
+        if (positions[idx + 1] > spread) positions[idx + 1] = 0;
+        if (positions[idx + 1] < 0) positions[idx + 1] = spread;
+        if (positions[idx + 2] > spread) positions[idx + 2] = -spread;
+        if (positions[idx + 2] < -spread) positions[idx + 2] = spread;
+      }
+      particleGeo.attributes.position.needsUpdate = true;
+
+      function applyPush(px, py, pz, bodyPos, bodyVel, idx) {
+        const dx = px - bodyPos.x;
+        const dy = py - bodyPos.y;
+        const dz = pz - bodyPos.z;
+        const d2 = dx*dx + dy*dy + dz*dz;
+        if (d2 < pushR2) {
+          const f = (1 - d2 / pushR2) * particleSettings.pushStrength;
+          if (bodyVel) {
+            vels[idx] += (dx * f + bodyVel.x * 0.05);
+            vels[idx + 1] += (dy * f + bodyVel.y * 0.05);
+            vels[idx + 2] += (dz * f + bodyVel.z * 0.05);
+          } else {
+            vels[idx] += dx * f;
+            vels[idx + 1] += dy * f;
+            vels[idx + 2] += dz * f;
+          }
+        }
+      }
+    }
+
+    function updateMissiles(dt) {
+      if (introActive || panActive) return;
+      missileTimer -= dt;
+      if (missileTimer <= 0) {
+        spawnMissile();
+        missileTimer = THREE.MathUtils.lerp(missileSettings.minInterval, missileSettings.maxInterval, Math.random());
+      }
+
+      missiles = missiles.filter(missile => {
+        if (missile.exploded) {
+          removeMissile(missile);
+          return false;
+        }
+        const body = missile.body;
+        if (!body) return false;
+        missile.mesh.position.copy(body.position);
+        const vel = body.velocity;
+        scratchVec3.set(vel.x, vel.y, vel.z);
+        if (scratchVec3.lengthSq() > 1e-5) {
+          scratchQuat.setFromUnitVectors(scratchVecUp, scratchVec3.normalize());
+          missile.mesh.quaternion.copy(scratchQuat);
+        }
+        const pos = body.position;
+        if (pos.length() > 30) {
+          removeMissile(missile);
+          return false;
+        }
+        return true;
+      });
+    }
+
+    function applyMissileThrust() {
+      const g = world.gravity;
+      missiles.forEach(missile => {
+        if (missile.exploded || !missile.body) return;
+        const b = missile.body;
+        const d = missile.targetDir;
+        b.velocity.set(d.x * missile.speed, d.y * missile.speed, d.z * missile.speed);
+        b.force.vadd(new CANNON.Vec3(-g.x * b.mass, -g.y * b.mass, -g.z * b.mass), b.force);
+      });
+    }
+
+    function setVR(enabled) {
+      state.vrEnabled = enabled;
+      renderer.xr.enabled = enabled;
+      vrButton.style.display = enabled ? "block" : "none";
+      document.getElementById("toggleVR").textContent = enabled ? "Exit VR" : "VR";
+      if (!enabled) {
+        const session = renderer.xr.getSession();
+        if (session) session.end();
+      }
+      if (!enabled && playerRig) {
+        playerRig.position.set(0, 0, 0);
+      }
+      updateUIVisibility();
+    }
+
+    function updateVRLocomotion(dt) {
+      const session = renderer.xr.getSession();
+      if (!session || !playerRig) return;
+      const speed = 2.2; // m/s
+      const dir = new THREE.Vector3();
+      const right = scratchVecRight;
+      const headDir = camera.getWorldDirection(dir).setY(0).normalize();
+      right.copy(headDir).cross(scratchVecUp).normalize();
+      const axes = getXRThumbstick(session);
+      const moveX = axes.x;
+      const moveY = axes.y;
+      if (Math.abs(moveX) < 0.05 && Math.abs(moveY) < 0.05) return;
+      const forward = headDir.clone().multiplyScalar(-moveY);
+      const strafe = right.clone().multiplyScalar(moveX);
+      const deltaMove = forward.add(strafe).multiplyScalar(speed * dt);
+      playerRig.position.add(deltaMove);
+    }
+
+    function getXRThumbstick(session) {
+      // Prefer a left-hand tracked-pointer source
+      let source = null;
+      for (const s of session.inputSources) {
+        if (s.targetRayMode === "tracked-pointer" && s.handedness === "left" && s.gamepad) {
+          source = s;
+          break;
+        }
+      }
+      if (!source) {
+        for (const s of session.inputSources) {
+          if (s.targetRayMode === "tracked-pointer" && s.gamepad) {
+            source = s;
+            break;
+          }
+        }
+      }
+      if (source && source.gamepad && source.gamepad.axes.length >= 2) {
+        return { x: source.gamepad.axes[0], y: source.gamepad.axes[1] };
+      }
+      // Fallback to navigator.getGamepads when XR gamepad data is not surfaced
+      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      if (pads) {
+        for (const pad of pads) {
+          if (!pad || !pad.connected || !pad.axes || pad.axes.length < 2) continue;
+          return { x: pad.axes[0], y: pad.axes[1] };
+        }
+      }
+      return { x: 0, y: 0 };
+    }
+
+    function updatePan() {
+      if (!panActive) return;
+      const t = Math.min(1, (performance.now() - panStart) / panDuration);
+      const ease = t * t * (3 - 2 * t);
+      camera.position.lerpVectors(panFrom, panTo, ease);
+      if (controls) {
+        controls.target.lerpVectors(panFromTarget, panToTarget, ease);
+        controls.update();
+      }
+      if (t >= 1) {
+        panActive = false;
+        if (controls) controls.enabled = true;
+        document.getElementById("introWrap").classList.add("hidden");
+        document.getElementById("introWrap").classList.remove("intro-pan");
+        updateUIVisibility();
+      }
+    }
+
+    function fadeLights(target, duration = 0) {
+      if (duration <= 0) {
+        hemiLights.forEach(l => l.intensity = target * 0.65);
+        spotLights.forEach(l => l.intensity = target === 0 ? 0 : target * (l.isDirectionalLight ? 1.35 : 0.55));
+        return;
+      }
+      const startTime = performance.now();
+      const initialHemi = hemiLights.map(l => l.intensity);
+      const initialSpot = spotLights.map(l => l.intensity);
+      const targetHemi = hemiLights.map(() => target * 0.65);
+      const targetSpot = spotLights.map(l => target === 0 ? 0 : target * (l.isDirectionalLight ? 1.35 : 0.55));
+      const tick = () => {
+        const tVal = Math.min(1, (performance.now() - startTime) / duration);
+        const easeVal = tVal * tVal * (3 - 2 * tVal);
+        hemiLights.forEach((l, i) => l.intensity = initialHemi[i] + (targetHemi[i] - initialHemi[i]) * easeVal);
+        spotLights.forEach((l, i) => l.intensity = initialSpot[i] + (targetSpot[i] - initialSpot[i]) * easeVal);
+        if (tVal < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
+
+    function updateUIVisibility() {
+      const panel = document.getElementById("panel");
+      const app = document.getElementById("app");
+      panel.classList.toggle("hidden", !uiVisible);
+      app.classList.toggle("panel-hidden", !uiVisible);
+      // Resize renderer to match the new layout width/height
+      onResize();
+    }
+
+    // Intro narrative (works in flat and VR)
+    function startIntro() {
+      const lines = [
+        "Episode M",
+        "",
+        "The energy pirates of the Outer Belts are attacking outposts in an attempt to collect Martoonium from the rich pockets found throughout the sector. A single glittering particle can fuel entire star-cities.",
+        "To stop the theft, the Association of Reliable Smiling Entities (A.R.S.E.) built a defensive pendulum field.",
+        "",
+        "The pendulum is a marvel of engineering. It is a massive, swinging bob of pure Martoonium, suspended by a single particle of Martoonium. The pendulum defends and agitates the Martoonium, making collection close to impossible by frantic pirates.",
+        "Each bob swings like a celestial hammer, daring any ship to get close.",
+        "",
+        "But pirates are relentless and their need for this precious resource outweighs any thoughts of self preservation as they swarm into the danger zone. Their sleek carrot-crafts dash through Martoonium pockets, trying to vacuum their fortune before being swatted aside.",
+        "Tonight, another wave has jumped in. The pendulums stir. The Martoonium sparkles. The battle for luxury power begins."
+      ];
+      const crawl = document.getElementById("crawl");
+      crawl.textContent = lines.join("\n\n");
+      document.getElementById("introWrap").classList.remove("hidden");
+      uiVisible = false;
+      updateUIVisibility();
+      introActive = true;
+      state.running = false;
+      crawlStart = performance.now();
+      // Face away from the pendulum during intro for a later pan reveal
+      if (controls) {
+        controls.target.set(0, 12, -18);
+        camera.position.set(6.5, 4.2, 6.5);
+        controls.update();
+      }
+    }
+
+    function loadSpaceEnv() {
+      const loader = new GLTFLoader();
+      const candidates = ["deep_space_skybox.glb", "deep_space_skybox_16k_with_planets.glb"];
+      const tryLoad = (idx = 0) => {
+        if (idx >= candidates.length) {
+          addFallbackSky();
+          return;
+        }
+        loader.load(
+          candidates[idx],
+          gltf => {
+            const env = gltf.scene || gltf.scenes[0];
+            env.traverse(obj => {
+              if (obj.isMesh) {
+                const old = obj.material;
+                const basic = new THREE.MeshBasicMaterial({
+                  map: old && old.map ? old.map : null,
+                  color: old && old.color ? old.color.clone() : new THREE.Color(0xffffff),
+                  side: THREE.BackSide,
+                  depthWrite: false,
+                  depthTest: false,
+                  fog: false,
+                });
+                if (basic.map) basic.map.encoding = THREE.sRGBEncoding;
+                obj.material = basic;
+                obj.renderOrder = -1000;
+                obj.castShadow = false;
+                obj.receiveShadow = false;
+              }
+              obj.frustumCulled = false;
+            });
+            // Keep oversized skybox assets inside the camera frustum.
+            const box = new THREE.Box3().setFromObject(env);
+            const sphere = new THREE.Sphere();
+            box.getBoundingSphere(sphere);
+            const radius = sphere.radius || 1;
+            const scale = targetSkyRadius / radius;
+            env.scale.setScalar(scale);
+            env.position.copy(camera.position);
+            env.updateMatrixWorld(true);
+            scene.add(env);
+            skyEnv = env;
+            scene.background = null;
+            scene.environment = null;
+            scene.fog = null;
+          },
+          undefined,
+          () => tryLoad(idx + 1)
+        );
+      };
+      tryLoad();
+    }
+
+    function addFallbackSky() {
+      const geo = new THREE.SphereGeometry(targetSkyRadius, 32, 32);
+      const mat = new THREE.MeshBasicMaterial({
+        color: "#050a16",
+        side: THREE.BackSide,
+        depthWrite: false,
+        depthTest: false,
+        fog: false,
+      });
+      const sky = new THREE.Mesh(geo, mat);
+      sky.frustumCulled = false;
+      sky.renderOrder = -1000;
+      scene.add(sky);
+      skyEnv = sky;
+      skyEnv.position.copy(camera.position);
+      scene.background = null;
+      scene.environment = null;
+      scene.fog = null;
+    }
+
+    function updateIntro() {
+      if (!introActive) return;
+      const crawl = document.getElementById("crawl");
+      const elapsed = (performance.now() - crawlStart) / 1000;
+      const duration = 45; // seconds for full crawl
+      const t = Math.min(1, elapsed / duration);
+      const start = -142;
+      const end = 50;
+      const offset = start + (end - start) * t;
+      const fontBase = 50; // keep text intrinsically constant
+      const lineBase = 1.7;
+      // perspective shrink based only on path position
+      const scale = Math.max(0.2, 1 - t * 0.25);
+      const fadeStart = 0.75;
+      const fadeSpan = 0.25;
+      const fadeT = Math.min(1, Math.max(0, (t - fadeStart) / fadeSpan));
+      const opacity = 1 - fadeT; // only fades near the top
+      crawl.style.bottom = `${offset}%`;
+      crawl.style.transform = `rotateX(45deg) translateZ(-${t * 320}px) scale(${scale})`;
+      crawl.style.fontSize = `${fontBase}px`;
+      crawl.style.lineHeight = `${lineBase}`;
+      crawl.style.opacity = opacity;
+      if (t >= 1) {
+        endIntro();
+      }
+    }
+
+    function endIntro() {
+      if (!introActive) return;
+      introActive = false;
+      state.running = true;
+      document.getElementById("introWrap").classList.add("intro-pan");
+      startPanToPendulum();
+    }
+
+    function startPanToPendulum() {
+      if (renderer.xr.isPresenting) return;
+      panActive = true;
+      panStart = performance.now();
+      panFrom.copy(camera.position);
+      if (controls && controls.target) panFromTarget.copy(controls.target);
+      panTo.set(4.5, 3.2, 7.0);
+      if (controls) controls.enabled = false;
+      document.getElementById("introWrap").classList.add("intro-pan");
+      fadeLights(1, panDuration);
+    }
+
+    function updateFlash(dt) {
+      renderer.toneMappingExposure = 1.1 + flash * 0.6;
+      flash = Math.max(0, flash - dt * 2.2);
+    }
+
+    function spawnMissile() {
+      const [rMin, rMax] = missileSettings.radius;
+      const radius = THREE.MathUtils.lerp(rMin, rMax, Math.random());
+      const mass = THREE.MathUtils.lerp(missileSettings.mass[0], missileSettings.mass[1], Math.random());
+      // spawn from side bands
+      const side = Math.random() < 0.5 ? "x" : "z";
+      const sign = Math.random() < 0.5 ? -1 : 1;
+      const start = new THREE.Vector3(
+        side === "x" ? sign * (14 + Math.random() * 4) : (Math.random() - 0.5) * 8,
+        Math.random() * 3 + 1.5,
+        side === "z" ? sign * (14 + Math.random() * 4) : (Math.random() - 0.5) * 8
+      );
+      // Snapshot target position (no recalculation while flying)
+      let target = new THREE.Vector3(0, anchorHeight, 0);
+      const choices = [];
+      if (bob1Body) choices.push(new THREE.Vector3(bob1Body.position.x, bob1Body.position.y, bob1Body.position.z));
+      if (bob2Body) choices.push(new THREE.Vector3(bob2Body.position.x, bob2Body.position.y, bob2Body.position.z));
+      if (choices.length) {
+        target = choices[Math.floor(Math.random() * choices.length)].clone();
+      }
+      target.add(new THREE.Vector3((Math.random()-0.5)*0.6, (Math.random()-0.5)*0.6, (Math.random()-0.5)*0.6));
+      const dir = target.clone().sub(start).normalize();
+      const speed = missileSettings.speed * (1.0 + Math.random() * 0.8);
+
+      const body = new CANNON.Body({
+        mass,
+        shape: new CANNON.Sphere(radius),
+        material: missileMaterial,
+        position: new CANNON.Vec3(start.x, start.y, start.z),
+        linearDamping: 0.0,
+        angularDamping: 0.05,
+      });
+      body.velocity.set(dir.x * speed, dir.y * speed, dir.z * speed);
+      body.angularVelocity.set((Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2);
+      world.addBody(body);
+
+      const geo = new THREE.ConeGeometry(radius * 0.8, radius * 3, 8);
+      const mat = new THREE.MeshStandardMaterial({
+        color: "#ff8c5a",
+        metalness: 0.2,
+        roughness: 0.6,
+        emissive: "#ff5722",
+        emissiveIntensity: 0.4,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+
+      const missile = { body, mesh, exploded: false, targetDir: new CANNON.Vec3(dir.x, dir.y, dir.z), speed };
+      body.addEventListener("collide", e => handleMissileCollision(missile, e));
+      missiles.push(missile);
+    }
+
+    function handleMissileCollision(missile, event) {
+      if (missile.exploded) return;
+      const other = event.body;
+      if (other !== bob1Body && other !== bob2Body) return;
+      explodeMissile(missile, event.contact);
+    }
+
+    function explodeMissile(missile, contact) {
+      missile.exploded = true;
+      const point = new CANNON.Vec3();
+      contact.rj.vadd(contact.bj.position, point);
+      const pThree = new THREE.Vector3(point.x, point.y, point.z);
+      disturbParticles(pThree, 6);
+      pushBobs(point, 18);
+      flash = Math.min(1, flash + 0.5);
+      spawnExplosion(point);
+    }
+
+    function pushBobs(point, strength = 12) {
+      [bob1Body, bob2Body].forEach(b => {
+        if (!b) return;
+        const dir = new CANNON.Vec3(
+          b.position.x - point.x,
+          b.position.y - point.y,
+          b.position.z - point.z
+        );
+        const dist = dir.length() || 0.001;
+        dir.scale(1 / dist, dir);
+        const falloff = Math.max(0.2, 1 - dist / 3);
+        const impulse = strength * falloff * b.mass;
+        b.applyImpulse(dir.scale(impulse, dir), b.position);
+      });
+    }
+
+    function removeMissile(missile) {
+      if (missile.body) world.removeBody(missile.body);
+      if (missile.mesh) scene.remove(missile.mesh);
+    }
+
+    function spawnExplosion(point) {
+      const burst = new THREE.Points(
+        new THREE.BufferGeometry(),
+        new THREE.PointsMaterial({ color: "#ffcf7a", size: 0.12, transparent: true, opacity: 0.9, depthWrite: false })
+      );
+      const count = 80;
+      const positions = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        const dir = new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize().multiplyScalar(Math.random());
+        positions[i*3] = point.x + dir.x * 0.5;
+        positions[i*3+1] = point.y + dir.y * 0.5;
+        positions[i*3+2] = point.z + dir.z * 0.5;
+      }
+      burst.geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      scene.add(burst);
+      // fade out
+      const lifetime = 0.6;
+      let t = 0;
+      let last = performance.now();
+      const fade = (now) => {
+        const dt = (now - last) / 1000;
+        last = now;
+        t += dt;
+        burst.material.opacity = Math.max(0, 0.9 * (1 - t / lifetime));
+        if (t >= lifetime) {
+          scene.remove(burst);
+          return;
+        }
+        requestAnimationFrame(fade);
+      };
+      requestAnimationFrame(fade);
+    }
+
+    function onResize() {
+      const viewport = document.getElementById("viewport");
+      const w = viewport.clientWidth;
+      const h = viewport.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+  </script>
+</body>
+</html>

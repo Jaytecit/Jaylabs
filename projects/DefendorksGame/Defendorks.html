@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Defender: Neon Eternity — 2025 Remaster</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="crt">
+  <div id="game"><canvas id="c"></canvas></div>
+  
+  <div id="hud">
+    <div class="hud-left" id="hudScore">SCORE 0</div>
+    <div class="hud-center">DEFENDER · NEON ETERNITY</div>
+    <div class="hud-right" id="hudStats">LIVES 3 | BOMBS 3</div>
+  </div>
+
+  <!-- Radar Container -->
+  <div id="radar-container">
+    <div id="radar"><div class="blips" id="blips"></div></div>
+  </div>
+
+  <div id="overlay">
+    <div class="panel" id="titlePanel">
+      <div class="title">DEFENDER: NEON ETERNITY</div>
+      <div class="subtitle">Procedural Audio · Fixed Logic · 60FPS Smooth Wrap</div>
+      
+      <div class="controls-grid">
+        <div class="control-col">
+          <h3>Keyboard</h3>
+          <ul>
+            <li>Move: <b>WASD / Arrows</b></li>
+            <li>Fire: <b>Space / Click</b></li>
+            <li>Smart Bomb: <b>Shift / Right Click</b></li>
+            <li>Hyperspace: <b>E</b></li>
+            <li>Time Shift: <b>Hold Ctrl</b></li>
+          </ul>
+        </div>
+        <div class="control-col">
+          <h3>Mission</h3>
+          <ul>
+            <li>Protect the <b>Green Humans</b>.</li>
+            <li>Catch falling humans for bonus!</li>
+            <li>Don't let aliens reach the top.</li>
+            <li><b>Mutants</b> spawn if humans die.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="gamepad-note">Gamepad: left stick flies, A/RT fires, B/LT drops a smart bomb.</div>
+
+      <div class="speed-control">
+        <label>Game Speed: <span id="speedValue">1.0x</span></label>
+        <input type="range" id="speedSlider" min="0.5" max="1.5" value="1.0" step="0.1">
+      </div>
+
+      <div class="btnrow">
+        <button id="startBtn">INITIALIZE SYSTEM</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="mobileControls">
+    <div class="dpad-area">
+      <div class="pad-btn" id="btnUp">▲</div>
+      <div class="pad-row">
+        <div class="pad-btn" id="btnLeft">◀</div>
+        <div class="pad-btn" id="btnRight">▶</div>
+      </div>
+      <div class="pad-btn" id="btnDown">▼</div>
+    </div>
+    <div class="action-area">
+      <div class="pad-btn action" id="btnBomb">BOMB</div>
+      <div class="pad-btn action fire" id="btnFire">FIRE</div>
+    </div>
+  </div>
+
+  <script src="script.js" defer></script>
+</body>
+</html>
