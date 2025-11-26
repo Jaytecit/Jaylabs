@@ -30,7 +30,7 @@
     <span>Aetherium League</span>
     <span>Visual Fix Applied</span>
   </div>
-  <div class="controls-hint" id="control-text">KEYBOARD: WASD Move • SPACE Dash • SHIFT Bash</div>
+  <div class="controls-hint" id="control-text">KEYBOARD: WASD Move • SPACE Dash • E Overdrive • SHIFT Bash</div>
 </div>
 
 <div class="scanlines"></div>
@@ -48,14 +48,16 @@ const C = {
   BASE_PADDLE_H: 90,
   BASE_SPEED: 9,
   BALL: { SIZE: 18 },
+  DASH: { DURATION: 14, COOLDOWN: 55, BOOST: 3 },
+  OVERDRIVE: { DURATION: 240, CHARGE_PER_HIT: 16 },
   DIFFICULTY: [
     { name: 'ZEN',   base: 4,  max: 10, aiLerp: 0.03, desc: "Easy / Practice" },
     { name: 'ECHO',  base: 9,  max: 22, aiLerp: 0.08, desc: "Normal" },
     { name: 'HYPER', base: 13, max: 30, aiLerp: 0.14, desc: "Hard" },
     { name: 'SONIC', base: 18, max: 45, aiLerp: 0.25, desc: "Extreme" }
   ],
-  TIMING: { HITSTOP: 4, RESPAWN: 60, BUFF_DURATION: 600 },
-  GAMEPAD: { DEADZONE: 0.2, BTN_ACCEPT: 0, BTN_DASH: 0, BTN_BASH: 2 }
+  TIMING: { HITSTOP: 4, RESPAWN: 60, BUFF_DURATION: 600, HAZARD: 420, ASTEROID: 520 },
+  GAMEPAD: { DEADZONE: 0.2, BTN_ACCEPT: 0, BTN_DASH: 0, BTN_BASH: 2, BTN_OVERDRIVE: 1 }
 };
 
 const CHARACTERS = [
@@ -88,6 +90,8 @@ let balls = [];
 let particles = [];
 let floaters = []; 
 let powerups = [];
+let hazards = [];
+let asteroids = [];
 let matchDirector;
 let tournament; 
 
@@ -108,7 +112,7 @@ function setup() {
   bloomBuffer = createGraphics(width/2, height/2);
   bloomBuffer.colorMode(HSB, 360, 100, 100, 100);
 
-  for(let i=0; i<300; i++) starfield.push(new Star());
+  for(let i=0; i<420; i++) starfield.push(new Star());
 
   setupAudio();
   
@@ -130,10 +134,10 @@ function unlockAudio() {
 function updateUIForGamepad(connected) {
   const el = document.getElementById('control-text');
   if (connected) {
-    el.innerText = "GAMEPAD: Stick Navigate • (A) Select/Dash • (X) Bash";
+    el.innerText = "GAMEPAD: Stick Move • (A) Dash • (B) Overdrive • (X) Bash";
     el.style.color = "#4f8";
   } else {
-    el.innerText = "KEYBOARD: WASD Navigate • SPACE Select/Dash • SHIFT Bash";
+    el.innerText = "KEYBOARD: WASD Move • SPACE Dash • E Overdrive • SHIFT Bash";
     el.style.color = "rgba(200, 220, 255, 0.7)";
   }
 }
@@ -297,7 +301,7 @@ function initMatch() {
   p1 = new Paddle(40, true, playerObj.char);
   p2 = new Paddle(width-40-C.BASE_PADDLE_H*0.2, false, opponentObj.char); 
   
-  balls = []; powerups = []; particles = []; floaters = [];
+  balls = []; powerups = []; particles = []; floaters = []; hazards = []; asteroids = [];
   matchDirector = new Director();
   
   spawnFloatingText("VS " + opponentObj.char.name, width/2, height/2 - 100, opponentObj.char.color, 120);
@@ -314,6 +318,14 @@ function runGame() {
     powerups[i].update();
     if (powerups[i].dead) powerups.splice(i, 1);
   }
+  for (let i = hazards.length - 1; i >= 0; i--) {
+    hazards[i].update();
+    if (hazards[i].isDead()) hazards.splice(i, 1);
+  }
+  for (let i = asteroids.length - 1; i >= 0; i--) {
+    asteroids[i].update();
+    if (asteroids[i].isOffscreen()) asteroids.splice(i, 1);
+  }
   
   for (let i = balls.length - 1; i >= 0; i--) {
     let b = balls[i];
@@ -321,6 +333,10 @@ function runGame() {
     b.checkPaddle(p1);
     b.checkPaddle(p2);
     b.checkPowerups();
+    hazards.forEach(h => h.affect(b));
+    for (let j = asteroids.length - 1; j >= 0; j--) {
+      asteroids[j].checkHit(b);
+    }
     if (p1.hasShield) checkShield(b, p1);
     if (p2.hasShield) checkShield(b, p2);
 
@@ -346,6 +362,8 @@ function runGame() {
 }
 
 function drawEntities() {
+  hazards.forEach(h => h.draw());
+  asteroids.forEach(a => a.draw());
   if(p1) p1.draw(); 
   if(p2) p2.draw();
   balls.forEach(b => b.draw());
@@ -479,20 +497,28 @@ function drawField() {
 
 function applyBloom() {
   bloomBuffer.background(0,0,0,0); bloomBuffer.image(get(), 0, 0, width/2, height/2);
-  bloomBuffer.filter(BLUR, 4); blendMode(ADD); image(bloomBuffer, 0, 0, width, height); blendMode(BLEND);
+  bloomBuffer.filter(BLUR, 4); 
+  push(); blendMode(ADD); tint(255,140); image(bloomBuffer, 0, 0, width, height); pop(); 
+  blendMode(BLEND);
 }
 
 function drawStarfield() {
-  push(); translate(width/2, height/2);
+  push(); blendMode(ADD);
   for(let s of starfield) { s.update(); s.draw(); }
-  pop();
+  pop(); blendMode(BLEND);
 }
 
 // ==========================================
 // CLASSES
 // ==========================================
 class Director {
-  constructor() { this.timer = C.TIMING.RESPAWN; this.state = 'SERVE'; this.nextPowerup = 400; }
+  constructor() { 
+    this.timer = C.TIMING.RESPAWN; 
+    this.state = 'SERVE'; 
+    this.nextPowerup = 300; 
+    this.nextHazard = C.TIMING.HAZARD; 
+    this.nextAsteroid = C.TIMING.ASTEROID;
+  }
   update() {
     if (balls.length === 0 && this.state !== 'SERVE') { this.state = 'SERVE'; this.timer = C.TIMING.RESPAWN; }
     if (this.state === 'SERVE') {
@@ -500,11 +526,16 @@ class Director {
       if (this.timer <= 0) { balls.push(new Ball(width/2, height/2)); playSound('spawn'); this.state = 'PLAY'; }
     }
     if (this.state === 'PLAY') {
-      this.nextPowerup--;
-      if (this.nextPowerup <= 0) { powerups.push(new Powerup()); this.nextPowerup = random(300, 800); }
+      if (--this.nextPowerup <= 0) { powerups.push(new Powerup()); this.nextPowerup = random(300, 800); }
+      if (--this.nextHazard <= 0) { hazards.push(new Hazard(random()<0.4?'vortex':'glitch')); this.nextHazard = random(C.TIMING.HAZARD*0.7, C.TIMING.HAZARD*1.3); }
+      if (--this.nextAsteroid <= 0 && asteroids.length < 3) { asteroids.push(new Asteroid()); this.nextAsteroid = random(C.TIMING.ASTEROID*0.8, C.TIMING.ASTEROID*1.4); }
     }
   }
-  onScore() {}
+  onScore() { 
+    this.state='SERVE'; this.timer=C.TIMING.RESPAWN; 
+    this.nextPowerup = 240; this.nextHazard = C.TIMING.HAZARD; this.nextAsteroid = C.TIMING.ASTEROID;
+    hazards = []; asteroids = [];
+  }
 }
 
 class Paddle {
@@ -514,37 +545,44 @@ class Paddle {
     this.h = this.baseH; this.w = 16;
     this.color = charData.color; this.speedMod = charData.spd;
     this.score = 0; this.dy = 0; this.energy = 0;
-    this.dashTimer = 0; this.bashTimer = 0; this.growTimer = 0; this.freezeTimer = 0; this.hasShield = false;
+    this.dashTimer = 0; this.dashCooldown = 0; this.dashDir = 0;
+    this.bashTimer = 0; this.growTimer = 0; this.freezeTimer = 0; this.hasShield = false;
+    this.overdriveTimer = 0;
   }
   update() {
     if (this.freezeTimer > 0) { this.freezeTimer--; this.x = this.isHuman ? 40+random(-2,2) : width-40-this.w+random(-2,2); return; }
     else this.x = this.isHuman ? 40 : width - 40 - this.w;
-    
-    if (this.growTimer > 0) { this.growTimer--; this.h = this.baseH * 1.5; } else this.h = this.baseH;
 
-    let targetY = this.y;
-    let speed = C.BASE_SPEED * this.speedMod;
+    if (this.growTimer > 0) this.growTimer--;
+    if (this.dashCooldown > 0) this.dashCooldown--;
+    if (this.dashTimer > 0) this.dashTimer--;
+    if (this.overdriveTimer > 0) this.overdriveTimer--;
+
+    let sizeMul = (this.growTimer>0 ? 1.4 : 1) * (this.overdriveTimer>0 ? 1.25 : 1);
+    this.h = this.baseH * sizeMul;
+
+    let moveY = 0, doDash = false, doBash = false, doOverdrive = false;
 
     if (this.isHuman) {
-      let moveY = 0; let doDash = false, doBash = false;
       if (keyIsDown(87)||keyIsDown(UP_ARROW)) moveY = -1;
       if (keyIsDown(83)||keyIsDown(DOWN_ARROW)) moveY = 1;
       if (keyIsDown(32)||keyIsDown(88)) doDash = true;
       if (keyIsDown(16)||keyIsDown(89)) doBash = true;
+      if (keyIsDown(69)) doOverdrive = true;
 
       const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
       const gp = gamepads[0];
       if (gp) {
-        if (Math.abs(gp.axes[1]) > C.GAMEPAD.DEADZONE) this.dy += gp.axes[1] * 2.5; 
-        if (gp.buttons[C.GAMEPAD.BTN_DASH].pressed) doDash = true;
-        if (gp.buttons[C.GAMEPAD.BTN_BASH].pressed) doBash = true;
+        if (Math.abs(gp.axes[1]) > C.GAMEPAD.DEADZONE) moveY = gp.axes[1];
+        if (gp.buttons[C.GAMEPAD.BTN_DASH]?.pressed) doDash = true;
+        if (gp.buttons[C.GAMEPAD.BTN_BASH]?.pressed) doBash = true;
+        if (gp.buttons[C.GAMEPAD.BTN_OVERDRIVE]?.pressed) doOverdrive = true;
       }
 
-      if (moveY !== 0) this.dy = lerp(this.dy, moveY * 100, 0.2);
-      else if (!gp || Math.abs(gp.axes[1]) <= C.GAMEPAD.DEADZONE) this.dy = lerp(this.dy, 0, 0.2);
-
-      if (doDash && this.dashTimer <= 0) { this.dashTimer=20; this.dy*=3; playSound('dash'); spawnExplosion(this.x,this.y,this.color,10); }
-      if (doBash && this.bashTimer <= 0) { this.bashTimer=15; playSound('bash'); }
+      this.dy = lerp(this.dy, moveY * C.BASE_SPEED * 3, 0.18);
+      if (doDash && this.dashCooldown <= 0) { this.activateDash(moveY); }
+      if (doBash && this.bashTimer <= 0) { this.activateBash(); }
+      if (doOverdrive && this.energy >= 100 && this.overdriveTimer <= 0) { this.activateOverdrive(); }
     } else {
       let diff = C.DIFFICULTY[diffIndex];
       let threat = balls.find(b => b.vx > 0);
@@ -553,25 +591,39 @@ class Paddle {
       let lerpFactor = diff.aiLerp + (this.energy/3000);
       this.y = lerp(this.y, dest - this.h/2, lerpFactor);
       if (threat && abs(threat.x-this.x)<50 && abs(threat.y-(this.y+this.h/2))<60 && this.bashTimer<=0) {
-        if(random()<(diffIndex*0.2)) this.bashTimer=15;
+        if(random()<(diffIndex*0.2)) this.activateBash();
       }
+      if (threat && this.dashCooldown<=0 && abs(threat.x-this.x) < width*0.35) this.activateDash(Math.sign(threat.vy||1));
+      if (this.energy>=100 && this.overdriveTimer<=0 && threat) this.activateOverdrive();
     }
-    this.dy = constrain(this.dy, -speed*2, speed*2);
-    if(this.isHuman) this.y += constrain(this.dy, -speed, speed);
-    
-    if (this.dashTimer>0) { this.dashTimer--; if(frameCount%3===0) particles.push(new Particle(this.x,this.y+this.h/2,this.color,20,20)); }
+    let speed = C.BASE_SPEED * this.speedMod;
+    if (this.dashTimer>0) speed *= C.DASH.BOOST;
+    if (this.overdriveTimer>0) speed *= 0.75;
+
+    this.y += constrain(this.dy, -speed, speed);
+
+    if (this.dashTimer>0) { this.y += this.dashDir * speed * 0.35; if(frameCount%2===0) particles.push(new Particle(this.x+this.w/2, this.y+this.h/2, this.color, this.h/3, random(-1,1), random(-1,1), 15, true)); }
     if (this.bashTimer>0) this.bashTimer--;
     this.y = constrain(this.y, 10, height - this.h - 10);
-    if (this.energy<100) this.energy+=0.05;
+    if (this.energy<120) this.energy+=0.05;
   }
+  activateDash(dir=0) { this.dashTimer=C.DASH.DURATION; this.dashCooldown=C.DASH.COOLDOWN; this.dashDir = dir!==0 ? Math.sign(dir) : Math.sign(this.dy||1); playSound('dash'); shake = max(shake, 6); this.dy += this.dashDir * C.BASE_SPEED * 2; spawnExplosion(this.x+this.w/2,this.y+this.h/2,this.color,8); }
+  activateBash() { this.bashTimer=15; playSound('bash'); }
+  activateOverdrive() { this.overdriveTimer = C.OVERDRIVE.DURATION; this.energy = 0; shake = max(shake, 12); spawnFloatingText("OVERDRIVE", this.x + (this.isHuman?-30:30), this.y-20, [this.color[0],100,100], 90); }
   draw() {
     let drawW = this.w, drawX = this.x;
     if (this.freezeTimer > 0) { fill(200, 50, 100); rect(drawX-5, this.y-5, drawW+10, this.h+10); }
     if (this.bashTimer > 0) { drawW = this.w*2.5; drawX = this.isHuman ? this.x : this.x - this.w*1.5; }
     if (this.hasShield) { stroke(180, 100, 100, 80+sin(frameCount*0.2)*20); strokeWeight(4); let sx = this.isHuman ? this.x-20 : this.x+this.w+20; line(sx,0,sx,height); noStroke(); }
+    if (this.overdriveTimer>0) { stroke(this.color[0],100,100,70); strokeWeight(6); noFill(); rect(drawX-4, this.y-6, drawW+8, this.h+12, 6); noStroke(); }
     fill(this.color[0], this.color[1], this.color[2]); noStroke(); rect(drawX, this.y, drawW, this.h, 4);
     fill(this.color[0], 20, 100); rect(drawX+4, this.y+4, drawW-8, this.h-8, 2);
-    if (this.isHuman) { fill(120, 80, 100); rect(this.x-10, this.y+this.h-(this.h*(this.energy/100)), 4, this.h*(this.energy/100)); }
+    if (this.dashTimer>0) { fill(this.color[0],60,100,60); rect(drawX-6, this.y+this.h*0.25, 3, this.h*0.5); }
+    if (this.isHuman) { 
+      let energyPct = constrain(this.energy/100, 0, 1);
+      fill(120, 80, 100); rect(this.x-10, this.y+this.h-(this.h*energyPct), 4, this.h*energyPct);
+      let dashPct = 1 - (this.dashCooldown / C.DASH.COOLDOWN); fill(200,60,100,70); rect(this.x-16, this.y+this.h-(this.h*dashPct), 3, this.h*dashPct);
+    }
   }
 }
 
@@ -581,12 +633,16 @@ class Ball {
     let set = C.DIFFICULTY[diffIndex]; this.maxS = set.max; this.speed = set.base;
     let angle = random(-PI/4, PI/4); let dir = random() > 0.5 ? 1 : -1;
     this.vx = cos(angle)*this.speed*dir; this.vy = sin(angle)*this.speed;
-    this.hue = 0; this.lastHit = null;
+    this.hue = 0; this.lastHit = null; this.inOverdrive = false;
   }
   update() {
+    if (this.inOverdrive && this.lastHit) {
+      let target = this.lastHit === p1 ? p2 : p1;
+      if (target) this.y = lerp(this.y, target.y + target.h/2, 0.08);
+    }
     this.x += this.vx; this.y += this.vy;
     if (this.y<0 || this.y>height) { this.vy*=-1; this.y=constrain(this.y,0,height); playSound('wall'); }
-    this.trail.push({x:this.x, y:this.y}); if(this.trail.length>10) this.trail.shift();
+    this.trail.push({x:this.x, y:this.y}); if(this.trail.length>12) this.trail.shift();
   }
   checkPaddle(p) {
     let ph=p.h, pw=p.bashTimer>0?p.w*2.5:p.w;
@@ -594,10 +650,13 @@ class Ball {
     if (this.x+this.size/2>px && this.x-this.size/2<px+pw && this.y+this.size/2>p.y && this.y-this.size/2<p.y+ph) {
       this.lastHit=p; this.hue=p.color[0];
       let intersectY = this.y - (p.y+ph/2); let angle = (intersectY/(ph/2)) * (PI/3);
-      this.speed = min(this.speed+1.5, this.maxS);
-      if(p.bashTimer>0) { this.speed=this.maxS+5; hitStop=4; shake=10; playSound('bash_hit'); spawnExplosion(this.x,this.y,p.color,30); }
-      else { playSound('hit'); spawnExplosion(this.x,this.y,p.color,10); }
-      this.vx = this.speed * cos(angle) * (p.isHuman?1:-1); this.vy = this.speed * sin(angle); this.x += this.vx;
+      let force = 1;
+      if(p.bashTimer>0) { this.speed=this.maxS+5; hitStop=4; shake=10; force+=0.8; playSound('bash_hit'); spawnExplosion(this.x,this.y,p.color,30); }
+      else { this.speed = min(this.speed+1.5, this.maxS); playSound('hit'); spawnExplosion(this.x,this.y,p.color,10); }
+      if (p.dashTimer>0) { force+=0.6; shake = max(shake, 8); }
+      if (p.overdriveTimer>0) { this.inOverdrive=true; this.speed=this.maxS+8; force+=1.2; this.hue=(p.color[0]+180)%360; spawnExplosion(this.x,this.y,[this.hue,100,100],25); }
+      p.energy = min(120, p.energy + (p.bashTimer>0?25:14));
+      this.vx = this.speed * force * cos(angle) * (p.isHuman?1:-1); this.vy = this.speed * force * sin(angle); this.x += this.vx;
     }
   }
   checkPowerups() {
@@ -609,8 +668,9 @@ class Ball {
   checkScore() { if(this.x<-50) return 2; if(this.x>width+50) return 1; return 0; }
   draw() {
     noStroke();
-    for(let i=0; i<this.trail.length; i++) { let t=this.trail[i]; fill(this.hue,80,100,map(i,0,10,0,80)); ellipse(t.x,t.y,map(i,0,10,5,this.size)); }
-    fill(0,0,100); ellipse(this.x,this.y,this.size); fill(this.hue,90,100,40); ellipse(this.x,this.y,this.size*1.8);
+    for(let i=0; i<this.trail.length; i++) { let t=this.trail[i]; fill(this.hue,80,100,map(i,0,this.trail.length,0,80)); ellipse(t.x,t.y,map(i,0,this.trail.length,5,this.size)); }
+    let core = this.inOverdrive ? this.size*1.8 : this.size;
+    fill(0,0,100); ellipse(this.x,this.y,core); fill(this.hue,90,100,50); ellipse(this.x,this.y,core*1.8);
   }
 }
 
@@ -619,7 +679,7 @@ class Powerup {
     this.x = width/2+random(-200,200); this.y=random(100,height-100); this.size=25; this.dead=false;
     let r=random(1);
     if(r<0.2) this.t='MULTIBALL'; else if(r<0.35) this.t='BIG'; else if(r<0.5) this.t='ENERGY';
-    else if(r<0.7) this.t='EXTEND'; else if(r<0.85) this.t='SHIELD'; else this.t='FREEZE';
+    else if(r<0.65) this.t='EXTEND'; else if(r<0.78) this.t='SHIELD'; else if(r<0.88) this.t='FREEZE'; else this.t='VORTEX';
   }
   update() { this.y+=sin(frameCount*0.05); }
   activate(b) {
@@ -630,29 +690,49 @@ class Powerup {
     else if(this.t==='EXTEND') { c=[120,100,100]; ben.growTimer=C.TIMING.BUFF_DURATION; }
     else if(this.t==='SHIELD') { c=[180,100,100]; ben.hasShield=true; }
     else if(this.t==='FREEZE') { c=[200,100,100]; opp.freezeTimer=90; playSound('freeze'); }
+    else if(this.t==='VORTEX') { c=[300,100,100]; hazards.push(new Hazard('vortex')); }
     spawnFloatingText(this.t, this.x, this.y-30, c);
   }
   draw() {
     push(); translate(this.x,this.y); rotate(frameCount*0.05); let c=[0,0,100];
     if(this.t==='MULTIBALL') c=[50,100,100]; if(this.t==='BIG') c=[150,100,100]; if(this.t==='ENERGY') c=[280,100,100];
-    if(this.t==='EXTEND') c=[120,100,100]; if(this.t==='SHIELD') c=[180,100,100]; if(this.t==='FREEZE') c=[200,100,100];
+    if(this.t==='EXTEND') c=[120,100,100]; if(this.t==='SHIELD') c=[180,100,100]; if(this.t==='FREEZE') c=[200,100,100]; if(this.t==='VORTEX') c=[300,100,100];
     stroke(c); strokeWeight(2); noFill(); rectMode(CENTER); rect(0,0,this.size,this.size); fill(c); noStroke(); rect(0,0,this.size/2,this.size/2); pop();
   }
 }
 
+class Hazard {
+  constructor(type='glitch') { this.type=type; this.x=width/2; this.y=random(height*0.25,height*0.75); this.r=random(90,150); this.life=360; this.hue=type==='vortex'?300:260; }
+  update() { this.life--; }
+  draw() { noFill(); strokeWeight(4); stroke(this.hue,90,80,this.life/4); ellipse(this.x,this.y,this.r*2 + sin(frameCount*0.2)*20); noStroke(); }
+  affect(ball) { if(dist(this.x,this.y,ball.x,ball.y)<this.r) { if(this.type==='vortex'){ ball.vx += (this.x-ball.x)*0.01; ball.vy += (this.y-ball.y)*0.01; } else { ball.vx += random(-0.8,0.8); ball.vy += random(-0.8,0.8); } } }
+  isDead() { return this.life<=0; }
+}
+
+class Asteroid {
+  constructor() { this.y=random(height); this.size=random(16,38); this.speed=random(2,5); this.x=random()<0.5? -this.size : width+this.size; this.vx=(this.x<0?1:-1)*this.speed; }
+  update() { this.x += this.vx; }
+  draw() { fill(30,20,80); rectMode(CORNER); rect(this.x,this.y,this.size,this.size); }
+  checkHit(ball) { if(dist(this.x,this.y,ball.x,ball.y) < this.size/2 + ball.size/2) { ball.vx*=-1; ball.vy*=-1; this.vx*=-1.2; shake=6; return true; } return false; }
+  isOffscreen() { return this.x < -60 || this.x > width+60; }
+}
+
 class Star {
-  constructor() { this.x=random(-width,width); this.y=random(-height,height); this.z=random(width); }
-  update() { this.z-=10; if(this.z<1) { this.z=width; this.x=random(-width,width); this.y=random(-height,height); } }
+  constructor() { this.reset(); }
+  reset() { this.x=random(-width,width); this.y=random(-height,height); this.z=random(width); this.speed=random(6,14); this.parallax=random(0.6,1.4); }
+  update() { this.z-=this.speed; if(this.z<1) this.reset(); }
   draw() {
-    let sx=map(this.x/this.z,0,1,0,width)+width/2; let sy=map(this.y/this.z,0,1,0,height)+height/2; let r=map(this.z,0,width,8,0);
-    fill(220,50,100); ellipse(sx,sy,r,r);
+    let sx=map(this.x/this.z,0,1,0,width)+width/2; let sy=map(this.y/this.z,0,1,0,height)+height/2; let r=map(this.z,0,width,12*this.parallax,0);
+    let hue=(globalHue + this.speed*4 + this.x*0.02)%360;
+    fill(hue,80,100,80); noStroke(); ellipse(sx,sy,r*0.6,r);
+    fill(hue,40,100,50); rectMode(CENTER); rect(sx,sy,r*0.3,r*1.2);
   }
 }
 
 class Particle {
-  constructor(x, y, c, s, l=40) { this.x=x; this.y=y; this.vx=random(-3,3); this.vy=random(-3,3); this.c=c; this.l=l; this.ml=l; }
+  constructor(x, y, c, s=6, vx=random(-3,3), vy=random(-3,3), l=40, isRect=false) { this.x=x; this.y=y; this.vx=vx; this.vy=vy; this.c=c; this.l=l; this.ml=l; this.s=s; this.isRect=isRect; }
   update() { this.x+=this.vx; this.y+=this.vy; this.l--; }
-  draw() { fill(this.c[0],this.c[1],100,map(this.l,0,this.ml,0,100)); rect(this.x,this.y,4,4); }
+  draw() { noStroke(); fill(this.c[0],this.c[1],100,map(this.l,0,this.ml,0,100)); if(this.isRect){ rectMode(CENTER); rect(this.x,this.y,this.s,this.s*1.4); } else { ellipse(this.x,this.y,this.s); } }
 }
 
 // ==========================================

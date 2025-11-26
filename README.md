@@ -1,20 +1,21 @@
 # JayLabs Playground
 
-Static site for JayLabs experiments: playable arcade-style games, pattern generators, and a PCVR lab. Everything is plain HTML/CSS/JS with no build step—open `index.html` locally or host the folder as-is.
+Static site for JayLabs experiments: playable arcade-style games, pattern generators, and a PCVR lab. Everything is plain HTML/CSS/JS with no build step; open `index.html` locally or host the folder as-is.
 
-## What’s inside
-- `index.html` — landing page that links to the hubs.
-- `games.html` — cards that launch the current games:
+## What's inside
+- `index.html` - landing page that links to the hubs.
+- `games.html` - cards that launch the current games:
   - `projects/AetheriumLeagueGame/AetheriumLeague.html` (p5.js cyber paddle duels)
   - `projects/DefendorksGame/Defendorks.html` (Defender-inspired arcade remix)
-- `generators.html` — pattern toys:
+- `generators.html` - pattern toys:
   - `projects/PatternGenerators/PatternStudio.html` (audio-reactive harmonograph)
   - `projects/PatternGenerators/SpiroDeluxe.html` (spirograph sandbox)
-- `pcvr.html` — VR/3D experiments:
+- `pcvr.html` - VR/3D experiments:
   - `projects/PendulumVRexperience/chaos_pendulum_3d.html`
-- `legal.html` — legal/terms page.
-- `Images/` — favicon, logo, and hero video assets.
-- `.gitignore` — ignores OS/editor cruft and common Node/tooling folders (`node_modules`, `dist`, `.env`).
+  - `projects/BongsVR/Bongs.html` (Bongs VR sandbox: unstoppable double pendulum with WebXR)
+- `legal.html` - legal/terms page.
+- `Images/` - favicon, logo, and hero video assets.
+- `.gitignore` - ignores OS/editor cruft and common Node/tooling folders (`node_modules`, `dist`, `.env`).
 
 ## Run locally
 1) Clone the repo: `git clone https://github.com/Jaytecit/Jaylabs.git`
@@ -33,4 +34,4 @@ Static site for JayLabs experiments: playable arcade-style games, pattern genera
 - If you add new tools that generate build outputs, extend `.gitignore` accordingly.
 
 ## License
-A license hasn’t been chosen yet. Add one when you decide how you want others to use the code and assets (MIT is a common permissive option). Until then, assume all rights reserved.
+A license hasn't been chosen yet. Add one when you decide how you want others to use the code and assets (MIT is a common permissive option). Until then, assume all rights reserved.
