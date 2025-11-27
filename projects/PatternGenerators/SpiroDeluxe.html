@@ -401,6 +401,19 @@ function randomInt(min,max){ return Math.floor(Math.random()*(max-min+1))+min }
 function randomBool(){ return Math.random()<0.5 }
 function randomHex(){ return '#'+Math.floor(Math.random()*0xFFFFFF).toString(16).padStart(6,'0') }
 function copyToClipboard(text){ navigator.clipboard?.writeText(text).catch(()=>{}); }
+let spiroMusic=null;
+function playSpiroMusic(){
+    if(!spiroMusic){
+        spiroMusic=new Audio('spiro.mp3');
+        spiroMusic.loop=true;
+        spiroMusic.volume=0.4;
+    }
+    if(spiroMusic.paused){
+        spiroMusic.currentTime=0;
+        spiroMusic.play().catch(()=>{});
+    }
+}
+function stopSpiroMusic(){ if(spiroMusic && !spiroMusic.paused) spiroMusic.pause(); }
 
 /* ===== Palettes ===== */
 const PALETTES = {
@@ -945,9 +958,11 @@ function toggleAnimation(){
     if(app.isAnimating){
         b.textContent='⏸️ PAUSE'; b.classList.add('btn-secondary');
         updateKinematics(); draw();
+        playSpiroMusic();
     }else{
         b.textContent='▶️ PLAY'; b.classList.remove('btn-secondary');
         if(app.animationId){ cancelAnimationFrame(app.animationId); app.animationId=null; }
+        stopSpiroMusic();
     }
     updateStatus();
 }

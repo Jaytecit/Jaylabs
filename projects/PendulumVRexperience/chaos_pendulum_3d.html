@@ -357,6 +357,7 @@ body {
       rod2: { length: 1.05, mass: 1.0, radius: 0.14 },
       vrEnabled: false,
     };
+    let bgMusic = null;
 
     let scene, camera, renderer, controls, world, clock;
     let anchorMesh;
@@ -397,6 +398,21 @@ body {
     const spotLights = [];
     let skyEnv = null;
     let dragging = null;
+
+    function updateMusicPlayback() {
+      const shouldPlay = state.running && !introActive;
+      if (!shouldPlay && !bgMusic) return;
+      if (!bgMusic) {
+        bgMusic = new Audio('pendulum.mp3');
+        bgMusic.loop = true;
+        bgMusic.volume = 0.35;
+      }
+      if (shouldPlay) {
+        if (bgMusic.paused) bgMusic.play().catch(() => {});
+      } else if (!bgMusic.paused) {
+        bgMusic.pause();
+      }
+    }
 
     initThree();
     initWorld();
@@ -827,6 +843,7 @@ body {
       if (skyEnv) {
         skyEnv.position.copy(camera.position);
       }
+      updateMusicPlayback();
 
       renderer.render(scene, camera);
     }

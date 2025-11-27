@@ -32,6 +32,11 @@ const C = {
 const AudioSys = (() => {
   let ctx = null;
   let master = null;
+  let bgMusicBuffer = null;
+  let bgMusicSource = null;
+  let bgMusicLoading = null;
+  let bgMusicRequested = false;
+  let bgMusicFallback = null;
 
   function init() {
     if (ctx) return;
@@ -39,6 +44,63 @@ const AudioSys = (() => {
     master = ctx.createGain();
     master.gain.value = 0.3;
     master.connect(ctx.destination);
+  }
+
+  async function loadMusicBuffer() {
+    if (bgMusicBuffer) return bgMusicBuffer;
+    if (bgMusicLoading) return bgMusicLoading;
+    bgMusicLoading = fetch('Defendorks.mp3')
+      .then(res => res.arrayBuffer())
+      .then(buf => ctx.decodeAudioData(buf))
+      .then(decoded => {
+        bgMusicBuffer = decoded;
+        return decoded;
+      })
+      .finally(() => { bgMusicLoading = null; });
+    return bgMusicLoading;
+  }
+
+  async function startMusic() {
+    bgMusicRequested = true;
+    if (!ctx) init();
+    try {
+      if (ctx.state === 'suspended') await ctx.resume();
+      const buffer = await loadMusicBuffer();
+      if (!bgMusicRequested || bgMusicSource) return;
+      const source = ctx.createBufferSource();
+      const gain = ctx.createGain();
+      source.buffer = buffer;
+      source.loop = true;
+      gain.gain.value = 0.45;
+      source.connect(gain).connect(master);
+      source.start(0);
+      bgMusicSource = source;
+      source.onended = () => {
+        if (bgMusicSource === source) bgMusicSource = null;
+      };
+      return;
+    } catch (e) {
+      // Fallback to HTMLAudio if decoding fails (rare)
+      if (!bgMusicFallback) {
+        bgMusicFallback = new Audio('Defendorks.mp3');
+        bgMusicFallback.loop = true;
+        bgMusicFallback.volume = 0.45;
+      }
+      if (bgMusicFallback.paused) {
+        bgMusicFallback.currentTime = 0;
+        bgMusicFallback.play().catch(() => {});
+      }
+    }
+  }
+
+  function stopMusic() {
+    bgMusicRequested = false;
+    if (bgMusicSource) {
+      try { bgMusicSource.stop(); } catch {}
+      try { bgMusicSource.disconnect(); } catch {}
+      bgMusicSource = null;
+    }
+    if (bgMusicFallback && !bgMusicFallback.paused) bgMusicFallback.pause();
   }
 
   function playTone(freq, type, dur, slide = 0, vol = 1) {
@@ -78,6 +140,8 @@ const AudioSys = (() => {
 
   return {
     init,
+    startMusic,
+    stopMusic,
     shoot: () => playTone(1200, 'sawtooth', 0.15, -800, 0.5),
     explosion: () => noise(0.4, 0.8),
     jump: () => playTone(150, 'square', 0.2, 600, 0.4),
@@ -817,6 +881,7 @@ function updateHUD() {
 
 function gameOver() {
   Game.running = false;
+  AudioSys.stopMusic();
   document.getElementById('overlay').style.display = 'grid';
   document.querySelector('.title').innerText = "GAME OVER";
 }
@@ -994,6 +1059,7 @@ resize();
 document.getElementById('startBtn').addEventListener('click', () => {
   document.getElementById('overlay').style.display = 'none';
   AudioSys.init();
+  AudioSys.startMusic();
   initGame();
 });
 
