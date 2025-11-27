@@ -10,6 +10,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Build deploy bundle
+        run: |
+          mkdir deploy
+          rsync -av --delete \
+            --exclude ".git" \
+            --exclude ".git/**" \
+            --exclude ".github" \
+            --exclude ".github/**" \
+            ./ deploy
 
       - name: SFTP Deploy
         uses: wlixcc/SFTP-Deploy-Action@v1.2.4
@@ -18,7 +27,7 @@ jobs:
           port: ${{ secrets.SFTP_PORT }}
           username: ${{ secrets.SFTP_USER }}
           password: ${{ secrets.SFTP_PASSWORD }}
-          local_path: "./"
+          local_path: "./deploy"
           remote_path: ${{ secrets.SFTP_TARGET }}
           sftp_only: true
           exclude: |
