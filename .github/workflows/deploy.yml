@@ -21,3 +21,7 @@ jobs:
           local_path: "./"
           remote_path: ${{ secrets.SFTP_TARGET }}
           sftp_only: true
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/.github/**
