@@ -10,15 +10,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Build deploy bundle
+      - name: Strip git metadata before deploy
         run: |
-          mkdir deploy
-          rsync -av --delete \
-            --exclude ".git" \
-            --exclude ".git/**" \
-            --exclude ".github" \
-            --exclude ".github/**" \
-            ./ deploy
+          rm -rf .git .github
+          find . -name ".git" -o -name ".github" -print
 
       - name: SFTP Deploy
         uses: wlixcc/SFTP-Deploy-Action@v1.2.4
@@ -27,7 +22,7 @@ jobs:
           port: ${{ secrets.SFTP_PORT }}
           username: ${{ secrets.SFTP_USER }}
           password: ${{ secrets.SFTP_PASSWORD }}
-          local_path: "./deploy"
+          local_path: "./"
           remote_path: ${{ secrets.SFTP_TARGET }}
           sftp_only: true
           exclude: |
