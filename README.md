@@ -5,6 +5,7 @@ Static site for JayLabs experiments: playable arcade-style games, pattern genera
 ## What's inside
 - `index.html` - landing page that links to the hubs.
 - `games.html` - cards that launch the current games:
+  - `projects/Astral Core/AstralCore.html` (zero-g arena core-run with dash/phase tools)
   - `projects/AetheriumLeagueGame/AetheriumLeague.html` (p5.js cyber paddle duels)
   - `projects/DefendorksGame/Defendorks.html` (Defender-inspired arcade remix)
 - `generators.html` - pattern toys:
@@ -34,4 +35,5 @@ Static site for JayLabs experiments: playable arcade-style games, pattern genera
 - If you add new tools that generate build outputs, extend `.gitignore` accordingly.
 
 ## License
-A license hasn't been chosen yet. Add one when you decide how you want others to use the code and assets (MIT is a common permissive option). Until then, assume all rights reserved.
+- Source code is MIT licensed (see `LICENSE`).
+- Original music/audio tracks in `projects/**` (e.g., .wav/.mp3 files) remain the property of JayLabs and are not licensed for reuse or redistribution without written permission.

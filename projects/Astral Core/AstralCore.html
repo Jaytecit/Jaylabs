@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Astral Core // FIXED6 (Hooks + Loader + p5)</title>
+  <style>
+    :root{--bg:#080a0f;--fg:#e8f0ff;--muted:#9aa0a6;--accent:#00e5ff;}
+    html,body{margin:0;height:100%;background:radial-gradient(1200px 800px at 50% 30%,#0b1020 0%,#080a0f 60%,#05070b 100%);color:var(--fg);font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial,sans-serif}
+    #ui{position:fixed;inset:auto 12px 12px 12px;display:none;gap:12px;flex-wrap:wrap;align-items:center;z-index:9999;pointer-events:none}
+    .panel{backdrop-filter: blur(6px); background:rgba(0,0,0,.35); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px 12px; box-shadow:0 6px 30px rgba(0,0,0,.35)}
+    .row{display:flex;gap:10px;align-items:center}
+    .chip{font-size:12px;color:#cfe7ff;opacity:.8}
+    button,input[type="range"]{accent-color:var(--accent)}
+    .btn{cursor:pointer;border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:6px 10px; background:rgba(0,0,0,.25); color:var(--fg)}
+    .btn:hover{border-color:rgba(255,255,255,.22)}
+    .warn{position:fixed;left:50%;top:18px;transform:translateX(-50%);background:#1a2438;border:1px solid #304164;color:#cfe7ff;padding:10px 14px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.5);z-index:10000}
+    .warn strong{color:#7bd9ff}
+    canvas{display:block}
+  </style>
+</head>
+<body>
+  <div id="ui" aria-label="Audio HUD">
+    <div class="panel">
+      <div class="row" style="gap:12px">
+        <span class="chip">Audio:</span>
+        <button id="btn-beep" class="btn">Beep</button>
+        <button id="btn-pickup" class="btn">Pickup</button>
+        <button id="btn-goal" class="btn">Goal</button>
+        <button id="btn-load" class="btn">Load SFX</button>
+        <label class="chip" for="vol">Vol</label>
+        <input id="vol" type="range" min="0" max="1" step="0.01" value="0.9" />
+        <span id="state" class="chip">state: idle</span>
+        <span id="sfxStat" class="chip">samples: 0/0</span>
+    <button id="btn-fullscreen" class="btn" title="Toggle Fullscreen">Fullscreen</button>
+      </div>
+    </div>
+  </div>
+  <div id="warn" class="warn" style="display:none"></div>
+
+  <!-- p5 FIRST -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+
+  <!-- Your game -->
+  <script src="AsteroidBattle.js"></script>
+
+  <!-- Hooks + Loader + Hardened audio -->
+  <script>
+  (function(){
+    const warn = document.getElementById('warn');
+    const stateEl = document.getElementById('state');
+    const sfxEl = document.getElementById('sfxStat');
+    const btnBeep = document.getElementById('btn-beep');
+    const btnPickup = document.getElementById('btn-pickup');
+    const btnGoal = document.getElementById('btn-goal');
+    const btnLoad = document.getElementById('btn-load');
+    const vol = document.getElementById('vol');
+    const btnFullscreen = document.getElementById('btn-fullscreen');
+    const uiPanel = document.getElementById('ui');
+    const music = { tracks:{}, current:null, initialized:false };
+    let audioPrimed = false;
+
+    function showWarn(html){ warn.innerHTML = html; warn.style.display = 'block'; }
+    function hideWarn(){ warn.style.display = 'none'; }
+
+    function ensureVFX(){
+      window.VFX = window.VFX || {};
+      const V = window.VFX;
+      try{
+        if(!V.audio || !V.audio.ctx){
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
+          const sfxGain = ctx.createGain(); sfxGain.gain.value = 1.0; sfxGain.connect(master);
+          const musicGain = ctx.createGain(); musicGain.gain.value = 0.75; musicGain.connect(master);
+          V.audio = { ctx, master, sfxGain, musicGain };
+        }else{
+          const {ctx} = V.audio;
+          V.audio.master = V.audio.master || ctx.createGain();
+          V.audio.sfxGain = V.audio.sfxGain || ctx.createGain();
+          V.audio.musicGain = V.audio.musicGain || ctx.createGain();
+          try{ V.audio.master.disconnect(); }catch{}
+          try{ V.audio.sfxGain.disconnect(); }catch{}
+          try{ V.audio.musicGain.disconnect(); }catch{}
+          V.audio.master.connect(ctx.destination);
+          V.audio.sfxGain.connect(V.audio.master);
+          V.audio.musicGain.connect(V.audio.master);
+          if(typeof V.audio.master.gain.value !== 'number') V.audio.master.gain.value = 0.8;
+          if(typeof V.audio.sfxGain.gain.value !== 'number') V.audio.sfxGain.gain.value = 1.0;
+          if(typeof V.audio.musicGain.gain.value !== 'number') V.audio.musicGain.gain.value = 0.75;
+        }
+      }catch(e){ console.warn('ensureVFX audio error', e); }
+      if(typeof V.sfxOn !== 'boolean') V.sfxOn = true;
+      return V;
+    }
+
+    function updateState(){
+      const V = ensureVFX();
+      const ctx = V.audio.ctx;
+      stateEl.textContent = `state: ${ctx.state} | master:${V.audio.master.gain.value.toFixed(2)} sfx:${V.audio.sfxGain.gain.value.toFixed(2)}`;
+      if(ctx.state !== 'running'){
+        showWarn('<strong>Audio is OFF.</strong> Click anywhere or press a test button to enable.');
+      }else{
+        hideWarn();
+      }
+      const S = window.SFX || {loaded:0,total:0};
+      const musicLoaded = Object.values(music.tracks||{}).filter(t => t && t.ready).length;
+      const musicTotal = Object.keys(music.tracks||{}).length;
+      sfxEl.textContent = `samples: ${S.loaded||0}/${S.total||0} music:${musicLoaded}/${musicTotal}`;
+    }
+
+    async function resume(){
+      const V = ensureVFX();
+      try{ if(V.audio.ctx.state !== 'running'){ await V.audio.ctx.resume(); } }catch(e){}
+      updateState();
+    }
+
+    async function loadDefaultSfx(){
+      ensureVFX();
+      window.SFX = window.SFX || {buffers:{}, loaded:0, total:0};
+      const S = window.SFX;
+      const files = {
+        pickup: ['sfx/pickup.wav'],
+        bump:   ['sfx/bump.wav'],
+        goal:   ['sfx/goal_low.wav','sfx/goal_mid.wav','sfx/goal_high.wav'],
+        explosion: ['sfx/explosion.wav'],
+        hazard: ['sfx/hazard.wav'],
+        respawn: ['sfx/respawn.wav']
+      };
+      S.loaded = 0;
+      S.total = Object.values(files).reduce((a,b)=>a+b.length, 0);
+      updateState();
+
+      const ctx = VFX.audio.ctx;
+      for(const [name, list] of Object.entries(files)){
+        const arr = [];
+        for(const path of list){
+          try{
+            const ab = await fetch(path).then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status+' '+path); return r.arrayBuffer(); });
+            const buf = await ctx.decodeAudioData(ab);
+            arr.push(buf); S.loaded++; updateState();
+          }catch(e){ console.warn('SFX load failed', name, path, e); }
+        }
+        S.buffers[name] = arr.length>1 ? arr : (arr[0] || null);
+      }
+      updateState();
+    }
+
+    function ensureMusicTracks(){
+      ensureVFX();
+      if(music.initialized) return;
+      music.initialized = true;
+      const ctx = VFX.audio.ctx;
+      const defs = { menu:'sfx/astral_menu.mp3', gameplay:'sfx/astral_gameplay.mp3' };
+      for(const [key, path] of Object.entries(defs)){
+        try{
+          const el = new Audio(path);
+          el.loop = true; el.preload = 'auto'; el.crossOrigin = 'anonymous';
+          const gain = ctx.createGain(); gain.gain.value = key === 'menu' ? 0.55 : 0.75;
+          let src = null;
+          try{
+            src = ctx.createMediaElementSource(el);
+            src.connect(gain).connect(VFX.audio.musicGain);
+          }catch(e){
+            console.warn('music source failed', key, e);
+          }
+          music.tracks[key] = { el, gain, src, ready:false, failed:false };
+          el.addEventListener('canplay', ()=>{ music.tracks[key].ready = true; updateState(); });
+          el.addEventListener('error', ()=>{ music.tracks[key].failed = true; updateState(); });
+        }catch(err){ console.warn('music setup error', key, err); }
+      }
+      updateState();
+    }
+
+    async function playMusic(key){
+      ensureMusicTracks();
+      const track = music.tracks[key];
+      if(!track || track.failed) return;
+      if(music.current === key && !track.el.paused) return;
+      Object.entries(music.tracks).forEach(([k, t])=>{
+        if(k !== key && t && t.el && !t.el.paused){ try{ t.el.pause(); }catch{} }
+      });
+      try{
+        await resume();
+        await track.el.play();
+        music.current = key;
+      }catch(e){ console.warn('music play failed', key, e); }
+    }
+
+    async function resumeAndPrime(){
+      await resume();
+      ensureMusicTracks();
+      if(!(window.SFX && window.SFX.loaded)) await loadDefaultSfx();
+      audioPrimed = true;
+    }
+
+    window.setMusicMood = function(mood){
+      if(!mood) return;
+      playMusic(mood);
+    };
+
+    function hardenPlaySFX(){
+      const V = ensureVFX();
+      window.playSFX = function(type, opts={}){
+        try{
+          if(!V.sfxOn) return;
+          const ctx = V.audio.ctx;
+          let buf = window.SFX && window.SFX.buffers ? window.SFX.buffers[type] : null;
+          if(!buf) { console.warn('SFX missing', type); return; }
+          if(Array.isArray(buf)) buf = buf[Math.floor(Math.random()*buf.length)] || buf[0];
+          if(buf && buf.buffer instanceof AudioBuffer) buf = buf.buffer;
+          if(!(buf instanceof AudioBuffer)){ console.warn('Bad SFX buffer for', type, buf); return; }
+          const src = ctx.createBufferSource();
+          src.buffer = buf;
+          const g = ctx.createGain();
+          const vol = Math.max(0, Math.min(1, (opts && opts.vol!=null) ? opts.vol : 1));
+          g.gain.value = vol;
+          src.connect(g).connect(V.audio.sfxGain).connect(V.audio.master);
+          src.start();
+        }catch(e){ console.warn('playSFX error', e); }
+      };
+    }
+
+    // --- Gameplay SFX hooks (non-invasive) ---
+    function vecMag(v){ return v && typeof v.x==='number' && typeof v.y==='number' ? Math.hypot(v.x, v.y) : 0; }
+    function dist(a,b){ return (a && b) ? Math.hypot((a.x||a.pos?.x||0)-(b.x||b.pos?.x||0), (a.y||a.pos?.y||0)-(b.y||b.pos?.y||0)) : 1e9; }
+
+    function guessPlayers(){
+      // Try common globals
+      const candidates = Object.values(window).filter(v => Array.isArray(v) && v.length && v.length<64);
+      for(const arr of candidates){
+        try{
+          const ok = arr.every(o => o && (('pos' in o && typeof o.pos.x==='number') || ('x'in o && 'y'in o)));
+          if(ok) return arr;
+        }catch{}
+      }
+      return [];
+    }
+
+    function getCore(){
+      if(window.core) return window.core;
+      // heuristic search
+      const keys = Object.keys(window);
+      for(const k of keys){
+        const v = window[k];
+        if(v && typeof v==='object'){
+          try{
+            if(('pos' in v) && ('vel' in v) && typeof v.pos.x==='number' && typeof v.vel.x==='number'){
+              // require it to be near center-ish sometimes
+              return v;
+            }
+          }catch{}
+        }
+      }
+      return null;
+    }
+
+    function getScoreTotal(){
+      const s = window.score;
+      if(!s) return 0;
+      let sum = 0;
+      for(const k of Object.keys(s)){
+        const v = s[k];
+        if(typeof v === 'number') sum += v;
+      }
+      return sum;
+    }
+
+    function installGameplayHooks(){
+      ensureVFX();
+      let lastScore = getScoreTotal();
+      let lastOwner = null;
+      let lastSpeed = 0;
+
+      const players = guessPlayers();
+      const core = getCore();
+
+      // Fallback ticker independent of p5 draw
+      setInterval(()=>{
+        const c = getCore() || core;
+        if(!c) return;
+
+        // bump on speed spikes
+        const speed = c.vel ? Math.hypot(c.vel.x||0, c.vel.y||0) : (c.speed || vecMag(c.v || {}));
+        if(speed - lastSpeed > 4){ // threshold tweakable
+          window.playSFX && playSFX('bump', {vol: 0.7});
+        }
+        lastSpeed = speed;
+
+        // pickup on nearest-player change within radius
+        const ps = guessPlayers() || players;
+        if(ps && ps.length){
+          let nearest=null, nd=1e9;
+          for(const p of ps){
+            const d = dist(p.pos||p, c.pos||c);
+            if(d<nd){ nd=d; nearest=p; }
+          }
+          if(nearest && nd < 36 && nearest !== lastOwner){
+            lastOwner = nearest;
+            window.playSFX && playSFX('pickup', {vol: 0.9});
+          }
+        }
+
+        // goal on score increment
+        const sum = getScoreTotal();
+        if(sum > lastScore){
+          lastScore = sum;
+          window.playSFX && playSFX('goal', {vol: 1});
+        }
+      }, 1000/30);
+    }
+
+    function attachUI(){
+      updateState();
+      vol.addEventListener('input', e => { VFX.audio.sfxGain.gain.value = +e.target.value; VFX.audio.musicGain.gain.value = Math.max(0.2, +e.target.value * 0.8); updateState(); });
+      btnBeep.addEventListener('click', async () => {
+        await resumeAndPrime();
+        const ctx = VFX.audio.ctx;
+        const o = ctx.createOscillator(); const g = ctx.createGain();
+        g.gain.value = 0.25; o.frequency.value = 440;
+        o.connect(g).connect(VFX.audio.master); o.start(); setTimeout(()=>o.stop(), 180);
+      });
+      btnPickup.addEventListener('click', async () => { await resumeAndPrime(); window.playSFX && playSFX('pickup', {vol: +vol.value}); });
+      btnGoal.addEventListener('click', async () => { await resumeAndPrime(); window.playSFX && playSFX('goal', {vol: +vol.value}); });
+      btnLoad.addEventListener('click', async () => { await resumeAndPrime(); });
+
+        btnFullscreen.addEventListener('click', () => {
+          if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen();
+          } else {
+            document.exitFullscreen();
+          }
+        });
+
+      document.addEventListener('fullscreenchange', () => {
+          uiPanel.style.display = 'none';
+      });
+
+      window.addEventListener('pointerdown', async () => {
+        if(audioPrimed) return;
+        await resumeAndPrime();
+      }, {once:true, capture:true});
+
+      window.addEventListener('keydown', async () => {
+        if(audioPrimed) return;
+        await resumeAndPrime();
+      }, {once:true, capture:true});
+    }
+
+    function boot(){
+      ensureVFX();
+      ensureMusicTracks();
+      loadDefaultSfx();
+      hardenPlaySFX();
+      attachUI();
+      installGameplayHooks();
+      console.log('FIXED6 active // p5, loader, music + gameplay SFX hooks installed');
+    }
+
+    if(document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', boot);
+    }else{
+      boot();
+    }
+  })();
+  </script>
+</body>
+</html>
