@@ -326,6 +326,7 @@ body {
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
     import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
     import { VRButton } from "three/addons/webxr/VRButton.js";
+    import { XRControllerModelFactory } from "three/addons/webxr/XRControllerModelFactory.js";
     import * as CANNON from "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js";
 
     const particleSettings = {
@@ -370,6 +371,7 @@ body {
     let pendulumMaterial, pendulumSelfMaterial, missileMaterial, missileContact;
     let missiles = [];
     let missileTimer = 0;
+    let controller1, controller2, controllerGrip1, controllerGrip2;
     const anchorHeight = 2.2;
     const scratchVec3 = new THREE.Vector3();
     const scratchVec4 = new THREE.Vector3();
@@ -432,6 +434,7 @@ body {
       renderer.setSize(viewport.clientWidth, viewport.clientHeight);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.xr.enabled = false;
+      renderer.xr.setReferenceSpaceType?.("local-floor");
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -453,6 +456,7 @@ body {
       playerRig = new THREE.Group();
       playerRig.add(camera);
       scene.add(playerRig);
+      setupControllers();
       controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
       controls.target.set(0.2, 1, 0);
@@ -462,9 +466,11 @@ body {
         camera.rotation.set(0, 0, 0);
         controls.enabled = false;
         playerRig.position.copy(lastFlatView.pos);
+        updateControllerVisibility(true);
       });
       renderer.xr.addEventListener("sessionend", () => {
         controls.enabled = true;
+        updateControllerVisibility(false);
       });
 
       const hemi = new THREE.HemisphereLight("#b5c8ff", "#0b0f1f", 0.0);
@@ -1242,6 +1248,38 @@ body {
     function updateFlash(dt) {
       renderer.toneMappingExposure = 1.1 + flash * 0.6;
       flash = Math.max(0, flash - dt * 2.2);
+    }
+
+    function setupControllers() {
+      const controllerModelFactory = new XRControllerModelFactory();
+      controller1 = renderer.xr.getController(0);
+      controller2 = renderer.xr.getController(1);
+      [controller1, controller2].forEach(ctrl => {
+        if (!ctrl) return;
+        const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
+        const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0x7ad7f0 }));
+        line.name = "laser";
+        line.scale.z = 0;
+        ctrl.add(line);
+        playerRig.add(ctrl);
+      });
+      controllerGrip1 = renderer.xr.getControllerGrip(0);
+      controllerGrip2 = renderer.xr.getControllerGrip(1);
+      if (controllerGrip1) {
+        controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+        playerRig.add(controllerGrip1);
+      }
+      if (controllerGrip2) {
+        controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
+        playerRig.add(controllerGrip2);
+      }
+      updateControllerVisibility(false);
+    }
+
+    function updateControllerVisibility(visible) {
+      [controller1, controller2, controllerGrip1, controllerGrip2].forEach(ctrl => {
+        if (ctrl) ctrl.visible = visible;
+      });
     }
 
     function spawnMissile() {
