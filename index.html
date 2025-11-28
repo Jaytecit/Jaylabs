@@ -371,50 +371,64 @@
                 0 0 30px rgba(255, 107, 0, 0.25);
         }
 
-        .updates {
-            margin: 2.4rem 0 1.6rem;
+        .update-snippet {
+            margin-top: 0.5rem;
+            padding: 0.55rem 0.65rem 0.65rem;
+            border-radius: 0.8rem;
+            border: 1px solid rgba(0, 217, 255, 0.18);
+            background: rgba(0, 0, 0, 0.35);
+            box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
         }
 
-        .updates h2 {
-            margin: 0 0 0.6rem;
-            letter-spacing: 0.06em;
+        .update-snippet h3 {
+            margin: 0 0 0.35rem;
+            font-size: 0.92rem;
+            letter-spacing: 0.04em;
             text-transform: uppercase;
-            font-size: 1.1rem;
             color: var(--accent-cyan);
         }
 
-        .update-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 0.9rem;
-        }
-
-        .update-card {
-            border: 1px solid rgba(0, 217, 255, 0.18);
-            border-radius: 0.9rem;
-            padding: 0.9rem 1rem;
-            background: rgba(0, 0, 0, 0.4);
-            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
-        }
-
-        .update-card .pill {
-            margin: 0 0 0.35rem;
-            display: inline-block;
-        }
-
-        .update-card h3 {
+        .update-snippet ul {
             margin: 0;
-            font-size: 1rem;
-            letter-spacing: 0.03em;
-        }
-
-        .update-card ul {
-            margin: 0.35rem 0 0;
-            padding-left: 1.1rem;
+            padding-left: 1.05rem;
+            font-size: 0.86rem;
             color: var(--text-2);
-            font-size: 0.92rem;
             line-height: 1.5;
         }
+
+        .dev-note {
+            margin-top: 2.1rem;
+            padding: 1rem 1.05rem;
+            border-radius: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(0, 0, 0, 0.25);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.32);
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 0.8rem 1rem;
+            align-items: center;
+        }
+
+        .dev-note h3 { margin: 0; font-size: 1rem; letter-spacing: 0.02em; color: var(--text-1); }
+        .dev-note p { margin: 0.2rem 0 0; color: var(--text-2); font-size: 0.93rem; }
+        .dev-link { margin-top: 0.4rem; }
+        .tooltip { position: relative; display: inline-flex; align-items: center; gap: 0.35rem; }
+        .tooltip span { font-weight: 600; letter-spacing: 0.03em; }
+        .tooltip .bubble {
+            position: absolute;
+            left: 0; top: 130%;
+            width: 260px;
+            padding: 0.6rem 0.7rem;
+            border-radius: 0.7rem;
+            background: rgba(0,0,0,0.85);
+            border: 1px solid rgba(255,255,255,0.12);
+            color: var(--text-2);
+            font-size: 0.9rem;
+            box-shadow: 0 8px 18px rgba(0,0,0,0.45);
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.15s ease;
+        }
+        .tooltip:hover .bubble, .tooltip:focus-within .bubble { opacity: 1; }
 
         @media (max-width: 600px) {
             header {
@@ -459,11 +473,6 @@
             Everything here is <strong>work-in-progress</strong>, weird, or both.
         </p>
 
-        <section class="updates" aria-label="Latest updates">
-            <h2>Latest updates</h2>
-            <div class="update-grid" id="updateGrid" aria-live="polite"></div>
-        </section>
-
         <section class="grid">
             <a class="card" href="games.html">
                 <div class="pill">Games</div>
@@ -471,6 +480,14 @@
                 <p>
                     Aetherium League, Astral Core, Defendorks, and future cabinet-smashers live here. Pick a mode and melt pixels.
                 </p>
+                <div class="update-snippet">
+                    <h3>Latest</h3>
+                    <ul>
+                        <li>Touch controls (stick + buttons) live across games (beta).</li>
+                        <li>Chrono Clash added to the Games hub.</li>
+                        <li>Compatibility cards inside each game page.</li>
+                    </ul>
+                </div>
                 <div class="play-label">
                     <div class="play-dot"></div>
                     <span>Open games hub</span>
@@ -483,6 +500,13 @@
                 <p>
                     VR-ready builds and experiments. Play in PCVR or from the Quest browser directly.
                 </p>
+                <div class="update-snippet">
+                    <h3>Latest</h3>
+                    <ul>
+                        <li>Optimized for PCVR / Quest-browser; mobile Safari not supported.</li>
+                        <li>Use a headset-friendly browser for best results.</li>
+                    </ul>
+                </div>
                 <div class="play-label">
                     <div class="play-dot"></div>
                     <span>Enter PCVR lab</span>
@@ -495,6 +519,13 @@
                 <p>
                     Harmonograph Studio, Spirograph Deluxe, and more visual toys. Bend color, motion, and symmetry.
                 </p>
+                <div class="update-snippet">
+                    <h3>Latest</h3>
+                    <ul>
+                        <li>Touch support planned; currently desktop-first.</li>
+                        <li>Tap once on mobile to unlock audio-reactive features.</li>
+                    </ul>
+                </div>
                 <div class="play-label">
                     <div class="play-dot"></div>
                     <span>Open generators hub</span>
@@ -513,12 +544,13 @@
         <section class="dev-note">
             <div class="pill">Open Source</div>
             <div>
-                <h3>Build, remix, or give feedback</h3>
+                <h3>Feedback & expansions welcome</h3>
                 <p>
-                    Code lives on GitHub (MIT). Fork it, open issues (Discussions now open), or ship improvements - credit appreciated. Original music/audio is not licensed for reuse; please ask first.
+                    The code is open—fork it, remix it, or drop ideas. I'm looking for feedback and collaborators to grow these experiments.
                 </p>
-                <a class="dev-link" href="https://github.com/Jaytecit/Jaylabs" target="_blank" rel="noopener">
-                    View the code on GitHub &#8599;
+                <a class="dev-link tooltip" href="https://github.com/Jaytecit/Jaylabs" target="_blank" rel="noopener">
+                    <span>GitHub &#8599;</span>
+                    <span class="bubble">Open an issue, share thoughts, or ship a PR if you feel like expanding a game or tool.</span>
                 </a>
             </div>
         </section>
