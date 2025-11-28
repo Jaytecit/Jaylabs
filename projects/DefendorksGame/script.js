@@ -172,19 +172,69 @@ window.addEventListener('mouseup', e => {
 });
 window.addEventListener('contextmenu', e => e.preventDefault());
 
-// Touch bindings
-const bindTouch = (id, enter, exit) => {
-  const el = document.getElementById(id);
-  if(!el) return;
-  el.addEventListener('touchstart', e => { e.preventDefault(); AudioSys.init(); enter(); });
-  el.addEventListener('touchend', e => { e.preventDefault(); exit(); });
+// Touch bindings (thumbstick style)
+const mobileInput = { active:false, x:0, y:0 };
+const updateMobileVec = (dx, dy, radius) => {
+  const dist = Math.min(Math.hypot(dx, dy), radius);
+  const ang = Math.atan2(dy, dx);
+  const nx = Math.cos(ang) * dist;
+  const ny = Math.sin(ang) * dist;
+  mobileInput.x = nx / radius;
+  mobileInput.y = ny / radius;
 };
-bindTouch('btnUp', () => Input.keys['ArrowUp']=true, () => Input.keys['ArrowUp']=false);
-bindTouch('btnDown', () => Input.keys['ArrowDown']=true, () => Input.keys['ArrowDown']=false);
-bindTouch('btnLeft', () => Input.keys['ArrowLeft']=true, () => Input.keys['ArrowLeft']=false);
-bindTouch('btnRight', () => Input.keys['ArrowRight']=true, () => Input.keys['ArrowRight']=false);
-bindTouch('btnFire', () => Input.keys['Space']=true, () => Input.keys['Space']=false);
-bindTouch('btnBomb', () => Input.keys['ShiftLeft']=true, () => Input.keys['ShiftLeft']=false);
+(() => {
+  const stick = document.getElementById('touchStick');
+  const knob = document.getElementById('touchKnob');
+  const btnFire = document.getElementById('btnFire');
+  const btnBomb = document.getElementById('btnBomb');
+  if (!stick || !knob) return;
+  const radius = 60;
+  let activeId = null;
+  const setKnob = (dx, dy) => {
+    const dist = Math.min(Math.hypot(dx, dy), radius);
+    const ang = Math.atan2(dy, dx);
+    const nx = Math.cos(ang) * dist;
+    const ny = Math.sin(ang) * dist;
+    knob.style.transform = `translate(calc(-50% + ${nx}px), calc(-50% + ${ny}px))`;
+    updateMobileVec(nx, ny, radius);
+    Input.keys['ArrowLeft'] = mobileInput.x < -0.2;
+    Input.keys['ArrowRight'] = mobileInput.x > 0.2;
+    Input.keys['ArrowUp'] = mobileInput.y < -0.2;
+    Input.keys['ArrowDown'] = mobileInput.y > 0.2;
+  };
+  const clearStick = () => {
+    activeId = null;
+    knob.style.transform = 'translate(-50%, -50%)';
+    updateMobileVec(0, 0, radius);
+    Input.keys['ArrowLeft']=Input.keys['ArrowRight']=Input.keys['ArrowUp']=Input.keys['ArrowDown']=false;
+  };
+  const onMove = (e) => {
+    if (activeId === null || e.pointerId !== activeId) return;
+    const rect = stick.getBoundingClientRect();
+    const dx = e.clientX - (rect.left + rect.width/2);
+    const dy = e.clientY - (rect.top + rect.height/2);
+    setKnob(dx, dy);
+  };
+  stick.addEventListener('pointerdown', e => {
+    activeId = e.pointerId;
+    stick.setPointerCapture(activeId);
+    AudioSys.init();
+    onMove(e);
+  });
+  stick.addEventListener('pointermove', onMove);
+  stick.addEventListener('pointerup', clearStick);
+  stick.addEventListener('pointercancel', clearStick);
+
+  const bindBtn = (btn, key) => {
+    if(!btn) return;
+    btn.addEventListener('pointerdown', e => { e.preventDefault(); AudioSys.init(); Input.keys[key]=true; });
+    const up = e => { e.preventDefault(); Input.keys[key]=false; };
+    btn.addEventListener('pointerup', up);
+    btn.addEventListener('pointercancel', up);
+  };
+  bindBtn(btnFire, 'Space');
+  bindBtn(btnBomb, 'ShiftLeft');
+})();
 
 // Gamepad bindings
 const GamepadState = { deadzone: 0.18 };
