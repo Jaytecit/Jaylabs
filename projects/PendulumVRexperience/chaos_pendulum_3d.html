@@ -73,9 +73,11 @@ body {
       width: 100%;
       height: 100%;
       overflow: hidden;
-      perspective: 600px;
+      perspective: 900px;
       color: #ffe6b8;
       font-family: "Pathway Gothic One", "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+      mask-image: linear-gradient(transparent 0%, #000 16%, #000 84%, transparent 100%);
+      -webkit-mask-image: linear-gradient(transparent 0%, #000 16%, #000 84%, transparent 100%);
     }
     .intro-title {
       position: absolute;
@@ -92,15 +94,20 @@ body {
     }
     .crawl {
       position: absolute;
-      bottom: -200%;
+      bottom: -30%;
       width: 100%;
       text-align: center;
-      font-size: 40px;
-      line-height: 1.7;
+      font-size: 38px;
+      line-height: 1.8;
       transform-origin: 50% 100%;
-      transform: rotateX(45deg) translateZ(0);
+      transform: rotateX(22deg) translateZ(0);
       white-space: pre-wrap;
       text-shadow: 0 0 20px rgba(0,0,0,0.9);
+      animation: star-crawl 32s linear forwards;
+    }
+    @keyframes star-crawl {
+      0% { transform: translateY(10%) rotateX(22deg) translateZ(0); opacity: 1; }
+      100% { transform: translateY(-200%) rotateX(22deg) translateZ(260px); opacity: 1; }
     }
     .intro-actions {
       position: absolute;
@@ -387,6 +394,7 @@ body {
     let lastFlatView = { pos: new THREE.Vector3(), target: new THREE.Vector3() };
     let introActive = false;
     let crawlStart = 0;
+    let crawlTimer = null;
     let panActive = false;
     let panStart = 0;
     const panDuration = 4000;
@@ -433,7 +441,7 @@ body {
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setSize(viewport.clientWidth, viewport.clientHeight);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      renderer.xr.enabled = false;
+      renderer.xr.enabled = true;
       renderer.xr.setReferenceSpaceType?.("local-floor");
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -460,7 +468,14 @@ body {
       controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
       controls.target.set(0.2, 1, 0);
-      renderer.xr.addEventListener("sessionstart", () => {
+      renderer.xr.addEventListener("sessionstart", async () => {
+        const session = renderer.xr.getSession();
+        if (session?.requestReferenceSpace) {
+          try {
+            const ref = await session.requestReferenceSpace("local-floor");
+            renderer.xr.setReferenceSpace(ref);
+          } catch (e) { /* ignore */ }
+        }
         // Reset camera so XR pose isn't compounded with orbit transforms
         camera.position.set(0, 0, 0);
         camera.rotation.set(0, 0, 0);
@@ -1114,12 +1129,18 @@ body {
       ];
       const crawl = document.getElementById("crawl");
       crawl.textContent = lines.join("\n\n");
+      crawl.style.animation = "none";
+      // Force reflow to restart animation cleanly
+      void crawl.offsetHeight;
+      crawl.style.animation = "star-crawl 32s linear forwards";
       document.getElementById("introWrap").classList.remove("hidden");
       uiVisible = false;
       updateUIVisibility();
       introActive = true;
       state.running = false;
       crawlStart = performance.now();
+      if (crawlTimer) clearTimeout(crawlTimer);
+      crawlTimer = setTimeout(endIntro, 34000);
       // Face away from the pendulum during intro for a later pan reveal
       if (controls) {
         controls.target.set(0, 12, -18);
@@ -1202,35 +1223,13 @@ body {
     }
 
     function updateIntro() {
-      if (!introActive) return;
-      const crawl = document.getElementById("crawl");
-      const elapsed = (performance.now() - crawlStart) / 1000;
-      const duration = 45; // seconds for full crawl
-      const t = Math.min(1, elapsed / duration);
-      const start = -142;
-      const end = 50;
-      const offset = start + (end - start) * t;
-      const fontBase = 50; // keep text intrinsically constant
-      const lineBase = 1.7;
-      // perspective shrink based only on path position
-      const scale = Math.max(0.2, 1 - t * 0.25);
-      const fadeStart = 0.75;
-      const fadeSpan = 0.25;
-      const fadeT = Math.min(1, Math.max(0, (t - fadeStart) / fadeSpan));
-      const opacity = 1 - fadeT; // only fades near the top
-      crawl.style.bottom = `${offset}%`;
-      crawl.style.transform = `rotateX(45deg) translateZ(-${t * 320}px) scale(${scale})`;
-      crawl.style.fontSize = `${fontBase}px`;
-      crawl.style.lineHeight = `${lineBase}`;
-      crawl.style.opacity = opacity;
-      if (t >= 1) {
-        endIntro();
-      }
+      // Animation handled via CSS; nothing to update per frame.
     }
 
     function endIntro() {
       if (!introActive) return;
       introActive = false;
+      if (crawlTimer) { clearTimeout(crawlTimer); crawlTimer = null; }
       state.running = true;
       document.getElementById("introWrap").classList.add("intro-pan");
       startPanToPendulum();
