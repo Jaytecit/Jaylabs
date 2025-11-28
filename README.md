@@ -5,6 +5,7 @@ Static site for JayLabs experiments: playable arcade-style games, pattern genera
 ## What's inside
 - `index.html` - landing page that links to the hubs.
 - `games.html` - cards that launch the current games:
+  - `projects/Chrono Clash/index.html` (5v5 chrono-ball tournament with ultimates, wind, and power-ups)
   - `projects/Astral Core/AstralCore.html` (zero-g arena core-run with dash/phase tools)
   - `projects/AetheriumLeagueGame/AetheriumLeague.html` (p5.js cyber paddle duels)
   - `projects/DefendorksGame/Defendorks.html` (Defender-inspired arcade remix)

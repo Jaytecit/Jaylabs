@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jay Martooni’s Chrono Clash — MonkeyPack</title>
+  <style>
+    :root{
+      --ink:#e6e6e6; --bg:#0a0c10; --muted:#8e94a0;
+      --jay:#7df9ff; --accent:#ff4dff; --good:#7CFF7C; --bad:#FF7C7C;
+    }
+    *{box-sizing:border-box}
+    html, body{height:100%}
+    body{
+      margin:0; background:radial-gradient(1200px 1200px at 80% -10%, #112 0%, #0a0c10 40%, #05070a 70%, #000 100%);
+      color:var(--ink); font-family:system-ui,Segoe UI,Roboto,Inter,Arial,sans-serif; overflow:hidden;
+    }
+    #ui{
+      position:fixed; inset:0; pointer-events:none;
+    }
+    #topbar{
+      position:absolute; left:0; right:0; top:0; height:52px; display:flex; align-items:center; gap:.75rem;
+      background:linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,.2));
+      border-bottom:1px solid rgba(255,255,255,.05);
+      padding:0 .75rem; pointer-events:auto; backdrop-filter: blur(6px);
+    }
+    .brand{display:flex; align-items:center; gap:.5rem; font-weight:700; letter-spacing:.4px}
+    .brand .dot{width:10px; height:10px; border-radius:50%; background:var(--jay); box-shadow:0 0 10px var(--jay), 0 0 24px var(--jay);}
+    .brand .name{opacity:.9}
+    .spacer{flex:1}
+    .btn{
+      border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.06); color:var(--ink);
+      padding:.45rem .75rem; border-radius:.9rem; cursor:pointer; user-select:none; font-weight:600;
+      transition:transform .06s ease, background .2s ease, border-color .2s ease;
+    }
+    .btn:hover{transform:translateY(-1px); background:rgba(255,255,255,.1); border-color:rgba(255,255,255,.25)}
+    .btn:active{transform:translateY(0)}
+    .tog.on{background:rgba(125,249,255,.12); border-color:rgba(125,249,255,.5)}
+    .tog.off{background:rgba(255,77,255,.12); border-color:rgba(255,77,255,.5)}
+    #foot{
+      position:absolute; left:0; right:0; bottom:6px; text-align:center; font-size:12px; color:var(--muted);
+      text-shadow:0 1px 0 rgba(0,0,0,.6);
+      pointer-events:none;
+    }
+    #startOverlay{
+      position:fixed; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:1rem;
+      background:radial-gradient(1000px 600px at 50% 0%, rgba(125,249,255,.05), rgba(0,0,0,.7)), #000;
+      z-index:10; pointer-events:auto;
+    }
+    #startBox{
+      border:1px solid rgba(255,255,255,.15); background:rgba(0,0,0,.5);
+      padding:2rem 2.4rem; border-radius:1.4rem; backdrop-filter: blur(8px);
+      box-shadow: 0 30px 120px rgba(0,0,0,.4), inset 0 0 40px rgba(125,249,255,.05);
+      text-align:center;
+    }
+    .h1{font-size:clamp(20px, 3vw, 36px); font-weight:900; letter-spacing:.8px}
+    .sub{font-size:14px; color:var(--muted); margin-top:.25rem}
+    #startBtn{font-size:18px; padding:.8rem 1.2rem; border-radius:1rem; background:linear-gradient(135deg, var(--jay), var(--accent)); border:none; color:#000; font-weight:900; cursor:pointer; margin-top:1rem}
+    #startBtn:hover{filter:saturate(1.2) brightness(1.05)}
+    /* --- "Monkey attached" cuteness --- */
+    #monkey{
+      position:absolute; right:12px; top:58px; width:44px; height:44px; font-size:28px; display:grid; place-items:center;
+      border-radius:50%; background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.15); pointer-events:auto; cursor:grab;
+      transition: transform .2s ease;
+    }
+    #monkey:active{cursor:grabbing}
+    #monkey:hover{transform:rotate(-6deg) scale(1.06)}
+    #monkeyTip{
+      position:absolute; right:64px; top:62px; font-size:12px; background:rgba(0,0,0,.6); padding:.35rem .55rem; border-radius:.6rem;
+      border:1px solid rgba(255,255,255,.1); color:var(--muted); pointer-events:none;
+    }
+    /* Canvas should fill the viewport */
+    #defaultCanvas0{ display:block; }
+  </style>
+
+  <!-- p5.js + p5.sound from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/addons/p5.sound.min.js"></script>
+
+  <!-- Game file -->
+  <script defer src="./ChronoClash.js"></script>
+
+  <script>
+    // Tiny helpers wired to the overlay controls
+    const AudioCtl = {
+      muted:false,
+      toggle(){
+        try{
+          const ac = getAudioContext?.();
+          if (ac && ac.state !== 'running') { ac.resume(); }
+        }catch(e){}
+        this.muted = !this.muted;
+        if (typeof masterVolume === 'function') {
+          masterVolume(this.muted ? 0 : 1);
+        }
+        const b = document.getElementById('btnAudio');
+        b.classList.toggle('on', !this.muted);
+        b.classList.toggle('off', this.muted);
+        b.textContent = this.muted ? 'Audio: Off' : 'Audio: On';
+      }
+    };
+    function goFull(){
+      const el = document.documentElement;
+      if (!document.fullscreenElement) el.requestFullscreen?.();
+      else document.exitFullscreen?.();
+    }
+    function hideOverlay(){
+      const box = document.getElementById('startOverlay');
+      box.style.display='none';
+      try{
+        // best effort: kick audio once via user gesture
+        if (typeof userStartAudio === 'function') userStartAudio();
+      }catch(e){}
+    }
+    // draggable monkey
+    let drag = null; let startX=0, startY=0, sx=0, sy=0;
+    function onMonkeyDown(e){
+      drag = document.getElementById('monkey');
+      const r = drag.getBoundingClientRect();
+      startX = e.clientX; startY = e.clientY; sx = r.left; sy = r.top;
+      window.addEventListener('mousemove', onMonkeyMove);
+      window.addEventListener('mouseup', onMonkeyUp);
+    }
+    function onMonkeyMove(e){
+      if (!drag) return;
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      drag.style.left = (sx + dx) + 'px';
+      drag.style.top  = (sy + dy) + 'px';
+      drag.style.right = 'auto';
+    }
+    function onMonkeyUp(){
+      window.removeEventListener('mousemove', onMonkeyMove);
+      window.removeEventListener('mouseup', onMonkeyUp);
+      drag = null;
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('monkey').addEventListener('mousedown', onMonkeyDown);
+      document.getElementById('btnAudio').classList.add('on');
+    });
+  </script>
+</head>
+<body>
+  <!-- Start gate (fixes Autoplay policy + gives a clean entry point) -->
+  <div id="startOverlay">
+    <div id="startBox">
+      <div class="h1">JayLabs — Chrono Clash</div>
+      <div class="sub">Click to enter. Once inside, click the canvas to lock the mouse. Gamepad highly recommended.</div>
+      <button id="startBtn" onclick="hideOverlay()">Enter JayLabs Arena</button>
+    </div>
+  </div>
+
+  <div id="ui" aria-hidden="true">
+    <div id="topbar">
+      <div class="brand"><span class="dot"></span><span class="name">JayLabs • Martooni Edition</span></div>
+      <div class="spacer"></div>
+      <button id="btnAudio" class="btn tog on" onclick="AudioCtl.toggle()">Audio: On</button>
+      <button class="btn" onclick="goFull()">Fullscreen</button>
+    </div>
+
+    <div id="monkey" title="Drag me!">🐒</div>
+    <div id="monkeyTip">Monkey attached. For vibes.</div>
+
+    <div id="foot">Tip: Left‑click to advance menus. During play, ESC releases mouse lock.</div>
+  </div>
+</body>
+</html>
