@@ -121,3 +121,11 @@ button:hover { background: var(--neon-green); color: #000; box-shadow: 0 0 20px 
 .touch-btn.primary { border-color: var(--neon-green); color: var(--neon-green); }
 .touch-btn:active { transform: translateY(1px); background: rgba(255,255,255,0.14); }
 @media (hover: none) and (pointer: coarse) { #mobileControls { display: flex; } }
+
+.compat-card {
+  position: fixed; left: 12px; top: 12px; padding: 10px 12px;
+  border-radius: 10px; border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(0,0,0,0.5); color: #e8f0ff;
+  font-size: 12px; letter-spacing: 0.4px; z-index: 25; max-width: 260px;
+  box-shadow: 0 0 14px rgba(0,0,0,0.5);
+}

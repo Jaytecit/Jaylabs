@@ -82,6 +82,7 @@
     .touch-btn.primary{border-color:rgba(125,249,255,0.85);color:#bff}
     .touch-btn:active{transform:translateY(1px);background:rgba(255,255,255,0.14)}
     @media (hover:none) and (pointer:coarse){#mobileControls{display:flex}}
+    .compat-card{position:fixed;left:12px;top:12px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.45);color:#e8e8e8;font-size:12px;letter-spacing:0.4px;z-index:15;max-width:260px;box-shadow:0 0 14px rgba(0,0,0,0.4)}
   </style>
 
   <!-- p5.js + p5.sound from CDN -->
@@ -158,6 +159,11 @@
       <div class="sub">Click to enter. Once inside, click the canvas to lock the mouse. Gamepad highly recommended.</div>
       <button id="startBtn" onclick="hideOverlay()">Enter JayLabs Arena</button>
     </div>
+  </div>
+
+  <div class="compat-card">
+    Platforms: Desktop Chrome/Edge; Mobile touch (beta, no pointer-lock aiming).<br>
+    Controls: Mouse + Space, Gamepad stick + buttons, Touch stick + Pulse/Dash/Ult.
   </div>
 
   <div id="mobileControls">

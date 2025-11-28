@@ -17,6 +17,7 @@
     .warn{position:fixed;left:50%;top:18px;transform:translateX(-50%);background:#1a2438;border:1px solid #304164;color:#cfe7ff;padding:10px 14px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.5);z-index:10000}
     .warn strong{color:#7bd9ff}
     canvas{display:block}
+    .compat-card{position:fixed;left:12px;top:12px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.45);color:#e8f0ff;font-size:12px;letter-spacing:0.4px;z-index:9000;max-width:260px;box-shadow:0 0 14px rgba(0,0,0,0.4)}
     /* Mobile touch controls */
     #mobileControls{position:fixed;inset:auto 12px 18px 12px;display:none;justify-content:space-between;align-items:flex-end;gap:12px;z-index:12000;pointer-events:none}
     #mobileControls.show{display:flex}
@@ -47,6 +48,11 @@
     </div>
   </div>
   <div id="warn" class="warn" style="display:none"></div>
+
+  <div class="compat-card">
+    Platforms: Desktop Chrome/Edge; Mobile touch (beta).<br>
+    Controls: Keyboard WASD/Space/Shift/E/Q, Gamepad stick + ABXY, Touch stick + Dash/Phase/Ult/Tractor.
+  </div>
 
   <div id="mobileControls">
     <div class="touch-stick" id="touchStick">

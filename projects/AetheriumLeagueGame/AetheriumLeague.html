@@ -29,6 +29,7 @@
     .touch-btn.primary { border-color: rgba(80,200,255,0.9); color: #8bf; }
     .touch-btn:active { transform: translateY(1px); background: rgba(255,255,255,0.15); }
     @media (hover: none) and (pointer: coarse) { #mobileControls { display: flex; } }
+    .compat-card { position: fixed; left: 16px; top: 16px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: rgba(230,240,255,0.9); font-size: 12px; letter-spacing: 0.5px; z-index: 12; max-width: 260px; box-shadow: 0 0 14px rgba(0,0,0,0.4); }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.3/lib/p5.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.3/lib/addons/p5.sound.min.js"></script>
@@ -40,6 +41,10 @@
     <span>JayLabs System V.10.2</span>
     <span>Aetherium League</span>
     <span>Visual Fix Applied</span>
+  </div>
+  <div class="compat-card">
+    Platforms: Desktop Chrome/Edge; Mobile touch (beta).<br>
+    Controls: Keyboard WASD/Space/Shift/E, Gamepad stick + A/B/X, Touch stick + Dash/Bash/Overdrive.
   </div>
   <div class="controls-hint" id="control-text">KEYBOARD: WASD Move • SPACE Dash • E Overdrive • SHIFT Bash</div>
 </div>
