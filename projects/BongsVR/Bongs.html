@@ -160,6 +160,7 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { VRButton } from 'three/addons/webxr/VRButton.js';
+        import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import * as CANNON from 'cannon-es';
         import { GUI } from 'lil-gui';
@@ -229,6 +230,7 @@
 
         // Globals
         let scene, camera, renderer, controls, xrRig;
+        let controller1, controller2, controllerGrip1, controllerGrip2;
         let world;
         let physicsObjects = [];
         let pendulumBodies = []; // bobs for collisions
@@ -732,6 +734,7 @@
             xrRig.add(camera);
             scene.add(xrRig);
             camera.position.set(0, 2, 22);
+            setupControllers();
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -740,10 +743,16 @@
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             renderer.xr.enabled = true;
             renderer.xr.addEventListener('sessionstart', () => {
+                camera.position.set(0, 0, 0);
+                camera.rotation.set(0, 0, 0);
                 xrRig.position.set(0, 0, params.vrPathOffsetZ);
+                xrRig.rotation.set(0, 0, 0);
+                updateControllerVisibility(true);
             });
             renderer.xr.addEventListener('sessionend', () => {
                 xrRig.position.set(0, 0, 0);
+                xrRig.rotation.set(0, 0, 0);
+                updateControllerVisibility(false);
             });
             document.body.appendChild(renderer.domElement);
             renderer.domElement.style.opacity = 0;
@@ -1686,6 +1695,38 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function setupControllers() {
+            const controllerModelFactory = new XRControllerModelFactory();
+            controller1 = renderer.xr.getController(0);
+            controller2 = renderer.xr.getController(1);
+            [controller1, controller2].forEach(ctrl => {
+                if (!ctrl) return;
+                const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
+                const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0x66e0ff }));
+                line.name = 'laser';
+                line.scale.z = 0;
+                ctrl.add(line);
+                xrRig.add(ctrl);
+            });
+            controllerGrip1 = renderer.xr.getControllerGrip(0);
+            controllerGrip2 = renderer.xr.getControllerGrip(1);
+            if (controllerGrip1) {
+                controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+                xrRig.add(controllerGrip1);
+            }
+            if (controllerGrip2) {
+                controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
+                xrRig.add(controllerGrip2);
+            }
+            updateControllerVisibility(false);
+        }
+
+        function updateControllerVisibility(visible) {
+            [controller1, controller2, controllerGrip1, controllerGrip2].forEach(ctrl => {
+                if (ctrl) ctrl.visible = visible;
+            });
         }
 
         function animate() {
