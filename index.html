@@ -430,6 +430,38 @@
         }
         .tooltip:hover .bubble, .tooltip:focus-within .bubble { opacity: 1; }
 
+        .recent-changes {
+            margin: 2rem 0 1.6rem;
+            padding: 1rem 1.1rem;
+            border-radius: 1rem;
+            border: 1px solid rgba(0, 217, 255, 0.12);
+            background: rgba(0, 0, 0, 0.32);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+        }
+        .recent-changes h2 {
+            margin: 0 0 0.75rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            font-size: 1.05rem;
+            color: var(--accent-cyan);
+        }
+        .recent-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: grid;
+            gap: 0.6rem;
+        }
+        .recent-item {
+            padding: 0.65rem 0.7rem;
+            border-radius: 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(0, 0, 0, 0.28);
+        }
+        .recent-item h3 { margin: 0 0 0.25rem; font-size: 0.98rem; letter-spacing: 0.03em; }
+        .recent-item .date { font-size: 0.82rem; color: var(--text-2); opacity: 0.9; }
+        .recent-item p { margin: 0.15rem 0 0; color: var(--text-2); font-size: 0.9rem; }
+
         @media (max-width: 600px) {
             header {
                 padding: 1.2rem 1.25rem 1rem;
@@ -554,6 +586,13 @@
                 </a>
             </div>
         </section>
+
+        <section class="recent-changes" aria-label="Recent changes">
+            <h2>Recent changes</h2>
+            <ul id="recentChangesList" class="recent-list">
+                <li class="recent-item">Loading recent updates...</li>
+            </ul>
+        </section>
     </main>
 
     <footer>
@@ -611,6 +650,25 @@
                     <ul>${up.items.map(i => `<li>${i}</li>`).join("")}</ul>
                 </article>
             `).join("");
+        }
+
+        // Recent changes from updates.json
+        const recentList = document.getElementById("recentChangesList");
+        if (recentList) {
+            fetch("updates.json")
+                .then(r => r.json())
+                .then(data => {
+                    recentList.innerHTML = data.map(item => `
+                        <li class="recent-item">
+                            <div class="date">${item.date}</div>
+                            <h3>${item.title}</h3>
+                            <p>${item.summary}</p>
+                        </li>
+                    `).join("");
+                })
+                .catch(() => {
+                    recentList.innerHTML = '<li class="recent-item">Could not load updates right now.</li>';
+                });
         }
 
         // Play logo intro: fade in first frame, play once, then reveal static logo
