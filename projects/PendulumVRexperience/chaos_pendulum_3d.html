@@ -457,6 +457,9 @@ body {
       controls.enableDamping = true;
       controls.target.set(0.2, 1, 0);
       renderer.xr.addEventListener("sessionstart", () => {
+        // Reset camera so XR pose isn't compounded with orbit transforms
+        camera.position.set(0, 0, 0);
+        camera.rotation.set(0, 0, 0);
         controls.enabled = false;
         playerRig.position.copy(lastFlatView.pos);
       });
