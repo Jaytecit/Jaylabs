@@ -71,6 +71,17 @@
     }
     /* Canvas should fill the viewport */
     #defaultCanvas0{ display:block; }
+
+    /* Mobile touch controls */
+    #mobileControls{position:fixed;inset:auto 14px 18px 14px;display:none;justify-content:space-between;align-items:flex-end;gap:12px;z-index:20;pointer-events:none}
+    #mobileControls.show{display:flex}
+    .touch-stick{position:relative;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.22);box-shadow:0 0 12px rgba(0,0,0,0.6);pointer-events:auto;touch-action:none}
+    .touch-stick .thumb{position:absolute;left:50%;top:50%;width:46px;height:46px;border-radius:50%;background:rgba(125,249,255,0.6);border:2px solid rgba(125,249,255,0.9);transform:translate(-50%,-50%);transition:background 0.15s}
+    .touch-buttons{display:flex;flex-direction:column;gap:10px;pointer-events:auto}
+    .touch-btn{min-width:86px;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.35);color:#e6e6e6;font-weight:800;letter-spacing:.6px;text-transform:uppercase;box-shadow:0 0 12px rgba(0,0,0,0.6);touch-action:manipulation}
+    .touch-btn.primary{border-color:rgba(125,249,255,0.85);color:#bff}
+    .touch-btn:active{transform:translateY(1px);background:rgba(255,255,255,0.14)}
+    @media (hover:none) and (pointer:coarse){#mobileControls{display:flex}}
   </style>
 
   <!-- p5.js + p5.sound from CDN -->
@@ -146,6 +157,17 @@
       <div class="h1">JayLabs — Chrono Clash</div>
       <div class="sub">Click to enter. Once inside, click the canvas to lock the mouse. Gamepad highly recommended.</div>
       <button id="startBtn" onclick="hideOverlay()">Enter JayLabs Arena</button>
+    </div>
+  </div>
+
+  <div id="mobileControls">
+    <div class="touch-stick" id="touchStick">
+      <div class="thumb" id="touchKnob"></div>
+    </div>
+    <div class="touch-buttons">
+      <button class="touch-btn primary" id="btnPulse">Pulse</button>
+      <button class="touch-btn" id="btnDash">Dash</button>
+      <button class="touch-btn" id="btnUlt">Ult</button>
     </div>
   </div>
 

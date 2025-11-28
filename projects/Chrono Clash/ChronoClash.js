@@ -15,6 +15,68 @@ let powerUps = []; let nextPowerUpFrame = 0;
 let hypeMeter = { team1: 0, team2: 0 };
 let windVector; let windDrift = 0;
 
+// Touch controls state
+const mobileInput = { active: false, x: 0, y: 0, pulse: false, dash: false, ultimate: false };
+const updateMobileActive = () => {
+  mobileInput.active = Math.abs(mobileInput.x) > 0.02 || Math.abs(mobileInput.y) > 0.02 || mobileInput.pulse || mobileInput.dash || mobileInput.ultimate;
+};
+function initMobileControls() {
+  const container = document.getElementById('mobileControls');
+  const stick = document.getElementById('touchStick');
+  const knob = document.getElementById('touchKnob');
+  const btnPulse = document.getElementById('btnPulse');
+  const btnDash = document.getElementById('btnDash');
+  const btnUlt = document.getElementById('btnUlt');
+  if (!container || !stick || !knob) return;
+
+  const coarse = window.matchMedia('(hover: none) and (pointer: coarse)');
+  const showIfMobile = () => { if (coarse.matches) container.classList.add('show'); };
+  showIfMobile();
+  coarse.addEventListener('change', showIfMobile);
+
+  const radius = 60;
+  let activeId = null;
+  const setVec = (dx, dy) => {
+    const dist = Math.min(Math.hypot(dx, dy), radius);
+    const ang = Math.atan2(dy, dx);
+    const nx = Math.cos(ang) * dist;
+    const ny = Math.sin(ang) * dist;
+    knob.style.transform = `translate(calc(-50% + ${nx}px), calc(-50% + ${ny}px))`;
+    mobileInput.x = nx / radius;
+    mobileInput.y = ny / radius;
+    updateMobileActive();
+  };
+  const onMove = (e) => {
+    if (activeId === null) return;
+    const rect = stick.getBoundingClientRect();
+    const dx = e.clientX - (rect.left + rect.width / 2);
+    const dy = e.clientY - (rect.top + rect.height / 2);
+    setVec(dx, dy);
+  };
+  const clearStick = () => { activeId = null; setVec(0, 0); };
+  stick.addEventListener('pointerdown', (e) => {
+    activeId = e.pointerId;
+    stick.setPointerCapture(activeId);
+    onMove(e);
+    if (!audioStarted && typeof userStartAudio === 'function') { userStartAudio(); audioStarted = true; }
+  });
+  stick.addEventListener('pointermove', (e) => { if (e.pointerId === activeId) onMove(e); });
+  stick.addEventListener('pointerup', clearStick);
+  stick.addEventListener('pointercancel', clearStick);
+
+  const bindBtn = (btn, key) => {
+    if (!btn) return;
+    const down = (e) => { e.preventDefault(); mobileInput[key] = true; updateMobileActive(); if (!audioStarted && typeof userStartAudio === 'function') { userStartAudio(); audioStarted = true; } };
+    const up = (e) => { e.preventDefault(); mobileInput[key] = false; updateMobileActive(); };
+    btn.addEventListener('pointerdown', down);
+    btn.addEventListener('pointerup', up);
+    btn.addEventListener('pointercancel', up);
+  };
+  bindBtn(btnPulse, 'pulse');
+  bindBtn(btnDash, 'dash');
+  bindBtn(btnUlt, 'ultimate');
+}
+
 // --- New: Tournament State ---
 let tournament = {
   stage: 'groups', // 'groups' | 'knockout' | 'final' | 'completed' | 'invitational'
@@ -178,7 +240,27 @@ let sounds; let audioStarted = false; class SoundEngine { constructor(){this.rev
 
 class InputManager {
   constructor(){this.gamepad=null;this.controlMode='mouse';this.deadzone=0.15;this.move=createVector(0,0);this.aim=createVector(0,0);this.pulse=false;this.dash=false;this.ultimate=false;this.lastPulseState=false;this.lastDashState=false;this.lastUltimateState=false;}
-  update(){let gps=navigator.getGamepads();this.gamepad=gps[0];if(this.gamepad&&this.isGamepadActive()){this.controlMode='gamepad';}else if(abs(mouseX-pmouseX)>1||abs(mouseY-pmouseY)>1){this.controlMode='mouse';}let cP=false,cD=false,cU=false;if(this.controlMode==='gamepad'){let sx=this.gamepad.axes[0];let sy=this.gamepad.axes[1];if(abs(sx)<this.deadzone)sx=0;if(abs(sy)<this.deadzone)sy=0;this.move.set(sx,sy);cP=this.gamepad.buttons[0].pressed;cD=this.gamepad.buttons[2].pressed;cU=this.gamepad.buttons[3].pressed;}else{if(document.pointerLockElement===canvas){this.move.set(movedX,movedY).mult(0.1);}else{this.aim.set(mouseX,mouseY);this.move.set(0,0);}cP=mouseIsPressed&&mouseButton===LEFT;cD=keyIsDown(32);cU=mouseIsPressed&&mouseButton===RIGHT;}this.pulse=cP&&!this.lastPulseState;this.dash=cD&&!this.lastDashState;this.ultimate=cU&&!this.lastUltimateState;this.lastPulseState=cP;this.lastDashState=cD;this.lastUltimateState=cU;}
+  update(){
+    let gps=navigator.getGamepads();this.gamepad=gps[0];
+    if(this.gamepad&&this.isGamepadActive()){this.controlMode='gamepad';}
+    else if(mobileInput.active){this.controlMode='touch';}
+    else if(abs(mouseX-pmouseX)>1||abs(mouseY-pmouseY)>1){this.controlMode='mouse';}
+    let cP=false,cD=false,cU=false;
+    if(this.controlMode==='gamepad'){
+      let sx=this.gamepad.axes[0];let sy=this.gamepad.axes[1];
+      if(abs(sx)<this.deadzone)sx=0; if(abs(sy)<this.deadzone)sy=0;
+      this.move.set(sx,sy); cP=this.gamepad.buttons[0].pressed; cD=this.gamepad.buttons[2].pressed; cU=this.gamepad.buttons[3].pressed;
+    }else if(this.controlMode==='touch'){
+      this.move.set(mobileInput.x,mobileInput.y);
+      this.aim.set(width/2,height/2);
+      cP=mobileInput.pulse; cD=mobileInput.dash; cU=mobileInput.ultimate;
+    }else{
+      if(document.pointerLockElement===canvas){this.move.set(movedX,movedY).mult(0.1);}else{this.aim.set(mouseX,mouseY);this.move.set(0,0);}
+      cP=mouseIsPressed&&mouseButton===LEFT; cD=keyIsDown(32); cU=mouseIsPressed&&mouseButton===RIGHT;
+    }
+    this.pulse=cP&&!this.lastPulseState; this.dash=cD&&!this.lastDashState; this.ultimate=cU&&!this.lastUltimateState;
+    this.lastPulseState=cP; this.lastDashState=cD; this.lastUltimateState=cU;
+  }
   isGamepadActive(){if(!this.gamepad)return false;if(this.gamepad.buttons.some(b=>b.pressed))return true;if(this.gamepad.axes.some(a=>abs(a)>this.deadzone))return true;return false;}
 }
 
@@ -186,6 +268,7 @@ function triggerScreenShake(magnitude,duration){screenShake.magnitude=max(screen
 
 // --- SETUP ---
 function setup(){
+  initMobileControls();
   createCanvas(windowWidth,windowHeight);
   effectsBuffer=createGraphics(windowWidth,windowHeight);
   effectsBuffer.colorMode(HSB,360,100,100,100);

@@ -17,6 +17,16 @@
     .warn{position:fixed;left:50%;top:18px;transform:translateX(-50%);background:#1a2438;border:1px solid #304164;color:#cfe7ff;padding:10px 14px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.5);z-index:10000}
     .warn strong{color:#7bd9ff}
     canvas{display:block}
+    /* Mobile touch controls */
+    #mobileControls{position:fixed;inset:auto 12px 18px 12px;display:none;justify-content:space-between;align-items:flex-end;gap:12px;z-index:12000;pointer-events:none}
+    #mobileControls.show{display:flex}
+    .touch-stick{position:relative;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.22);box-shadow:0 0 12px rgba(0,0,0,0.6);pointer-events:auto;touch-action:none}
+    .touch-stick .thumb{position:absolute;left:50%;top:50%;width:46px;height:46px;border-radius:50%;background:rgba(0,200,255,0.6);border:2px solid rgba(0,200,255,0.9);transform:translate(-50%,-50%);transition:background 0.15s}
+    .touch-buttons{display:flex;flex-direction:column;gap:10px;pointer-events:auto}
+    .touch-btn{min-width:86px;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.35);color:#e8f0ff;font-weight:700;letter-spacing:.5px;text-transform:uppercase;box-shadow:0 0 12px rgba(0,0,0,0.6);touch-action:manipulation}
+    .touch-btn.primary{border-color:rgba(0,200,255,0.85);color:#8bf}
+    .touch-btn:active{transform:translateY(1px);background:rgba(255,255,255,0.14)}
+    @media (hover:none) and (pointer:coarse){#mobileControls{display:flex}}
   </style>
 </head>
 <body>
@@ -37,6 +47,18 @@
     </div>
   </div>
   <div id="warn" class="warn" style="display:none"></div>
+
+  <div id="mobileControls">
+    <div class="touch-stick" id="touchStick">
+      <div class="thumb" id="touchKnob"></div>
+    </div>
+    <div class="touch-buttons">
+      <button class="touch-btn primary" id="btnDash">Dash</button>
+      <button class="touch-btn" id="btnPhase">Phase</button>
+      <button class="touch-btn" id="btnUlt">Ultimate</button>
+      <button class="touch-btn" id="btnTractor">Tractor</button>
+    </div>
+  </div>
 
   <!-- p5 FIRST -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>

@@ -106,6 +106,70 @@ let lastMusicMood = null;
 let playerName = 'RUNNER';
 let nameInput = null;
 
+// Touch controls state
+const mobileInput = { active: false, x: 0, y: 0, dash: false, phase: false, ultimate: false, tractor: false };
+const updateMobileActive = () => {
+  mobileInput.active = Math.abs(mobileInput.x) > 0.02 || Math.abs(mobileInput.y) > 0.02 || mobileInput.dash || mobileInput.phase || mobileInput.ultimate || mobileInput.tractor;
+};
+function initMobileControls() {
+  const container = document.getElementById('mobileControls');
+  const stick = document.getElementById('touchStick');
+  const knob = document.getElementById('touchKnob');
+  const btnDash = document.getElementById('btnDash');
+  const btnPhase = document.getElementById('btnPhase');
+  const btnUlt = document.getElementById('btnUlt');
+  const btnTractor = document.getElementById('btnTractor');
+  if (!container || !stick || !knob) return;
+
+  const coarse = window.matchMedia('(hover: none) and (pointer: coarse)');
+  const showIfMobile = () => { if (coarse.matches) container.classList.add('show'); };
+  showIfMobile();
+  coarse.addEventListener('change', showIfMobile);
+
+  const radius = 60;
+  let activeId = null;
+  const setVec = (dx, dy) => {
+    const dist = Math.min(Math.hypot(dx, dy), radius);
+    const ang = Math.atan2(dy, dx);
+    const nx = Math.cos(ang) * dist;
+    const ny = Math.sin(ang) * dist;
+    knob.style.transform = `translate(calc(-50% + ${nx}px), calc(-50% + ${ny}px))`;
+    mobileInput.x = nx / radius;
+    mobileInput.y = ny / radius;
+    updateMobileActive();
+  };
+  const onMove = (e) => {
+    if (activeId === null) return;
+    const rect = stick.getBoundingClientRect();
+    const dx = e.clientX - (rect.left + rect.width / 2);
+    const dy = e.clientY - (rect.top + rect.height / 2);
+    setVec(dx, dy);
+  };
+  const clearStick = () => { activeId = null; setVec(0, 0); };
+  stick.addEventListener('pointerdown', (e) => {
+    activeId = e.pointerId;
+    stick.setPointerCapture(activeId);
+    onMove(e);
+    try { if (typeof resumeAndPrime === 'function') resumeAndPrime(); } catch {}
+  });
+  stick.addEventListener('pointermove', (e) => { if (e.pointerId === activeId) onMove(e); });
+  stick.addEventListener('pointerup', clearStick);
+  stick.addEventListener('pointercancel', clearStick);
+
+  const bindBtn = (btn, key) => {
+    if (!btn) return;
+    const down = (e) => { e.preventDefault(); mobileInput[key] = true; updateMobileActive(); };
+    const up = (e) => { e.preventDefault(); mobileInput[key] = false; updateMobileActive(); };
+    btn.addEventListener('pointerdown', down);
+    btn.addEventListener('pointerup', up);
+    btn.addEventListener('pointercancel', up);
+  };
+  bindBtn(btnDash, 'dash');
+  bindBtn(btnPhase, 'phase');
+  bindBtn(btnUlt, 'ultimate');
+  bindBtn(btnTractor, 'tractor');
+}
+
 // Gamepad and Menu Control
 let gamepadConnected = false;
 let connectedGamepadIndex = -1;
@@ -259,6 +323,7 @@ function syncNameInputVisibility() {
 }
 
 function setup() {
+  initMobileControls();
   createCanvas(windowWidth, windowHeight);
   colorMode(HSB, 360, 100, 100, 100);
   noStroke();
@@ -533,10 +598,14 @@ function handleInGameGamepadInput() {
 function handleInGameKeyboardInput() {
     if (!userPlayer) return;
     const moveForce = createVector(0, 0);
-    if (keyIsDown(65) || keyIsDown(37)) moveForce.x -= 1; // A / Left
-    if (keyIsDown(68) || keyIsDown(39)) moveForce.x += 1; // D / Right
-    if (keyIsDown(87) || keyIsDown(38)) moveForce.y -= 1; // W / Up
-    if (keyIsDown(83) || keyIsDown(40)) moveForce.y += 1; // S / Down
+    if (mobileInput.active) {
+        moveForce.set(mobileInput.x, mobileInput.y);
+    } else {
+        if (keyIsDown(65) || keyIsDown(37)) moveForce.x -= 1; // A / Left
+        if (keyIsDown(68) || keyIsDown(39)) moveForce.x += 1; // D / Right
+        if (keyIsDown(87) || keyIsDown(38)) moveForce.y -= 1; // W / Up
+        if (keyIsDown(83) || keyIsDown(40)) moveForce.y += 1; // S / Down
+    }
     if (moveForce.mag() > 0) {
         moveForce.normalize();
         let desiredVel = moveForce.copy().setMag(config.player.maxSpeed);
@@ -544,10 +613,17 @@ function handleInGameKeyboardInput() {
         steer.limit(config.player.maxForce * 1.3);
         userPlayer.applyForce(steer);
     }
-    if (keyIsDown(32)) { userPlayer.userBlinkDash(moveForce); } // Space
-    if (keyIsDown(16)) { userPlayer.userPhaseShift(); } // Shift
-    if (keyIsDown(69)) { userPlayer.useUltimate(); } // E
-    if (keyIsDown(81)) { userPlayer.placeTractorField(userPlayer.pos); } // Q
+    if (mobileInput.active) {
+        if (mobileInput.dash) { userPlayer.userBlinkDash(moveForce); }
+        if (mobileInput.phase) { userPlayer.userPhaseShift(); }
+        if (mobileInput.ultimate) { userPlayer.useUltimate(); }
+        if (mobileInput.tractor) { userPlayer.placeTractorField(userPlayer.pos); }
+    } else {
+        if (keyIsDown(32)) { userPlayer.userBlinkDash(moveForce); } // Space
+        if (keyIsDown(16)) { userPlayer.userPhaseShift(); } // Shift
+        if (keyIsDown(69)) { userPlayer.useUltimate(); } // E
+        if (keyIsDown(81)) { userPlayer.placeTractorField(userPlayer.pos); } // Q
+    }
 }
 
 function areAllPlayersHome() { if (!teams || teams.length === 0) return false; for (const p of teams.flatMap(t => t.players)) { if (!p.isHome()) return false; } return true; }

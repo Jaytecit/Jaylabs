@@ -18,6 +18,17 @@
     #gate { position: fixed; inset: 0; background: #000; z-index: 100; display: flex; align-items: center; justify-content: center; color: #4ff; font-family: monospace; transition: opacity 0.5s; pointer-events: auto; cursor: pointer; }
     .click-start { animation: blink 1s infinite; }
     @keyframes blink { 50% { opacity: 0.3; } }
+
+    /* Mobile touch controls */
+    #mobileControls { position: fixed; inset: auto 12px 16px 12px; display: none; justify-content: space-between; align-items: flex-end; gap: 12px; z-index: 50; pointer-events: none; }
+    #mobileControls.show { display: flex; }
+    .touch-stick { position: relative; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 0 10px rgba(0,0,0,0.6); pointer-events: auto; touch-action: none; }
+    .touch-stick .thumb { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; border-radius: 50%; background: rgba(80,200,255,0.6); border: 2px solid rgba(80,200,255,0.9); transform: translate(-50%, -50%); transition: background 0.15s; }
+    .touch-buttons { display: flex; flex-direction: column; gap: 12px; pointer-events: auto; }
+    .touch-btn { min-width: 78px; padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.35); color: #e8f0ff; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 0 12px rgba(0,0,0,0.6); touch-action: manipulation; }
+    .touch-btn.primary { border-color: rgba(80,200,255,0.9); color: #8bf; }
+    .touch-btn:active { transform: translateY(1px); background: rgba(255,255,255,0.15); }
+    @media (hover: none) and (pointer: coarse) { #mobileControls { display: flex; } }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.3/lib/p5.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.3/lib/addons/p5.sound.min.js"></script>
@@ -37,6 +48,17 @@
 <div class="vignette"></div>
 <div id="gate" onclick="unlockAudio()">
   <div class="click-start">[ CLICK OR PRESS A TO START ]</div>
+</div>
+
+<div id="mobileControls">
+  <div class="touch-stick" id="touchStick">
+    <div class="thumb" id="touchKnob"></div>
+  </div>
+  <div class="touch-buttons">
+    <button class="touch-btn primary" id="btnDash">Dash</button>
+    <button class="touch-btn" id="btnBash">Bash</button>
+    <button class="touch-btn" id="btnOverdrive">Overdrive</button>
+  </div>
 </div>
 
 <script>
@@ -102,6 +124,69 @@ let globalHue = 0;
 let sfx = {};
 let bgMusic = null;
 
+// Touch controls state
+const mobileInput = { active: false, x: 0, y: 0, dash: false, bash: false, overdrive: false, confirm: false };
+const updateMobileActive = () => {
+  mobileInput.active = Math.abs(mobileInput.x) > 0.02 || Math.abs(mobileInput.y) > 0.02 || mobileInput.dash || mobileInput.bash || mobileInput.overdrive || mobileInput.confirm;
+};
+function initMobileControls() {
+  const container = document.getElementById('mobileControls');
+  const stick = document.getElementById('touchStick');
+  const knob = document.getElementById('touchKnob');
+  const btnDash = document.getElementById('btnDash');
+  const btnBash = document.getElementById('btnBash');
+  const btnOver = document.getElementById('btnOverdrive');
+  if (!container || !stick || !knob) return;
+
+  const coarse = window.matchMedia('(hover: none) and (pointer: coarse)');
+  const showIfMobile = () => { if (coarse.matches) container.classList.add('show'); };
+  showIfMobile();
+  coarse.addEventListener('change', showIfMobile);
+
+  const radius = 60;
+  let activeId = null;
+  const setVec = (dx, dy) => {
+    const dist = Math.min(Math.hypot(dx, dy), radius);
+    const ang = Math.atan2(dy, dx);
+    const nx = Math.cos(ang) * dist;
+    const ny = Math.sin(ang) * dist;
+    knob.style.transform = `translate(calc(-50% + ${nx}px), calc(-50% + ${ny}px))`;
+    mobileInput.x = nx / radius;
+    mobileInput.y = ny / radius;
+    updateMobileActive();
+  };
+  const resetStick = () => { activeId = null; setVec(0, 0); };
+  const onMove = (e) => {
+    if (activeId === null) return;
+    const rect = stick.getBoundingClientRect();
+    const dx = e.clientX - (rect.left + rect.width / 2);
+    const dy = e.clientY - (rect.top + rect.height / 2);
+    setVec(dx, dy);
+  };
+  stick.addEventListener('pointerdown', (e) => {
+    activeId = e.pointerId;
+    stick.setPointerCapture(activeId);
+    onMove(e);
+    unlockAudio();
+  });
+  stick.addEventListener('pointermove', (e) => { if (e.pointerId === activeId) onMove(e); });
+  const clear = () => { resetStick(); updateMobileActive(); };
+  stick.addEventListener('pointerup', clear);
+  stick.addEventListener('pointercancel', clear);
+
+  const bindBtn = (btn, key) => {
+    if (!btn) return;
+    const down = (e) => { e.preventDefault(); mobileInput[key] = true; mobileInput.confirm = true; updateMobileActive(); unlockAudio(); };
+    const up = (e) => { e.preventDefault(); mobileInput[key] = false; mobileInput.confirm = false; updateMobileActive(); };
+    btn.addEventListener('pointerdown', down);
+    btn.addEventListener('pointerup', up);
+    btn.addEventListener('pointercancel', up);
+  };
+  bindBtn(btnDash, 'dash');
+  bindBtn(btnBash, 'bash');
+  bindBtn(btnOver, 'overdrive');
+}
+
 // ==========================================
 // SETUP
 // ==========================================
@@ -142,6 +227,8 @@ function updateUIForGamepad(connected) {
     el.style.color = "rgba(200, 220, 255, 0.7)";
   }
 }
+
+initMobileControls();
 
 // ==========================================
 // MAIN LOOP
@@ -191,17 +278,26 @@ function handleInput() {
 
   let moveX = 0, moveY = 0;
   let confirm = false;
+  const usingMobile = mobileInput.active;
 
-  // Keyboard
-  if (keyIsDown(UP_ARROW) || keyIsDown(87)) moveY = -1;
-  if (keyIsDown(DOWN_ARROW) || keyIsDown(83)) moveY = 1;
-  if (keyIsDown(LEFT_ARROW) || keyIsDown(65)) moveX = -1;
-  if (keyIsDown(RIGHT_ARROW) || keyIsDown(68)) moveX = 1;
-  if (keyIsDown(13) || keyIsDown(32)) confirm = true; 
+  if (usingMobile) {
+    moveX = mobileInput.x;
+    moveY = mobileInput.y;
+    confirm = mobileInput.confirm || mobileInput.dash || mobileInput.bash || mobileInput.overdrive;
+  }
+
+  if (!usingMobile) {
+    // Keyboard
+    if (keyIsDown(UP_ARROW) || keyIsDown(87)) moveY = -1;
+    if (keyIsDown(DOWN_ARROW) || keyIsDown(83)) moveY = 1;
+    if (keyIsDown(LEFT_ARROW) || keyIsDown(65)) moveX = -1;
+    if (keyIsDown(RIGHT_ARROW) || keyIsDown(68)) moveX = 1;
+    if (keyIsDown(13) || keyIsDown(32)) confirm = true; 
+  }
 
   // Gamepad Safety Check
   const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-  const gp = gamepads[0]; // Get first controller
+  const gp = usingMobile ? null : (gamepads[0] || null); // Skip overriding mobile input
   
   if (gp) {
     if (gp.buttons.some(b => b.pressed) && !audioEnabled) unlockAudio();
@@ -212,7 +308,9 @@ function handleInput() {
     if (gp.buttons[0].pressed) confirm = true;
   }
 
-  if ((moveX !== 0 || moveY !== 0 || confirm) && !audioEnabled) unlockAudio();
+  if ((Math.abs(moveX) > 0 || Math.abs(moveY) > 0 || confirm) && !audioEnabled) unlockAudio();
+  const navX = Math.abs(moveX) > 0.35 ? Math.sign(moveX) : 0;
+  const navY = Math.abs(moveY) > 0.35 ? Math.sign(moveY) : 0;
 
   // State Logic
   if (gameState === 'TITLE' && confirm) {
@@ -221,8 +319,8 @@ function handleInput() {
     menuDelay = 15;
   }
   else if (gameState === 'CHAR_SELECT') {
-    if (moveX !== 0) {
-      charIndex = (charIndex + moveX + CHARACTERS.length) % CHARACTERS.length;
+    if (navX !== 0) {
+      charIndex = (charIndex + navX + CHARACTERS.length) % CHARACTERS.length;
       playSound('blip');
       menuDelay = 10;
     }
@@ -233,8 +331,8 @@ function handleInput() {
     }
   }
   else if (gameState === 'DIFF_SELECT') {
-    if (moveY !== 0) {
-      diffIndex = (diffIndex + moveY + 4) % 4;
+    if (navY !== 0) {
+      diffIndex = (diffIndex + navY + 4) % 4;
       playSound('blip');
       menuDelay = 10;
     }
@@ -566,19 +664,26 @@ class Paddle {
     let moveY = 0, doDash = false, doBash = false, doOverdrive = false;
 
     if (this.isHuman) {
-      if (keyIsDown(87)||keyIsDown(UP_ARROW)) moveY = -1;
-      if (keyIsDown(83)||keyIsDown(DOWN_ARROW)) moveY = 1;
-      if (keyIsDown(32)||keyIsDown(88)) doDash = true;
-      if (keyIsDown(16)||keyIsDown(89)) doBash = true;
-      if (keyIsDown(69)) doOverdrive = true;
+      if (mobileInput.active) {
+        moveY = mobileInput.y;
+        doDash = mobileInput.dash;
+        doBash = mobileInput.bash;
+        doOverdrive = mobileInput.overdrive;
+      } else {
+        if (keyIsDown(87)||keyIsDown(UP_ARROW)) moveY = -1;
+        if (keyIsDown(83)||keyIsDown(DOWN_ARROW)) moveY = 1;
+        if (keyIsDown(32)||keyIsDown(88)) doDash = true;
+        if (keyIsDown(16)||keyIsDown(89)) doBash = true;
+        if (keyIsDown(69)) doOverdrive = true;
 
-      const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-      const gp = gamepads[0];
-      if (gp) {
-        if (Math.abs(gp.axes[1]) > C.GAMEPAD.DEADZONE) moveY = gp.axes[1];
-        if (gp.buttons[C.GAMEPAD.BTN_DASH]?.pressed) doDash = true;
-        if (gp.buttons[C.GAMEPAD.BTN_BASH]?.pressed) doBash = true;
-        if (gp.buttons[C.GAMEPAD.BTN_OVERDRIVE]?.pressed) doOverdrive = true;
+        const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+        const gp = gamepads[0];
+        if (gp) {
+          if (Math.abs(gp.axes[1]) > C.GAMEPAD.DEADZONE) moveY = gp.axes[1];
+          if (gp.buttons[C.GAMEPAD.BTN_DASH]?.pressed) doDash = true;
+          if (gp.buttons[C.GAMEPAD.BTN_BASH]?.pressed) doBash = true;
+          if (gp.buttons[C.GAMEPAD.BTN_OVERDRIVE]?.pressed) doOverdrive = true;
+        }
       }
 
       this.dy = lerp(this.dy, moveY * C.BASE_SPEED * 3, 0.18);
