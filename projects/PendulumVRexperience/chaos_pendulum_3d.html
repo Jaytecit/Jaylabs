@@ -464,8 +464,9 @@ body {
         // Reset camera so XR pose isn't compounded with orbit transforms
         camera.position.set(0, 0, 0);
         camera.rotation.set(0, 0, 0);
+        playerRig.position.set(0, 0, 0);
+        playerRig.rotation.set(0, 0, 0);
         controls.enabled = false;
-        playerRig.position.copy(lastFlatView.pos);
         updateControllerVisibility(true);
       });
       renderer.xr.addEventListener("sessionend", () => {
@@ -829,7 +830,9 @@ body {
         applyMissileThrust(delta);
         world.step(1 / 120, delta, 10);
       }
-      controls.update();
+      if (!renderer.xr.isPresenting) {
+        controls.update();
+      }
       if (dragging && dragging.body) {
         dragging.body.velocity.setZero();
         dragging.body.angularVelocity.setZero();
