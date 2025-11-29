@@ -172,6 +172,25 @@
       aiPaddle.position.copy(state.aiPos);
     }
 
+    function updatePaddleFromController() {
+      if (!renderer.xr.isPresenting) return;
+      const session = renderer.xr.getSession();
+      if (!session) return;
+      let best = null;
+      controllers.forEach((ctrl) => {
+        if (!ctrl.visible) return;
+        const src = ctrl.userData.inputSource;
+        if (!src || src.handedness !== "right") return;
+        const pos = new THREE.Vector3();
+        ctrl.getWorldPosition(pos);
+        best = pos;
+      });
+      if (!best) return;
+      state.playerPos.x = THREE.MathUtils.clamp(best.x, -arena.w * 0.5 + paddleSize.x * 0.5, arena.w * 0.5 - paddleSize.x * 0.5);
+      state.playerPos.y = THREE.MathUtils.clamp(best.y, paddleSize.y * 0.6, arena.h - paddleSize.y * 0.6);
+      state.playerPos.z = state.playerZ;
+    }
+
     function updateCameraRig() {
       const offset = new THREE.Vector3(0, 0.6, 3.8);
       cameraRig.position.copy(state.playerPos).add(offset);
@@ -300,10 +319,14 @@
     function animate() {
       const dt = Math.min(renderer.xr.isPresenting ? 1/72 : 1/60, 0.033);
       if (state.running) {
-        const stick = renderer.xr.isPresenting ? getXRInput() : new THREE.Vector3();
-        const input = stick.lengthSq() > 0 ? stick : getInput(dt);
-        state.playerPos.addScaledVector(new THREE.Vector3(input.x, input.y, 0), paddleSpeed * dt);
-        clampPaddle(state.playerPos);
+        if (renderer.xr.isPresenting) {
+          updatePaddleFromController();
+        } else {
+          const stick = getXRInput();
+          const input = stick.lengthSq() > 0 ? stick : getInput(dt);
+          state.playerPos.addScaledVector(new THREE.Vector3(input.x, input.y, 0), paddleSpeed * dt);
+          clampPaddle(state.playerPos);
+        }
         handleXRButtons();
         updateAI(dt);
         updateBall(dt);
