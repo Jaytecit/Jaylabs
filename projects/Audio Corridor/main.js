@@ -64,6 +64,9 @@ const autoPilotState = {
   lastAudio: null,
   fireTimer: 0,
 };
+const vrMoveDir = new THREE.Vector3();
+const vrRight = new THREE.Vector3();
+const vrUp = new THREE.Vector3(0, 1, 0);
 function formatScore(value) {
   const safe = Math.max(0, Math.floor(value));
   return safe.toLocaleString("en-US", { minimumIntegerDigits: 6, useGrouping: false });
@@ -667,8 +670,21 @@ scene.background = new THREE.Color(0x02040b);
 
 // --- Restored Definitions ---
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 0, 5);
-
+camera.position.set(0, 0, 0);
+const thirdPersonOffset = new THREE.Vector3(0, 1.6, 6.5);
+const vrThirdPersonOffset = new THREE.Vector3(0, 1.8, 4.5);
+const thirdPersonLookOffset = new THREE.Vector3(0, 0.7, -1.8);
+const followTemp = new THREE.Vector3();
+const lookTemp = new THREE.Vector3();
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
+const cameraWorldPos = new THREE.Vector3();
+const cameraWorldQuat = new THREE.Quaternion();
+const lastFlatView = { pos: new THREE.Vector3(0, 2.2, 10), target: new THREE.Vector3(0, 0.6, 0) };
+const cameraRig = new THREE.Group();
+cameraRig.name = "cameraRig";
+cameraRig.position.copy(thirdPersonOffset);
+scene.add(cameraRig);
+cameraRig.add(camera);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -684,6 +700,20 @@ function getRenderWidth() {
 
 function updateRendererPixelRatio() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+}
+
+function updateFollowCamera(delta) {
+  if (renderer.xr.isPresenting) return;
+  const offsetBase = thirdPersonOffset;
+  followTemp.copy(offsetBase);
+  followTemp.applyAxisAngle(Y_AXIS, manState.rotation.y - Math.PI);
+  followTemp.add(heroAnchorPosition);
+  const lerpAmount = Math.min(1, delta * 5);
+  cameraRig.position.lerp(followTemp, lerpAmount);
+  lookTemp.copy(heroAnchorPosition).add(thirdPersonLookOffset);
+  cameraRig.lookAt(lookTemp);
+  cameraRig.rotation.z = 0;
+  cameraRig.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraRig.rotation.x));
 }
 
 function buildVrButton() {
@@ -1061,13 +1091,13 @@ function spawnCelebrationWord(text, audioLevels) {
   const hue =
     (0.15 + (audioLevels?.high ?? 0) * 0.35 + (audioLevels?.mid ?? 0) * 0.2) % 1;
   celebrationWordMaterial.color.setHSL(hue, 0.92, 0.65);
-  const wordDepth = camera.position.z - corridorState.depth - 2.5;
+  const wordDepth = cameraWorldPos.z - corridorState.depth - 2.5;
   celebrationWordGroup.position.set(0, 0.8, wordDepth);
   celebrationWordGroup.scale.set(1, 1, 1);
   celebrationWordState.maxLife = 1.1;
   celebrationWordState.life = celebrationWordState.maxLife;
   celebrationWordMaterial.opacity = 0.85;
-  celebrationWordMesh.quaternion.copy(camera.quaternion);
+  celebrationWordMesh.quaternion.copy(cameraWorldQuat);
 }
 
 function updateCelebrationWord(delta) {
@@ -1091,7 +1121,7 @@ function updateCelebrationWord(delta) {
   );
   const pulse = 1 + (1 - blend) * 0.5;
   celebrationWordGroup.scale.set(pulse, pulse, pulse);
-  celebrationWordMesh.quaternion.copy(camera.quaternion);
+  celebrationWordMesh.quaternion.copy(cameraWorldQuat);
 }
 
 const heroCollision = { radius: 0.9, active: false };
@@ -1141,7 +1171,7 @@ function updateCorridor(delta, audioLevels, time) {
   const spectrumValues = audioState.spectrum ?? [];
   tunnelSegments.forEach((segment) => {
     let z = segment.baseZ + offset;
-    while (z > camera.position.z + 2) {
+    while (z > cameraWorldPos.z + 2) {
       z -= depth;
       segment.baseZ -= depth;
     }
@@ -1198,7 +1228,7 @@ function updateCorridor(delta, audioLevels, time) {
   const spectra = [audioLevels.bass, audioLevels.mid, audioLevels.high];
   hoopInstances.forEach((entry, idx) => {
     entry.mesh.position.z += flowSpeed * delta * 1.08;
-    if (entry.mesh.position.z > camera.position.z + 8) {
+    if (entry.mesh.position.z > cameraWorldPos.z + 8) {
       hoopRemove.push(idx);
       return;
     }
@@ -1698,7 +1728,7 @@ function updateAudioPulse(audioLevels) {
     state.mesh.material.color.setHSL(baseHue, 0.95, 0.55 + energy * 0.25);
     const anchor = heroAnchorPosition;
     state.mesh.position.set(anchor.x, anchor.y - 0.26, anchor.z - 0.9 - state.offset);
-    state.mesh.quaternion.copy(camera.quaternion);
+    state.mesh.quaternion.copy(cameraWorldQuat);
   });
 }
 
@@ -1790,7 +1820,7 @@ function updateFireworkProjectiles(delta, audioLevels) {
     projectile.mesh.position.addScaledVector(projectile.velocity, delta);
     projectile.life = Math.max(0, projectile.life - delta);
     projectile.mesh.material.opacity = projectile.life * 0.9;
-    if (projectile.life <= 0 || projectile.mesh.position.z < camera.position.z - corridorState.depth) {
+    if (projectile.life <= 0 || projectile.mesh.position.z < cameraWorldPos.z - corridorState.depth) {
       burstFirework(projectile, audioLevels);
       scene.remove(projectile.mesh);
       fireworkProjectiles.splice(i, 1);
@@ -1852,11 +1882,11 @@ function setupWebXRControllers() {
       controller.visible = false;
       refreshXrHands();
     });
-    scene.add(controller);
+    cameraRig.add(controller);
 
     const grip = renderer.xr.getControllerGrip(index);
     grip.add(controllerModelFactory.createControllerModel(grip));
-    scene.add(grip);
+    cameraRig.add(grip);
 
     xrState.controllers.push(controller);
     xrState.grips.push(grip);
@@ -1867,13 +1897,17 @@ function setupWebXRControllers() {
 
   renderer.xr.addEventListener("sessionstart", () => {
     xrState.sessionActive = true;
-    setShowcaseMode(false, { silent: true });
+    camera.getWorldPosition(lastFlatView.pos);
+    lastFlatView.target.copy(heroAnchorPosition);
+    positionRigForVR();
+    setShowcaseMode(true, { silent: true });
     ui.vrBtn?.classList.add("active");
     setStatus("VR session ready - Quest controllers active.");
   });
 
   renderer.xr.addEventListener("sessionend", () => {
     xrState.sessionActive = false;
+    setShowcaseMode(false, { silent: true });
     ui.vrBtn?.classList.remove("active");
     setStatus("Exited VR mode.");
   });
@@ -1904,6 +1938,68 @@ function computeXrExtend(controller) {
   const heightDelta = xrTempPos.y - xrState.headPosition.y;
   const forwardIntent = xrTempDir.z < -0.2;
   return heightDelta > 0.05 || forwardIntent;
+}
+
+function positionRigForVR() {
+  const target = heroAnchorPosition.clone();
+  const offset = lastFlatView.pos.clone().sub(lastFlatView.target);
+  if (offset.lengthSq() < 0.01) {
+    offset.copy(vrThirdPersonOffset);
+  }
+  offset.y = 0;
+  const desired = target.clone().add(offset);
+  desired.y = Math.max(1.4, target.y + 0.8);
+  cameraRig.position.copy(desired);
+  const forward = target.clone().sub(cameraRig.position);
+  const yaw = Math.atan2(forward.x, forward.z);
+  cameraRig.rotation.set(0, yaw, 0);
+}
+
+function getXRThumbstick(session) {
+  const candidates = [];
+  for (const s of session.inputSources) {
+    if (!s.gamepad || !s.gamepad.axes) continue;
+    const axes = s.gamepad.axes;
+    if (axes.length >= 2) {
+      candidates.push({ x: axes[0], y: axes[1], handedness: s.handedness || "unknown", priority: s.handedness === "left" ? 2 : 1 });
+    }
+    if (axes.length >= 4) {
+      candidates.push({ x: axes[2], y: axes[3], handedness: s.handedness || "unknown", priority: 1 });
+    }
+  }
+  if (candidates.length) {
+    candidates.sort((a, b) => b.priority - a.priority);
+    const active = candidates.find(c => Math.abs(c.x) > 0.01 || Math.abs(c.y) > 0.01) || candidates[0];
+    return { x: active.x, y: active.y };
+  }
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  if (pads) {
+    for (const pad of pads) {
+      if (!pad || !pad.connected || !pad.axes || pad.axes.length < 2) continue;
+      return { x: pad.axes[0], y: pad.axes[1] };
+    }
+  }
+  return { x: 0, y: 0 };
+}
+
+function updateVRLocomotion(dt) {
+  const session = renderer.xr.getSession();
+  if (!session) return;
+  const axes = getXRThumbstick(session);
+  const deadzone = 0.05;
+  if (Math.abs(axes.x) < deadzone && Math.abs(axes.y) < deadzone) return;
+  const xrCam = renderer.xr.getCamera(camera);
+  xrCam.getWorldDirection(vrMoveDir);
+  vrMoveDir.set(vrMoveDir.x, 0, vrMoveDir.z).normalize();
+  if (vrMoveDir.lengthSq() === 0) {
+    vrMoveDir.set(0, 0, -1);
+  }
+  vrRight.copy(vrMoveDir).cross(vrUp).normalize();
+  const speed = 2.4;
+  const forward = vrMoveDir.clone().multiplyScalar(-axes.y);
+  const strafe = vrRight.clone().multiplyScalar(axes.x);
+  const deltaMove = forward.add(strafe).multiplyScalar(speed * dt);
+  cameraRig.position.add(deltaMove);
 }
 
 function getVrControlInput() {
@@ -2282,7 +2378,16 @@ function getAutoPilotInput(delta, audioLevels, time) {
 }
 
 function resolveControlInput(delta, audioLevels, time) {
-  if (autoPilotState.enabled && manualInputActive()) {
+  if (xrState.sessionActive) {
+    if (!autoPilotState.enabled) {
+      setShowcaseMode(true, { silent: true });
+    }
+    autoPilotState.lastAudio = audioLevels;
+    const autoInput = { ...getAutoPilotInput(delta, audioLevels, time), source: "auto" };
+    lastResolvedInput = autoInput;
+    return autoInput;
+  }
+  if (autoPilotState.enabled && manualInputActive() && !xrState.sessionActive) {
     handleManualOverride();
   }
   autoPilotState.lastAudio = audioLevels;
@@ -2413,6 +2518,13 @@ function animate(time) {
   const delta = clock.getDelta();
   const audioLevels = sampleAudioLevels();
   updateWorldReactivity(delta, audioLevels, time);
+  if (renderer.xr.isPresenting) {
+    updateVRLocomotion(delta);
+  } else {
+    updateFollowCamera(delta);
+  }
+  camera.getWorldPosition(cameraWorldPos);
+  camera.getWorldQuaternion(cameraWorldQuat);
   const flowSpeed = computeCorridorFlowSpeed(audioLevels) * getThrottleBoost();
   syncCuePlayback(delta);
   const controlInput = resolveControlInput(delta, audioLevels, clock.elapsedTime);
@@ -2437,6 +2549,7 @@ function animate(time) {
   manModel.rotation.copy(manState.rotation);
   manModel.updateMatrixWorld(true);
   updateHeroAnchorPosition();
+  // Non-XR follow handled earlier; XR uses headset pose with rig locomotion.
   renderScene();
 }
 renderer.setAnimationLoop(animate);

@@ -295,7 +295,7 @@
             if(audioPrepared) return;
             audioPrepared = true;
             preloadTrack('prologue', 'Prologue.mp3').catch(err => console.warn('Prologue preload failed', err));
-            preloadTrack('main', 'Main.wav').catch(err => console.warn('Main preload failed', err));
+            preloadTrack('main', 'Main.mp3').catch(err => console.warn('Main preload failed', err));
 
             const unlock = () => {
                 const ctx = getAudioContext();
@@ -355,7 +355,7 @@
                     audioState.pending.main = true;
                     return;
                 }
-                const buffer = await preloadTrack('main', 'Main.wav');
+                const buffer = await preloadTrack('main', 'Main.mp3');
                 const gain = ctx.createGain();
                 gain.gain.setValueAtTime(0.85, ctx.currentTime);
                 const source = ctx.createBufferSource();

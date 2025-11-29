@@ -378,6 +378,9 @@ body {
     let pendulumMaterial, pendulumSelfMaterial, missileMaterial, missileContact;
     let missiles = [];
     let missileTimer = 0;
+    const explosionPool = [];
+    const activeExplosions = [];
+    const explosionGeometry = new THREE.SphereGeometry(0.6, 18, 14);
     let controller1, controller2, controllerGrip1, controllerGrip2;
     let vrMenuGroup = null;
     let vrMenuOpen = false;
@@ -488,8 +491,7 @@ body {
         // Reset camera so XR pose isn't compounded with orbit transforms
         camera.position.set(0, 0, 0);
         camera.rotation.set(0, 0, 0);
-        playerRig.position.set(0, 0, 0);
-        playerRig.rotation.set(0, 0, 0);
+        positionRigForVR();
         controls.enabled = false;
         updateControllerVisibility(true);
       });
@@ -875,6 +877,7 @@ body {
       updateRods();
       updateParticles(delta);
       updateMissiles(delta);
+      updateExplosions(delta);
       updateFlash(delta);
       updateIntro();
       updatePan();
@@ -1027,6 +1030,25 @@ body {
       updateUIVisibility();
     }
 
+    function positionRigForVR() {
+      if (!playerRig) return;
+      // Use the last flat view offset so VR starts away from the pendulum instead of underneath it.
+      const target = lastFlatView.target.clone();
+      const offset = lastFlatView.pos.clone().sub(target);
+      if (offset.lengthSq() < 0.01) {
+        offset.set(6, 0, 6);
+      }
+      offset.y = 0;
+      const desired = new THREE.Vector3(0, 0, 0).add(target).add(offset);
+      desired.y = Math.max(1.4, anchorHeight * 0.45);
+      playerRig.position.copy(desired);
+      // Face the anchor/target horizontally
+      const look = target.clone();
+      const forward = look.sub(playerRig.position);
+      const yaw = Math.atan2(forward.x, forward.z);
+      playerRig.rotation.set(0, yaw, 0);
+    }
+
     function updateVRLocomotion(dt) {
       const session = renderer.xr.getSession();
       if (!session || !playerRig) return;
@@ -1054,24 +1076,22 @@ body {
     }
 
     function getXRThumbstick(session) {
-      // Prefer a left-hand tracked-pointer source
-      let source = null;
+      const candidates = [];
       for (const s of session.inputSources) {
-        if (s.targetRayMode === "tracked-pointer" && s.handedness === "left" && s.gamepad) {
-          source = s;
-          break;
+        if (!s.gamepad || !s.gamepad.axes) continue;
+        const axes = s.gamepad.axes;
+        if (axes.length >= 2) {
+          candidates.push({ x: axes[0], y: axes[1], handedness: s.handedness || "unknown", priority: s.handedness === "left" ? 2 : 1 });
+        }
+        // Some controllers surface a second stick on axes 2/3; treat as lower priority fallback
+        if (axes.length >= 4) {
+          candidates.push({ x: axes[2], y: axes[3], handedness: s.handedness || "unknown", priority: 1 });
         }
       }
-      if (!source) {
-        for (const s of session.inputSources) {
-          if (s.targetRayMode === "tracked-pointer" && s.gamepad) {
-            source = s;
-            break;
-          }
-        }
-      }
-      if (source && source.gamepad && source.gamepad.axes.length >= 2) {
-        return { x: source.gamepad.axes[0], y: source.gamepad.axes[1] };
+      if (candidates.length) {
+        candidates.sort((a, b) => b.priority - a.priority);
+        const active = candidates.find(c => Math.abs(c.x) > 0.01 || Math.abs(c.y) > 0.01) || candidates[0];
+        return { x: active.x, y: active.y };
       }
       // Fallback to navigator.getGamepads when XR gamepad data is not surfaced
       const pads = navigator.getGamepads ? navigator.getGamepads() : [];
@@ -1637,37 +1657,51 @@ body {
       if (missile.mesh) scene.remove(missile.mesh);
     }
 
+    function acquireExplosionMesh() {
+      if (explosionPool.length) return explosionPool.pop();
+      const mat = new THREE.MeshStandardMaterial({
+        color: "#ffc77a",
+        emissive: "#ff7b2a",
+        emissiveIntensity: 1.6,
+        roughness: 0.35,
+        metalness: 0.1,
+        transparent: true,
+        opacity: 0.95,
+        depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(explosionGeometry, mat);
+      mesh.renderOrder = 3;
+      mesh.frustumCulled = false;
+      return { mesh, life: 0, maxLife: 0 };
+    }
+
     function spawnExplosion(point) {
-      const burst = new THREE.Points(
-        new THREE.BufferGeometry(),
-        new THREE.PointsMaterial({ color: "#ffcf7a", size: 0.12, transparent: true, opacity: 0.9, depthWrite: false })
-      );
-      const count = 80;
-      const positions = new Float32Array(count * 3);
-      for (let i = 0; i < count; i++) {
-        const dir = new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize().multiplyScalar(Math.random());
-        positions[i*3] = point.x + dir.x * 0.5;
-        positions[i*3+1] = point.y + dir.y * 0.5;
-        positions[i*3+2] = point.z + dir.z * 0.5;
-      }
-      burst.geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-      scene.add(burst);
-      // fade out
-      const lifetime = 0.6;
-      let t = 0;
-      let last = performance.now();
-      const fade = (now) => {
-        const dt = (now - last) / 1000;
-        last = now;
-        t += dt;
-        burst.material.opacity = Math.max(0, 0.9 * (1 - t / lifetime));
-        if (t >= lifetime) {
-          scene.remove(burst);
-          return;
+      const entry = acquireExplosionMesh();
+      entry.life = 0.7;
+      entry.maxLife = entry.life;
+      entry.mesh.position.set(point.x, point.y, point.z);
+      entry.mesh.scale.setScalar(0.4);
+      entry.mesh.material.opacity = 0.95;
+      entry.mesh.material.emissiveIntensity = 1.6;
+      if (!entry.mesh.parent) scene.add(entry.mesh);
+      activeExplosions.push(entry);
+    }
+
+    function updateExplosions(dt) {
+      for (let i = activeExplosions.length - 1; i >= 0; i--) {
+        const entry = activeExplosions[i];
+        entry.life = Math.max(0, entry.life - dt);
+        const blend = entry.maxLife > 0 ? entry.life / entry.maxLife : 0;
+        const scale = THREE.MathUtils.lerp(0.8, 3.6, 1 - blend);
+        entry.mesh.scale.setScalar(scale);
+        entry.mesh.material.opacity = blend * 0.9;
+        entry.mesh.material.emissiveIntensity = 0.6 + blend * 2.2;
+        if (entry.life <= 0) {
+          scene.remove(entry.mesh);
+          explosionPool.push(entry);
+          activeExplosions.splice(i, 1);
         }
-        requestAnimationFrame(fade);
-      };
-      requestAnimationFrame(fade);
+      }
     }
 
     function onResize() {
