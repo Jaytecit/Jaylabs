@@ -379,12 +379,20 @@ body {
     let missiles = [];
     let missileTimer = 0;
     let controller1, controller2, controllerGrip1, controllerGrip2;
+    let vrMenuGroup = null;
+    let vrMenuOpen = false;
+    let vrMenuItems = [];
+    let vrMenuButtonLatched = false;
     const anchorHeight = 2.2;
     const scratchVec3 = new THREE.Vector3();
     const scratchVec4 = new THREE.Vector3();
     const scratchVecUp = new THREE.Vector3(0, 1, 0);
     const scratchVecRight = new THREE.Vector3();
+    const scratchDir = new THREE.Vector3();
+    const scratchPos = new THREE.Vector3();
     const scratchQuat = new THREE.Quaternion();
+    const scratchMatrix = new THREE.Matrix4();
+    const vrRaycaster = new THREE.Raycaster();
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     const dragPlane = new THREE.Plane();
@@ -465,6 +473,7 @@ body {
       playerRig.add(camera);
       scene.add(playerRig);
       setupControllers();
+      createVRMenu();
       controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
       controls.target.set(0.2, 1, 0);
@@ -487,6 +496,7 @@ body {
       renderer.xr.addEventListener("sessionend", () => {
         controls.enabled = true;
         updateControllerVisibility(false);
+        toggleVRMenu(false);
       });
 
       const hemi = new THREE.HemisphereLight("#b5c8ff", "#0b0f1f", 0.0);
@@ -730,6 +740,7 @@ body {
           const value = parseFloat(el.value);
           valEl.textContent = formatter(value);
           fn(value);
+          syncVRMenuFromState();
         };
         el.addEventListener("input", update);
         update();
@@ -1019,6 +1030,10 @@ body {
     function updateVRLocomotion(dt) {
       const session = renderer.xr.getSession();
       if (!session || !playerRig) return;
+
+      handleVRMenuToggle(session);
+      if (vrMenuOpen) positionVRMenu();
+
       const speed = 2.2; // m/s
       const dir = new THREE.Vector3();
       const right = scratchVecRight;
@@ -1027,11 +1042,15 @@ body {
       const axes = getXRThumbstick(session);
       const moveX = axes.x;
       const moveY = axes.y;
-      if (Math.abs(moveX) < 0.05 && Math.abs(moveY) < 0.05) return;
-      const forward = headDir.clone().multiplyScalar(-moveY);
-      const strafe = right.clone().multiplyScalar(moveX);
-      const deltaMove = forward.add(strafe).multiplyScalar(speed * dt);
-      playerRig.position.add(deltaMove);
+      const deadzone = 0.05;
+      if (Math.abs(moveX) >= deadzone || Math.abs(moveY) >= deadzone) {
+        const forward = headDir.clone().multiplyScalar(-moveY);
+        const strafe = right.clone().multiplyScalar(moveX);
+        const deltaMove = forward.add(strafe).multiplyScalar(speed * dt);
+        playerRig.position.add(deltaMove);
+      }
+
+      updateVRMenuInteraction(session);
     }
 
     function getXRThumbstick(session) {
@@ -1063,6 +1082,246 @@ body {
         }
       }
       return { x: 0, y: 0 };
+    }
+
+    function makeTextPlane(text, width = 0.5, height = 0.08, align = "left") {
+      const canvas = document.createElement("canvas");
+      canvas.width = 512;
+      canvas.height = 128;
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "42px Space Grotesk, Arial, sans-serif";
+      ctx.textAlign = align;
+      ctx.textBaseline = "middle";
+      const x = align === "center" ? canvas.width / 2 : align === "right" ? canvas.width - 12 : 12;
+      ctx.fillText(text, x, canvas.height / 2);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.encoding = THREE.sRGBEncoding;
+      tex.needsUpdate = true;
+      const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), mat);
+      mesh.userData.canvas = canvas;
+      mesh.userData.ctx = ctx;
+      mesh.userData.texture = tex;
+      mesh.userData.align = align;
+      return mesh;
+    }
+
+    function updateTextPlane(mesh, text) {
+      if (!mesh?.userData?.ctx || !mesh.userData.canvas) return;
+      const ctx = mesh.userData.ctx;
+      const canvas = mesh.userData.canvas;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "42px Space Grotesk, Arial, sans-serif";
+      ctx.textAlign = mesh.userData.align || "left";
+      ctx.textBaseline = "middle";
+      const x = ctx.textAlign === "center" ? canvas.width / 2 : ctx.textAlign === "right" ? canvas.width - 12 : 12;
+      ctx.fillText(text, x, canvas.height / 2);
+      if (mesh.userData.texture) mesh.userData.texture.needsUpdate = true;
+    }
+
+    function getParamValue(id) {
+      switch (id) {
+        case "timescale": return state.timeScale;
+        case "gravity": return state.gravity;
+        case "damping": return state.damping;
+        case "rod1Length": return state.rod1.length;
+        case "rod2Length": return state.rod2.length;
+        case "bob1Mass": return state.rod1.mass;
+        case "bob2Mass": return state.rod2.mass;
+        case "bob1Radius": return state.rod1.radius;
+        case "bob2Radius": return state.rod2.radius;
+        default: return 0;
+      }
+    }
+
+    function applyParamFromVR(id, value) {
+      const el = document.getElementById(id);
+      if (el) {
+        const min = el.min !== "" ? parseFloat(el.min) : value;
+        const max = el.max !== "" ? parseFloat(el.max) : value;
+        const clamped = THREE.MathUtils.clamp(value, min, max);
+        el.value = clamped;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        return clamped;
+      }
+      return value;
+    }
+
+    function syncVRMenuFromState() {
+      if (!vrMenuGroup || !vrMenuItems.length) return;
+      vrMenuItems.forEach(obj => {
+        const data = obj.userData;
+        if (!data || data.type !== "slider") return;
+        if (data.track === obj) return; // Only slide the handle
+        const val = getParamValue(data.id);
+        const width = data.track.geometry.parameters.width || 0.48;
+        const half = width / 2;
+        const normalized = THREE.MathUtils.clamp((val - data.min) / (data.max - data.min), 0, 1);
+        obj.position.x = data.track.position.x - half + normalized * width;
+        if (data.valueMesh) {
+          const formatter = data.formatter || (v => v.toFixed(2));
+          updateTextPlane(data.valueMesh, formatter(val));
+        }
+      });
+    }
+
+    function positionVRMenu() {
+      if (!vrMenuGroup) return;
+      camera.getWorldPosition(scratchPos);
+      camera.getWorldDirection(scratchDir);
+      vrMenuGroup.position.copy(scratchPos).add(scratchDir.multiplyScalar(1.25));
+      vrMenuGroup.position.y = Math.max(vrMenuGroup.position.y, 1.0);
+      vrMenuGroup.lookAt(scratchPos);
+    }
+
+    function toggleVRMenu(forceState = null) {
+      vrMenuOpen = forceState !== null ? forceState : !vrMenuOpen;
+      if (vrMenuGroup) {
+        vrMenuGroup.visible = vrMenuOpen;
+        if (vrMenuOpen) {
+          syncVRMenuFromState();
+          positionVRMenu();
+        }
+      }
+    }
+
+    function handleVRMenuToggle(session) {
+      let aPressed = false;
+      for (const source of session.inputSources) {
+        if (source.handedness === "right" && source.gamepad) {
+          const buttons = source.gamepad.buttons;
+          aPressed = (buttons[4] && buttons[4].pressed) || (buttons[5] && buttons[5].pressed);
+          break;
+        }
+      }
+      if (aPressed && !vrMenuButtonLatched) {
+        toggleVRMenu();
+        vrMenuButtonLatched = true;
+      } else if (!aPressed) {
+        vrMenuButtonLatched = false;
+      }
+    }
+
+    function createVRMenu() {
+      vrMenuGroup = new THREE.Group();
+      vrMenuGroup.visible = false;
+      const panel = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.2, 1.35),
+        new THREE.MeshBasicMaterial({ color: 0x0c1426, transparent: true, opacity: 0.9, side: THREE.DoubleSide })
+      );
+      vrMenuGroup.add(panel);
+      const border = new THREE.LineSegments(new THREE.EdgesGeometry(panel.geometry), new THREE.LineBasicMaterial({ color: 0x7ad7f0 }));
+      vrMenuGroup.add(border);
+
+      const title = makeTextPlane("Pendulum Controls", 0.9, 0.12, "center");
+      title.position.set(0, 0.58, 0.01);
+      vrMenuGroup.add(title);
+
+      const items = [
+        { type: "slider", id: "timescale", label: "Time scale", min: 0.25, max: 1.8, formatter: v => `${v.toFixed(2)}x` },
+        { type: "slider", id: "gravity", label: "Gravity", min: 1, max: 20, formatter: v => `${v.toFixed(1)} m/s^2` },
+        { type: "slider", id: "damping", label: "Air drag", min: 0, max: 0.2, formatter: v => v.toFixed(3) },
+        { type: "slider", id: "rod1Length", label: "Rod 1 length", min: 0.4, max: 2.2, formatter: v => `${v.toFixed(2)} m` },
+        { type: "slider", id: "rod2Length", label: "Rod 2 length", min: 0.4, max: 2.2, formatter: v => `${v.toFixed(2)} m` },
+        { type: "button", label: "Kick", action: () => document.getElementById("kick")?.click() },
+        { type: "button", label: "Reset", action: () => document.getElementById("reset")?.click() },
+      ];
+      vrMenuItems = [];
+
+      items.forEach((item, idx) => {
+        const y = 0.4 - idx * 0.16;
+        if (item.type === "slider") {
+          const label = makeTextPlane(item.label, 0.42, 0.07, "left");
+          label.position.set(-0.45, y, 0.011);
+          vrMenuGroup.add(label);
+
+          const valueMesh = makeTextPlane(item.formatter(getParamValue(item.id)), 0.35, 0.07, "right");
+          valueMesh.position.set(0.45, y, 0.011);
+          vrMenuGroup.add(valueMesh);
+
+          const track = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.02), new THREE.MeshBasicMaterial({ color: 0x1a2538 }));
+          track.position.set(0.1, y, 0.008);
+          vrMenuGroup.add(track);
+
+          const handle = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.08), new THREE.MeshBasicMaterial({ color: 0x7ad7f0 }));
+          const width = track.geometry.parameters.width || 0.48;
+          const norm = THREE.MathUtils.clamp((getParamValue(item.id) - item.min) / (item.max - item.min), 0, 1);
+          handle.position.set(track.position.x - width * 0.5 + norm * width, y, 0.009);
+          const data = { type: "slider", id: item.id, min: item.min, max: item.max, formatter: item.formatter, track, valueMesh };
+          handle.userData = data;
+          track.userData = data;
+          vrMenuItems.push(handle, track);
+          vrMenuGroup.add(handle);
+        } else if (item.type === "button") {
+          const btn = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.1), new THREE.MeshBasicMaterial({ color: 0x1f304a }));
+          btn.position.set(0.1, y, 0.01);
+          btn.userData = { type: "button", action: item.action };
+          const btnLabel = makeTextPlane(item.label, 0.3, 0.07, "center");
+          btnLabel.position.set(0, 0, 0.002);
+          btn.add(btnLabel);
+          vrMenuItems.push(btn);
+          vrMenuGroup.add(btn);
+        }
+      });
+
+      vrMenuGroup.userData.items = vrMenuItems;
+      scene.add(vrMenuGroup);
+    }
+
+    function getGamepadForController(ctrl, session) {
+      if (!session) return null;
+      for (const source of session.inputSources) {
+        if (!source.gamepad) continue;
+        const matchLeft = source.handedness === "left" && ctrl === controller1;
+        const matchRight = source.handedness === "right" && ctrl === controller2;
+        if (matchLeft || matchRight) return source.gamepad;
+      }
+      return null;
+    }
+
+    function updateVRMenuInteraction(session) {
+      if (!vrMenuOpen || !vrMenuGroup) return;
+      positionVRMenu();
+      [controller1, controller2].forEach(ctrl => {
+        if (!ctrl) return;
+        scratchMatrix.identity().extractRotation(ctrl.matrixWorld);
+        vrRaycaster.ray.origin.setFromMatrixPosition(ctrl.matrixWorld);
+        vrRaycaster.ray.direction.set(0, 0, -1).applyMatrix4(scratchMatrix);
+        const intersects = vrRaycaster.intersectObjects(vrMenuItems, false);
+
+        const laser = ctrl.getObjectByName("laser");
+        if (laser) {
+          laser.scale.z = intersects.length ? intersects[0].distance : 2.5;
+        }
+
+        const pad = getGamepadForController(ctrl, session);
+        const triggerPressed = pad ? ((pad.buttons[0] && pad.buttons[0].pressed) || (pad.buttons[1] && pad.buttons[1].pressed)) : false;
+        if (triggerPressed && intersects.length > 0) {
+          const hit = intersects[0].object;
+          const data = hit.userData;
+          if (!data) return;
+          if (data.type === "slider") {
+            const localPoint = data.track.worldToLocal(intersects[0].point.clone());
+            const width = data.track.geometry.parameters.width || 0.48;
+            const half = width / 2;
+            const normalized = THREE.MathUtils.clamp((localPoint.x + half) / width, 0, 1);
+            const newVal = data.min + normalized * (data.max - data.min);
+            applyParamFromVR(data.id, newVal);
+            syncVRMenuFromState();
+          } else if (data.type === "button") {
+            if (!data.wasPressed) {
+              data.wasPressed = true;
+              if (data.action) data.action();
+            }
+          }
+        } else if (intersects.length > 0) {
+          const data = intersects[0].object.userData;
+          if (data) data.wasPressed = false;
+        }
+      });
     }
 
     function updatePan() {
@@ -1256,13 +1515,14 @@ body {
       const controllerModelFactory = new XRControllerModelFactory();
       controller1 = renderer.xr.getController(0);
       controller2 = renderer.xr.getController(1);
-      [controller1, controller2].forEach(ctrl => {
+      [controller1, controller2].forEach((ctrl, idx) => {
         if (!ctrl) return;
         const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
         const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0x7ad7f0 }));
         line.name = "laser";
-        line.scale.z = 0;
+        line.scale.z = 2.5;
         ctrl.add(line);
+        ctrl.userData.index = idx;
         playerRig.add(ctrl);
       });
       controllerGrip1 = renderer.xr.getControllerGrip(0);

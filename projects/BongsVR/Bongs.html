@@ -231,6 +231,9 @@
         // Globals
         let scene, camera, renderer, controls, xrRig;
         let controller1, controller2, controllerGrip1, controllerGrip2;
+        let vrGrabState = { left: null, right: null }; // { bobIndex, controller }
+        let vrMenuOpen = false;
+        let vrMenuGroup = null;
         let world;
         let physicsObjects = [];
         let pendulumBodies = []; // bobs for collisions
@@ -1701,14 +1704,20 @@
             const controllerModelFactory = new XRControllerModelFactory();
             controller1 = renderer.xr.getController(0);
             controller2 = renderer.xr.getController(1);
-            [controller1, controller2].forEach(ctrl => {
+            [controller1, controller2].forEach((ctrl, idx) => {
                 if (!ctrl) return;
                 const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
                 const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0x66e0ff }));
                 line.name = 'laser';
-                line.scale.z = 0;
+                line.scale.z = 5;
                 ctrl.add(line);
                 xrRig.add(ctrl);
+                
+                // Squeeze (grip) events for grabbing pendulum bob
+                ctrl.addEventListener('selectstart', (e) => onVRSelectStart(ctrl, idx));
+                ctrl.addEventListener('selectend', (e) => onVRSelectEnd(ctrl, idx));
+                ctrl.addEventListener('squeezestart', (e) => onVRSqueezeStart(ctrl, idx));
+                ctrl.addEventListener('squeezeend', (e) => onVRSqueezeEnd(ctrl, idx));
             });
             controllerGrip1 = renderer.xr.getControllerGrip(0);
             controllerGrip2 = renderer.xr.getControllerGrip(1);
@@ -1721,6 +1730,7 @@
                 xrRig.add(controllerGrip2);
             }
             updateControllerVisibility(false);
+            createVRMenu();
         }
 
         function updateControllerVisibility(visible) {
@@ -1729,8 +1739,385 @@
             });
         }
 
+        // VR Grab functionality for pendulum bobs
+        function onVRSelectStart(controller, idx) {
+            // Mirror trigger to grab to make controls work on Quest
+            onVRSqueezeStart(controller, idx);
+        }
+
+        function onVRSelectEnd(controller, idx) {
+            onVRSqueezeEnd(controller, idx);
+        }
+
+        function onVRSqueezeStart(controller, idx) {
+            // Squeeze (grip button) - grab nearest bob
+            if (!renderer.xr.isPresenting) return;
+            const hand = idx === 0 ? 'left' : 'right';
+            if (vrGrabState[hand]) return; // already grabbing
+            
+            const controllerPos = new THREE.Vector3();
+            controller.getWorldPosition(controllerPos);
+            
+            // Find closest bob within grab range
+            const grabRange = 1.5;
+            let closestBob = null;
+            let closestDist = grabRange;
+            let closestIdx = -1;
+            
+            pendulumBodies.forEach((body, i) => {
+                const bobPos = new THREE.Vector3(body.position.x, body.position.y, body.position.z);
+                const dist = controllerPos.distanceTo(bobPos);
+                if (dist < closestDist) {
+                    closestDist = dist;
+                    closestBob = body;
+                    closestIdx = i;
+                }
+            });
+            
+            if (closestBob && closestIdx >= 0) {
+                // Store grab state - we'll update pendulum state each frame
+                vrGrabState[hand] = {
+                    bobIndex: closestIdx,
+                    controller: controller
+                };
+                // Zero out velocities when grabbed
+                pendStateRK4.omega1 = 0;
+                pendStateRK4.omega2 = 0;
+            }
+        }
+
+        function onVRSqueezeEnd(controller, idx) {
+            const hand = idx === 0 ? 'left' : 'right';
+            if (vrGrabState[hand]) {
+                vrGrabState[hand] = null;
+            }
+        }
+
+        function updateVRGrab() {
+            if (!renderer.xr.isPresenting) return;
+            
+            ['left', 'right'].forEach(hand => {
+                const grab = vrGrabState[hand];
+                if (!grab) return;
+                
+                const controller = grab.controller;
+                const controllerPos = new THREE.Vector3();
+                controller.getWorldPosition(controllerPos);
+                
+                // Update pendulum state based on grabbed bob position
+                if (!pendStateRK4) resetPendulumState();
+                
+                const pivot = new THREE.Vector3(0, groundHeight + params.pivotHeight, 0);
+                
+                if (grab.bobIndex === 0) {
+                    // Grabbing bob1 - set theta1 from controller position
+                    const dx = controllerPos.x - pivot.x;
+                    const dy = controllerPos.y - pivot.y;
+                    pendStateRK4.theta1 = Math.atan2(dx, -dy);
+                    pendStateRK4.omega1 = 0;
+                    pendStateRK4.omega2 = 0;
+                } else if (grab.bobIndex === 1) {
+                    // Grabbing bob2 - use IK to set both angles
+                    const ik = solvePlanarIK(controllerPos);
+                    pendStateRK4.theta1 = ik.theta1;
+                    pendStateRK4.theta2 = ik.theta2;
+                    pendStateRK4.omega1 = 0;
+                    pendStateRK4.omega2 = 0;
+                }
+                
+                prevBobPositionsRK4 = [];
+            });
+        }
+
+        // VR Menu System
+        function createVRMenu() {
+            vrMenuGroup = new THREE.Group();
+            vrMenuGroup.visible = false;
+            
+            // Panel background
+            const panelGeo = new THREE.PlaneGeometry(1.2, 1.6);
+            const panelMat = new THREE.MeshBasicMaterial({
+                color: 0x1a1a2e,
+                transparent: true,
+                opacity: 0.92,
+                side: THREE.DoubleSide
+            });
+            const panel = new THREE.Mesh(panelGeo, panelMat);
+            vrMenuGroup.add(panel);
+            
+            // Border
+            const borderGeo = new THREE.EdgesGeometry(panelGeo);
+            const borderMat = new THREE.LineBasicMaterial({ color: 0x4fa });
+            const border = new THREE.LineSegments(borderGeo, borderMat);
+            vrMenuGroup.add(border);
+            
+            // Title
+            const titleCanvas = document.createElement('canvas');
+            titleCanvas.width = 512;
+            titleCanvas.height = 64;
+            const titleCtx = titleCanvas.getContext('2d');
+            titleCtx.fillStyle = '#4fa';
+            titleCtx.font = 'bold 36px Arial';
+            titleCtx.textAlign = 'center';
+            titleCtx.fillText('Chaos Settings', 256, 45);
+            const titleTex = new THREE.CanvasTexture(titleCanvas);
+            const titleMat = new THREE.MeshBasicMaterial({ map: titleTex, transparent: true });
+            const titleMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.12), titleMat);
+            titleMesh.position.set(0, 0.68, 0.01);
+            vrMenuGroup.add(titleMesh);
+            
+            // Create menu items
+            const menuItems = [
+                { label: 'Auto Kick', param: 'enableAutoKick', type: 'toggle' },
+                { label: 'Time Scale', param: 'timeScale', type: 'slider', min: 0.1, max: 2.0 },
+                { label: 'Kick Force', param: 'kickForce', type: 'slider', min: 100, max: 2000 },
+                { label: 'Spawn Rate', param: 'spawnRate', type: 'slider', min: 10, max: 200 },
+                { label: 'Walk Speed', param: 'walkSpeed', type: 'slider', min: 1, max: 5 },
+                { label: 'Max Pedestrians', param: 'maxPedestrians', type: 'slider', min: 10, max: 250 },
+                { label: 'Kick Now', action: () => kickPendulum(1.2), type: 'button' },
+                { label: 'Reset', action: params.reset, type: 'button' }
+            ];
+            
+            vrMenuGroup.userData.items = [];
+            
+            menuItems.forEach((item, i) => {
+                const y = 0.5 - i * 0.16;
+                
+                // Label
+                const labelCanvas = document.createElement('canvas');
+                labelCanvas.width = 256;
+                labelCanvas.height = 32;
+                const labelCtx = labelCanvas.getContext('2d');
+                labelCtx.fillStyle = '#ffffff';
+                labelCtx.font = '20px Arial';
+                labelCtx.textAlign = 'left';
+                labelCtx.fillText(item.label, 10, 24);
+                const labelTex = new THREE.CanvasTexture(labelCanvas);
+                const labelMat = new THREE.MeshBasicMaterial({ map: labelTex, transparent: true });
+                const labelMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.06), labelMat);
+                labelMesh.position.set(-0.3, y, 0.01);
+                vrMenuGroup.add(labelMesh);
+                
+                if (item.type === 'toggle') {
+                    // Toggle button
+                    const btnGeo = new THREE.PlaneGeometry(0.15, 0.08);
+                    const btnMat = new THREE.MeshBasicMaterial({ color: params[item.param] ? 0x4fa : 0x666 });
+                    const btn = new THREE.Mesh(btnGeo, btnMat);
+                    btn.position.set(0.4, y, 0.01);
+                    btn.userData = { type: 'toggle', param: item.param };
+                    vrMenuGroup.add(btn);
+                    vrMenuGroup.userData.items.push(btn);
+                } else if (item.type === 'slider') {
+                    // Slider track
+                    const trackGeo = new THREE.PlaneGeometry(0.3, 0.02);
+                    const trackMat = new THREE.MeshBasicMaterial({ color: 0x333 });
+                    const track = new THREE.Mesh(trackGeo, trackMat);
+                    track.position.set(0.35, y, 0.01);
+                    vrMenuGroup.add(track);
+                    
+                    // Slider handle
+                    const handleGeo = new THREE.PlaneGeometry(0.04, 0.06);
+                    const handleMat = new THREE.MeshBasicMaterial({ color: 0x4fa });
+                    const handle = new THREE.Mesh(handleGeo, handleMat);
+                    const normalizedVal = (params[item.param] - item.min) / (item.max - item.min);
+                    handle.position.set(0.2 + normalizedVal * 0.3, y, 0.02);
+                    handle.userData = { type: 'slider', param: item.param, min: item.min, max: item.max, track: track };
+                    vrMenuGroup.add(handle);
+                    vrMenuGroup.userData.items.push(handle);
+                } else if (item.type === 'button') {
+                    // Action button
+                    const btnGeo = new THREE.PlaneGeometry(0.2, 0.08);
+                    const btnMat = new THREE.MeshBasicMaterial({ color: 0x2a4a6a });
+                    const btn = new THREE.Mesh(btnGeo, btnMat);
+                    btn.position.set(0.4, y, 0.01);
+                    btn.userData = { type: 'button', action: item.action };
+                    vrMenuGroup.add(btn);
+                    vrMenuGroup.userData.items.push(btn);
+                }
+            });
+            
+            scene.add(vrMenuGroup);
+        }
+
+        function positionVRMenu() {
+            if (!vrMenuGroup) return;
+            const camPos = new THREE.Vector3();
+            const camDir = new THREE.Vector3();
+            camera.getWorldPosition(camPos);
+            camera.getWorldDirection(camDir);
+
+            vrMenuGroup.position.copy(camPos).add(camDir.multiplyScalar(1.5));
+            vrMenuGroup.position.y = Math.max(vrMenuGroup.position.y, 1.0);
+            vrMenuGroup.lookAt(camPos);
+        }
+
+        function toggleVRMenu() {
+            vrMenuOpen = !vrMenuOpen;
+            if (vrMenuGroup) {
+                vrMenuGroup.visible = vrMenuOpen;
+                if (vrMenuOpen) {
+                    positionVRMenu();
+                }
+            }
+        }
+
+        function updateVRMenuInteraction() {
+            if (!vrMenuOpen || !vrMenuGroup || !renderer.xr.isPresenting) return;
+            positionVRMenu();
+            
+            const session = renderer.xr.getSession();
+            if (!session) return;
+            
+            // Check for A button press on right controller to close menu
+            for (const source of session.inputSources) {
+                if (source.gamepad && source.handedness === 'right') {
+                    const buttons = source.gamepad.buttons;
+                    // A button is typically index 4 on Quest controllers
+                    if (buttons[4] && buttons[4].pressed) {
+                        if (!vrMenuGroup.userData.aButtonWasPressed) {
+                            toggleVRMenu();
+                            vrMenuGroup.userData.aButtonWasPressed = true;
+                        }
+                    } else {
+                        vrMenuGroup.userData.aButtonWasPressed = false;
+                    }
+                }
+            }
+            
+            // Raycast from controllers to menu items
+            [controller1, controller2].forEach(ctrl => {
+                if (!ctrl) return;
+                
+                const tempMatrix = new THREE.Matrix4();
+                tempMatrix.identity().extractRotation(ctrl.matrixWorld);
+                
+                const raycaster = new THREE.Raycaster();
+                raycaster.ray.origin.setFromMatrixPosition(ctrl.matrixWorld);
+                raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+                
+                const intersects = raycaster.intersectObjects(vrMenuGroup.userData.items, false);
+                
+                // Update laser length
+                const laser = ctrl.getObjectByName('laser');
+                if (laser) {
+                    if (intersects.length > 0) {
+                        laser.scale.z = intersects[0].distance;
+                    } else {
+                        laser.scale.z = 5;
+                    }
+                }
+                
+                // Handle trigger press on menu items
+                const session = renderer.xr.getSession();
+                if (!session) return;
+                
+                for (const source of session.inputSources) {
+                    if (!source.gamepad) continue;
+                    const isThisController = (source.handedness === 'left' && ctrl === controller1) ||
+                                            (source.handedness === 'right' && ctrl === controller2);
+                    if (!isThisController) continue;
+                    
+                    const triggerPressed = source.gamepad.buttons[0] && source.gamepad.buttons[0].pressed;
+                    
+                    if (triggerPressed && intersects.length > 0) {
+                        const hit = intersects[0].object;
+                        const data = hit.userData;
+                        
+                        if (!hit.userData.wasPressed) {
+                            hit.userData.wasPressed = true;
+                            
+                            if (data.type === 'toggle') {
+                                params[data.param] = !params[data.param];
+                                hit.material.color.setHex(params[data.param] ? 0x4fa : 0x666);
+                            } else if (data.type === 'button' && data.action) {
+                                data.action();
+                            }
+                        }
+                        
+                        if (data.type === 'slider') {
+                            // Calculate new value based on hit point
+                            const localPoint = hit.parent.worldToLocal(intersects[0].point.clone());
+                            const trackX = data.track.position.x;
+                            const normalized = THREE.MathUtils.clamp((localPoint.x - (trackX - 0.15)) / 0.3, 0, 1);
+                            const newVal = data.min + normalized * (data.max - data.min);
+                            params[data.param] = newVal;
+                            hit.position.x = trackX - 0.15 + normalized * 0.3;
+                        }
+                    } else if (!triggerPressed && intersects.length > 0) {
+                        intersects[0].object.userData.wasPressed = false;
+                    }
+                }
+            });
+        }
+
+        function updateVRControls(delta = 0) {
+            if (!renderer.xr.isPresenting) return;
+            const dt = delta > 0 ? delta : (clock ? clock.getDelta() : 0);
+            
+            const session = renderer.xr.getSession();
+            if (!session) return;
+            
+            // Check for A button press on right controller to toggle menu
+            for (const source of session.inputSources) {
+                if (source.gamepad && source.handedness === 'right') {
+                    const buttons = source.gamepad.buttons;
+                    // A button is typically index 4 on Quest controllers
+                    if (buttons[4] && buttons[4].pressed) {
+                        if (!xrRig.userData.aButtonWasPressed) {
+                            toggleVRMenu();
+                            xrRig.userData.aButtonWasPressed = true;
+                        }
+                    } else {
+                        xrRig.userData.aButtonWasPressed = false;
+                    }
+                }
+            }
+            
+            // Thumbstick movement along path (Z axis)
+            let moveZ = 0;
+            let moveX = 0;
+            for (const source of session.inputSources) {
+                if (source.gamepad && source.handedness === 'left') {
+                    const axes = source.gamepad.axes;
+                    if (axes.length >= 4) {
+                        moveX = axes[2]; // Left/right
+                        moveZ = axes[3]; // Forward/back
+                    } else if (axes.length >= 2) {
+                        moveX = axes[0];
+                        moveZ = axes[1];
+                    }
+                }
+            }
+            
+            // Apply movement along path
+            const moveSpeed = 8.0;
+            const deadzone = 0.15;
+            
+            if (Math.abs(moveZ) > deadzone) {
+                xrRig.position.z -= moveZ * moveSpeed * dt;
+                // Clamp to path bounds
+                const pathHalf = params.pathLength / 2 - 5;
+                xrRig.position.z = THREE.MathUtils.clamp(xrRig.position.z, -pathHalf, pathHalf);
+            }
+            
+            if (Math.abs(moveX) > deadzone) {
+                xrRig.position.x += moveX * moveSpeed * 0.5 * dt;
+                // Clamp to path width
+                const pathWidthHalf = params.pathWidth / 2 + 2;
+                xrRig.position.x = THREE.MathUtils.clamp(xrRig.position.x, -pathWidthHalf, pathWidthHalf);
+            }
+            
+            // Update grab state
+            updateVRGrab();
+            
+            // Update menu interaction
+            updateVRMenuInteraction();
+        }
+
         function animate() {
-            const delta = Math.min(clock.getDelta() * params.timeScale, 0.1);
+            const frameDelta = Math.min(clock.getDelta(), 0.1);
+            updateVRControls(frameDelta);
+            const delta = Math.min(frameDelta * params.timeScale, 0.1);
             accumulator = Math.min(accumulator + delta, fixedTimeStep * maxSubSteps);
             while(accumulator >= fixedTimeStep) {
                 world.step(fixedTimeStep);
