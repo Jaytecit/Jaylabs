@@ -1,17 +1,17 @@
 [
   {
+    "date": "2025-11-30",
+    "title": "Audio Corridor WebXR",
+    "summary": "Added Quest-ready WebXR mode with controller firing, touch controls, and a VR lab card for Audio Corridor."
+  },
+  {
+    "date": "2025-11-29",
+    "title": "Landing audio + header refresh",
+    "summary": "Added background audio controls on the landing page and updated the header line."
+  },
+  {
     "date": "2025-11-27",
     "title": "Mobile touch controls",
     "summary": "Added thumbstick-style touch controls across games (Defendorks, Aetherium League, Astral Core, Chrono Clash)."
-  },
-  {
-    "date": "2025-11-27",
-    "title": "Chrono Clash added",
-    "summary": "New Chrono Clash game now listed in the Games hub with assets deployed."
-  },
-  {
-    "date": "2025-11-27",
-    "title": "Header and feedback updates",
-    "summary": "Updated tagline, softened the GitHub feedback panel, and embedded per-card update snippets."
   }
 ]

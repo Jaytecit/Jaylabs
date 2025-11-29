@@ -168,6 +168,82 @@
             color: var(--text-2);
         }
 
+        .audio-banner {
+            margin-top: 0.4rem;
+            padding: 0.85rem 1rem;
+            border-radius: 0.85rem;
+            border: 1px solid rgba(0, 217, 255, 0.22);
+            background: linear-gradient(135deg, rgba(0, 217, 255, 0.12), rgba(255, 107, 0, 0.08));
+            box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+            display: flex;
+            flex-direction: column;
+            gap: 0.65rem;
+            width: min(900px, 100%);
+        }
+
+        .audio-banner__row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .audio-btn {
+            border: 1px solid rgba(255, 107, 0, 0.65);
+            background: linear-gradient(135deg, rgba(255, 107, 0, 0.18), rgba(0, 217, 255, 0.2));
+            color: var(--text-1);
+            padding: 0.55rem 0.95rem;
+            border-radius: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            cursor: pointer;
+            box-shadow:
+                0 0 14px rgba(255, 107, 0, 0.32),
+                0 0 18px rgba(0, 217, 255, 0.26);
+            transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+        }
+
+        .audio-btn:hover {
+            transform: translateY(-1px);
+            box-shadow:
+                0 0 18px rgba(255, 107, 0, 0.4),
+                0 0 22px rgba(0, 217, 255, 0.32);
+            border-color: rgba(255, 107, 0, 0.85);
+        }
+
+        .audio-field {
+            display: grid;
+            gap: 0.25rem;
+            color: var(--text-1);
+            font-size: 0.85rem;
+            letter-spacing: 0.02em;
+        }
+
+        .audio-select,
+        .audio-volume {
+            min-width: 160px;
+            padding: 0.5rem 0.55rem;
+            border-radius: 0.65rem;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(0, 0, 0, 0.35);
+            color: var(--text-1);
+            outline: none;
+        }
+
+        .audio-volume {
+            min-width: 160px;
+            accent-color: var(--accent-cyan);
+        }
+
+        .audio-status {
+            margin: 0;
+            text-align: center;
+            color: var(--text-2);
+            font-size: 0.9rem;
+            letter-spacing: 0.02em;
+        }
+
         main {
             flex: 1;
             padding: 2rem 2.4rem 2.2rem;
@@ -493,8 +569,22 @@
                 <img src="Images/Jaylabs.svg" alt="JayLabs Logo" class="main-logo">
             </div>
             <div class="brand-text centered-brand-text">
-                <span>AI-assisted hobby dev • zero formal coding • doing it for fun with time to burn • bad electronic beats • 80s kid at heart</span>
+                <span>BIG IDEAS - CLUELESS DEV • WASTING TIME • BAD ELECTRONIC MUSIC • 80'S KID AT HEART • SECRETS?</span>
             </div>
+        </div>
+        <div class="audio-banner" aria-live="polite">
+            <div class="audio-banner__row">
+                <button id="audioToggle" type="button" class="audio-btn">Play background audio</button>
+                <label class="audio-field">
+                    <span>Track</span>
+                    <select id="audioTrack" class="audio-select"></select>
+                </label>
+                <label class="audio-field">
+                    <span>Volume</span>
+                    <input id="audioVolume" class="audio-volume" type="range" min="0" max="1" step="0.01" value="0.35">
+                </label>
+            </div>
+            <p id="audioStatus" class="audio-status">Click play to start the background audio.</p>
         </div>
     </header>
 
@@ -512,14 +602,6 @@
                 <p>
                     Aetherium League, Astral Core, Defendorks, and future cabinet-smashers live here. Pick a mode and melt pixels.
                 </p>
-                <div class="update-snippet">
-                    <h3>Latest</h3>
-                    <ul>
-                        <li>Touch controls (stick + buttons) live across games (beta).</li>
-                        <li>Chrono Clash added to the Games hub.</li>
-                        <li>Compatibility cards inside each game page.</li>
-                    </ul>
-                </div>
                 <div class="play-label">
                     <div class="play-dot"></div>
                     <span>Open games hub</span>
@@ -532,13 +614,6 @@
                 <p>
                     VR-ready builds and experiments. Play in PCVR or from the Quest browser directly.
                 </p>
-                <div class="update-snippet">
-                    <h3>Latest</h3>
-                    <ul>
-                        <li>Optimized for PCVR / Quest-browser; mobile Safari not supported.</li>
-                        <li>Use a headset-friendly browser for best results.</li>
-                    </ul>
-                </div>
                 <div class="play-label">
                     <div class="play-dot"></div>
                     <span>Enter PCVR lab</span>
@@ -551,13 +626,6 @@
                 <p>
                     Harmonograph Studio, Spirograph Deluxe, and more visual toys. Bend color, motion, and symmetry.
                 </p>
-                <div class="update-snippet">
-                    <h3>Latest</h3>
-                    <ul>
-                        <li>Touch support planned; currently desktop-first.</li>
-                        <li>Tap once on mobile to unlock audio-reactive features.</li>
-                    </ul>
-                </div>
                 <div class="play-label">
                     <div class="play-dot"></div>
                     <span>Open generators hub</span>
@@ -670,6 +738,98 @@
                     recentList.innerHTML = '<li class="recent-item">Could not load updates right now.</li>';
                 });
         }
+
+        // Background audio controller (future tracks can be added to audioTracks)
+        const audioTracks = [
+            { id: "ambient", label: "Ambient pad", src: "Ambient.mp3" },
+        ];
+
+        const audioToggle = document.getElementById("audioToggle");
+        const audioVolume = document.getElementById("audioVolume");
+        const audioSelect = document.getElementById("audioTrack");
+        const audioStatus = document.getElementById("audioStatus");
+        let bgAudio = null;
+
+        const setAudioStatus = (text) => {
+            if (audioStatus) audioStatus.textContent = text;
+        };
+
+        const hydrateAudioSelect = () => {
+            if (!audioSelect || !audioTracks.length) return;
+            audioSelect.innerHTML = audioTracks.map(t => `<option value="${t.id}">${t.label}</option>`).join("");
+            audioSelect.value = audioTracks[0].id;
+        };
+
+        const initBackgroundAudio = () => {
+            if (!audioTracks.length || bgAudio || !audioVolume) return;
+            bgAudio = new Audio(audioTracks[0].src);
+            bgAudio.loop = true;
+            bgAudio.preload = "auto";
+            bgAudio.volume = parseFloat(audioVolume.value || "0.35");
+
+            // Nudge loop point to keep the bed seamless
+            bgAudio.addEventListener("timeupdate", () => {
+                if (!bgAudio.duration) return;
+                const buffer = 0.25;
+                if (bgAudio.currentTime > bgAudio.duration - buffer) {
+                    bgAudio.currentTime = 0;
+                    if (!bgAudio.paused) bgAudio.play().catch(() => {});
+                }
+            });
+
+            bgAudio.addEventListener("playing", () => {
+                audioToggle.textContent = "Pause background audio";
+                const label = audioSelect?.selectedOptions?.[0]?.textContent || "background audio";
+                setAudioStatus(`Now playing: ${label}`);
+            });
+
+            bgAudio.addEventListener("pause", () => {
+                audioToggle.textContent = "Play background audio";
+                setAudioStatus("Audio paused. Click play to resume.");
+            });
+        };
+
+        hydrateAudioSelect();
+        initBackgroundAudio();
+        if (audioTracks.length === 0) {
+            setAudioStatus("Add audio tracks to enable background audio.");
+        }
+
+        audioToggle?.addEventListener("click", async () => {
+            if (!bgAudio) return;
+            if (bgAudio.paused) {
+                setAudioStatus("Loading audio...");
+                try {
+                    await bgAudio.play();
+                } catch {
+                    setAudioStatus("Click play to start the background audio.");
+                }
+            } else {
+                bgAudio.pause();
+            }
+        });
+
+        audioVolume?.addEventListener("input", (e) => {
+            if (!bgAudio) return;
+            const vol = parseFloat(e.target.value);
+            bgAudio.volume = vol;
+            setAudioStatus(`Volume: ${(vol * 100).toFixed(0)}%`);
+        });
+
+        audioSelect?.addEventListener("change", () => {
+            if (!bgAudio || !audioTracks.length) return;
+            const wasPlaying = !bgAudio.paused;
+            const track = audioTracks.find(t => t.id === audioSelect.value) || audioTracks[0];
+            bgAudio.pause();
+            bgAudio.src = track.src;
+            bgAudio.load();
+            setAudioStatus(`Ready: ${track.label}. Click play to start.`);
+            if (wasPlaying) {
+                bgAudio.play().catch(() => setAudioStatus("Click play to start the background audio."));
+            }
+        });
+
+        setAudioStatus("Click play to start the background audio.");
 
         // Play logo intro: fade in first frame, play once, then reveal static logo
         const logoStage = document.querySelector(".logo-stage");
