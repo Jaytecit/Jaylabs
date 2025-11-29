@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>Aetherium League VR (Cube Arena)</title>
+  <style>
+    :root { --bg: #03060c; --fg: #dff5ff; --accent: #5cf2ff; --accent2: #ff9a6a; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: radial-gradient(circle at 20% 20%, #0a1221, #03060c 60%); color: var(--fg); font-family: "Space Grotesk", system-ui, sans-serif; }
+    #hud { position: fixed; inset: 0; pointer-events: none; display: flex; justify-content: space-between; padding: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; text-shadow: 0 0 10px rgba(0,0,0,0.6); }
+    #hud .score { font-size: 18px; }
+    #hud .status { text-align: right; font-size: 12px; color: rgba(223,245,255,0.65); }
+    #compat { position: fixed; top: 12px; left: 12px; padding: 10px 12px; background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; max-width: 260px; z-index: 4; font-size: 12px; line-height: 1.5; }
+    canvas { display: block; }
+    #vrButton { position: fixed; right: 16px; bottom: 16px; z-index: 3; }
+  </style>
+</head>
+<body>
+  <div id="compat">
+    <strong>Aetherium League VR (beta)</strong><br>
+    Quest Browser: allow motion + audio. Left stick moves paddle (4-way). Trigger/A = dash/bash. Single player vs AI.
+  </div>
+  <div id="hud">
+    <div class="score" id="scoreLeft">0</div>
+    <div class="status">
+      <div id="status">Press play / VR to start</div>
+      <div id="controls">WASD/Arrow/Stick to move • Space/Trigger dash</div>
+    </div>
+    <div class="score" id="scoreRight">0</div>
+  </div>
+  <script type="module">
+    import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+    import { VRButton } from "https://unpkg.com/three@0.160.0/examples/jsm/webxr/VRButton.js";
+    import { XRControllerModelFactory } from "https://unpkg.com/three@0.160.0/examples/jsm/webxr/XRControllerModelFactory.js";
+
+    const arenaSize = 10;
+    const paddleSize = { x: 2.2, y: 1.4, z: 0.4 };
+    const paddleSpeed = 6;
+    const dashImpulse = 12;
+    const ballSpeed = 9;
+    const dashCooldown = 0.6;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color("#03060c");
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 200);
+    const cameraRig = new THREE.Group();
+    cameraRig.add(camera);
+    scene.add(cameraRig);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.xr.enabled = true;
+    renderer.xr.setReferenceSpaceType("local-floor");
+    document.body.appendChild(renderer.domElement);
+    document.body.appendChild(VRButton.createButton(renderer));
+
+    const hemi = new THREE.HemisphereLight(0x5cf2ff, 0x0a0c12, 0.8);
+    scene.add(hemi);
+    const spot = new THREE.SpotLight(0xffffff, 1.2, 40, Math.PI / 5, 0.4, 1.5);
+    spot.position.set(0, arenaSize * 0.7, arenaSize * 0.2);
+    spot.castShadow = true;
+    scene.add(spot);
+
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0x5cf2ff, transparent: true, opacity: 0.08, side: THREE.DoubleSide });
+    const cube = new THREE.Mesh(new THREE.BoxGeometry(arenaSize, arenaSize, arenaSize), glowMat);
+    cube.position.y = arenaSize * 0.5;
+    cube.material.wireframe = true;
+    scene.add(cube);
+
+    const glassMat = new THREE.MeshPhysicalMaterial({
+      color: 0x3ad1ff,
+      transparent: true,
+      opacity: 0.35,
+      roughness: 0.2,
+      metalness: 0.1,
+      transmission: 0.7,
+      thickness: 0.3
+    });
+
+    const paddleGeom = new THREE.BoxGeometry(paddleSize.x, paddleSize.y, paddleSize.z);
+    const playerPaddle = new THREE.Mesh(paddleGeom, glassMat.clone());
+    const aiPaddle = new THREE.Mesh(paddleGeom, glassMat.clone());
+    playerPaddle.material.opacity = 0.28;
+    aiPaddle.material.color.setHex(0xff9a6a);
+    aiPaddle.material.opacity = 0.35;
+    [playerPaddle, aiPaddle].forEach(p => { p.castShadow = true; p.receiveShadow = true; });
+    scene.add(playerPaddle, aiPaddle);
+
+    const ballGeom = new THREE.SphereGeometry(0.35, 24, 24);
+    const ballMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x5cf2ff, emissiveIntensity: 1.2, roughness: 0.2, metalness: 0.1 });
+    const ball = new THREE.Mesh(ballGeom, ballMat);
+    ball.castShadow = true;
+    scene.add(ball);
+
+    const trailGeom = new THREE.CylinderGeometry(0.05, 0.05, 1, 6, 1, true);
+    const trailMat = new THREE.MeshBasicMaterial({ color: 0x5cf2ff, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+    const trail = new THREE.Mesh(trailGeom, trailMat);
+    scene.add(trail);
+
+    const controllerFactory = new XRControllerModelFactory();
+    const controllers = [];
+    const controllerGrips = [];
+    for (let i = 0; i < 2; i++) {
+      const ctrl = renderer.xr.getController(i);
+      ctrl.userData.index = i;
+      cameraRig.add(ctrl);
+      controllers.push(ctrl);
+      const grip = renderer.xr.getControllerGrip(i);
+      grip.add(controllerFactory.createControllerModel(grip));
+      cameraRig.add(grip);
+      controllerGrips.push(grip);
+    }
+
+    const state = {
+      scores: { left: 0, right: 0 },
+      ballVel: new THREE.Vector3(ballSpeed, 0, 0),
+      playerPos: new THREE.Vector3(0, arenaSize * 0.5, arenaSize * 0.5 - 1.5),
+      aiPos: new THREE.Vector3(0, arenaSize * 0.5, -arenaSize * 0.5 + 1.5),
+      dashTimer: 0,
+      running: false,
+    };
+
+    function resetBall(direction = 1) {
+      ball.position.set(0, arenaSize * 0.5, 0);
+      state.ballVel.set(ballSpeed * direction, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3);
+    }
+
+    function setStatus(text) {
+      const el = document.getElementById("status");
+      if (el) el.textContent = text;
+    }
+
+    function startGame() {
+      state.running = true;
+      resetBall(Math.random() < 0.5 ? 1 : -1);
+      setStatus("Playing");
+    }
+
+    function clampPaddle(pos) {
+      pos.x = THREE.MathUtils.clamp(pos.x, -arenaSize * 0.5 + paddleSize.x * 0.5, arenaSize * 0.5 - paddleSize.x * 0.5);
+      pos.y = THREE.MathUtils.clamp(pos.y, paddleSize.y * 0.6, arenaSize - paddleSize.y * 0.6);
+    }
+
+    function updatePaddles(dt) {
+      playerPaddle.position.copy(state.playerPos);
+      aiPaddle.position.copy(state.aiPos);
+    }
+
+    function updateCameraRig() {
+      const offset = new THREE.Vector3(0, 0.6, 3.2);
+      cameraRig.position.copy(state.playerPos).add(offset);
+      cameraRig.lookAt(state.playerPos.x, state.playerPos.y, state.playerPos.z - 2);
+    }
+
+    const keyState = new Set();
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "Space") dash();
+      if (e.code === "Enter" && !state.running) startGame();
+      keyState.add(e.code);
+    });
+    window.addEventListener("keyup", (e) => keyState.delete(e.code));
+
+    function getInput(dt) {
+      let move = new THREE.Vector3();
+      const gp = navigator.getGamepads ? navigator.getGamepads()[0] : null;
+      const stickX = gp?.axes ? gp.axes[0] : 0;
+      const stickY = gp?.axes ? gp.axes[1] : 0;
+      const fromKeys = new THREE.Vector3(
+        (keyState.has("KeyD") || keyState.has("ArrowRight") ? 1 : 0) - (keyState.has("KeyA") || keyState.has("ArrowLeft") ? 1 : 0),
+        (keyState.has("KeyW") || keyState.has("ArrowUp") ? 1 : 0) - (keyState.has("KeyS") || keyState.has("ArrowDown") ? 1 : 0),
+        0
+      );
+      move.x += stickX;
+      move.y -= stickY;
+      move.add(fromKeys);
+      return move.clampLength(0, 1);
+    }
+
+    function getXRInput() {
+      if (!renderer.xr.isPresenting) return new THREE.Vector3();
+      const session = renderer.xr.getSession();
+      if (!session) return new THREE.Vector3();
+      for (const source of session.inputSources) {
+        if (!source.gamepad || source.handedness !== "left") continue;
+        const axes = source.gamepad.axes;
+        if (!axes || axes.length < 2) continue;
+        return new THREE.Vector3(axes[0], -axes[1], 0).clampLength(0, 1);
+      }
+      return new THREE.Vector3();
+    }
+
+    function dash() {
+      if (state.dashTimer > 0) return;
+      state.ballVel.addScaledVector(state.ballVel.clone().normalize(), 2);
+      state.dashTimer = dashCooldown;
+    }
+
+    function handleXRButtons() {
+      const session = renderer.xr.getSession();
+      if (!session) return;
+      for (const source of session.inputSources) {
+        if (!source.gamepad) continue;
+        const pressed = source.gamepad.buttons.some(b => b.pressed || b.value > 0.2);
+        if (pressed) dash();
+      }
+    }
+
+    function updateBall(dt) {
+      ball.position.addScaledVector(state.ballVel, dt);
+      trail.position.copy(ball.position);
+      trail.scale.set(1, state.ballVel.length() * 0.1, 1);
+      trail.lookAt(ball.position.clone().sub(state.ballVel));
+      const bounds = arenaSize * 0.5 - 0.4;
+      if (ball.position.x < -bounds || ball.position.x > bounds) {
+        state.ballVel.x *= -1; ball.position.x = THREE.MathUtils.clamp(ball.position.x, -bounds, bounds);
+      }
+      if (ball.position.y < 0.6 || ball.position.y > arenaSize - 0.6) {
+        state.ballVel.y *= -1;
+      }
+      if (ball.position.z < -bounds) {
+        state.scores.left += 1;
+        updateScore();
+        resetBall(1);
+      } else if (ball.position.z > bounds) {
+        state.scores.right += 1;
+        updateScore();
+        resetBall(-1);
+      }
+      paddleCollision(playerPaddle, state.playerPos, 1);
+      paddleCollision(aiPaddle, state.aiPos, -1);
+    }
+
+    function paddleCollision(paddle, pos, dirSign) {
+      const half = paddleSize;
+      const dx = Math.abs(ball.position.x - pos.x) < half.x * 0.55;
+      const dy = Math.abs(ball.position.y - pos.y) < half.y * 0.55;
+      const dz = dirSign > 0 ? (ball.position.z > pos.z - half.z && ball.position.z < pos.z + half.z + 0.4)
+                             : (ball.position.z < pos.z + half.z && ball.position.z > pos.z - half.z - 0.4);
+      if (dx && dy && dz && Math.sign(state.ballVel.z) === dirSign) {
+        state.ballVel.z = -Math.abs(state.ballVel.z) * dirSign * -1;
+        const spin = (ball.position.x - pos.x) * 1.5;
+        state.ballVel.x += spin;
+        state.ballVel.multiplyScalar(1.02);
+      }
+    }
+
+    function updateAI(dt) {
+      const target = ball.position.clone();
+      const aim = target.sub(state.aiPos).multiplyScalar(0.9);
+      state.aiPos.addScaledVector(aim, dt * 0.6);
+      clampPaddle(state.aiPos);
+    }
+
+    function updateScore() {
+      document.getElementById("scoreLeft").textContent = state.scores.left;
+      document.getElementById("scoreRight").textContent = state.scores.right;
+    }
+
+    function animate() {
+      const dt = Math.min(renderer.xr.isPresenting ? 1/72 : 1/60, 0.033);
+      if (state.running) {
+        const input = getInput(dt).add(getXRInput());
+        state.playerPos.addScaledVector(new THREE.Vector3(input.x, input.y, 0), paddleSpeed * dt);
+        clampPaddle(state.playerPos);
+        handleXRButtons();
+        updateAI(dt);
+        updateBall(dt);
+        if (state.dashTimer > 0) state.dashTimer = Math.max(0, state.dashTimer - dt);
+      }
+      updatePaddles(dt);
+      updateCameraRig();
+      renderer.render(scene, camera);
+    }
+
+    renderer.setAnimationLoop(animate);
+    window.addEventListener("resize", () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    setStatus("Click or Enter to start; VR optional");
+    window.addEventListener("pointerdown", () => { if (!state.running) startGame(); });
+  </script>
+</body>
+</html>
