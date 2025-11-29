@@ -118,10 +118,28 @@
     for (let i = 0; i < 2; i++) {
       const ctrl = renderer.xr.getController(i);
       ctrl.userData.index = i;
+      ctrl.visible = false;
+      ctrl.addEventListener("connected", (event) => {
+        ctrl.userData.inputSource = event.data;
+        ctrl.visible = true;
+      });
+      ctrl.addEventListener("disconnected", () => {
+        ctrl.userData.inputSource = null;
+        ctrl.visible = false;
+      });
       cameraRig.add(ctrl);
       controllers.push(ctrl);
       const grip = renderer.xr.getControllerGrip(i);
       grip.add(controllerFactory.createControllerModel(grip));
+      grip.visible = false;
+      grip.addEventListener("connected", (event) => {
+        grip.userData.inputSource = event.data;
+        grip.visible = true;
+      });
+      grip.addEventListener("disconnected", () => {
+        grip.userData.inputSource = null;
+        grip.visible = false;
+      });
       cameraRig.add(grip);
       controllerGrips.push(grip);
     }
@@ -174,17 +192,27 @@
 
     function updatePaddleFromController() {
       if (!renderer.xr.isPresenting) return;
-      const session = renderer.xr.getSession();
-      if (!session) return;
       let best = null;
-      controllers.forEach((ctrl) => {
-        if (!ctrl.visible) return;
-        const src = ctrl.userData.inputSource;
+      // Prefer grip pose (controllerGrips) for stable hand location
+      controllerGrips.forEach((grip) => {
+        if (!grip.visible) return;
+        const src = grip.userData.inputSource;
         if (!src || src.handedness !== "right") return;
         const pos = new THREE.Vector3();
-        ctrl.getWorldPosition(pos);
+        grip.getWorldPosition(pos);
         best = pos;
       });
+      // Fallback to controller target ray
+      if (!best) {
+        controllers.forEach((ctrl) => {
+          if (!ctrl.visible) return;
+          const src = ctrl.userData.inputSource;
+          if (!src || src.handedness !== "right") return;
+          const pos = new THREE.Vector3();
+          ctrl.getWorldPosition(pos);
+          best = pos;
+        });
+      }
       if (!best) return;
       state.playerPos.x = THREE.MathUtils.clamp(best.x, -arena.w * 0.5 + paddleSize.x * 0.5, arena.w * 0.5 - paddleSize.x * 0.5);
       state.playerPos.y = THREE.MathUtils.clamp(best.y, paddleSize.y * 0.6, arena.h - paddleSize.y * 0.6);
@@ -228,14 +256,17 @@
       let best = null;
       for (const source of session.inputSources) {
         if (!source.gamepad || !source.gamepad.axes || source.gamepad.axes.length < 2) continue;
+        // Prefer right hand
+        const priority = source.handedness === "right" ? 2 : 1;
         const axes = source.gamepad.axes;
         const vec = new THREE.Vector3(axes[0], -axes[1], 0);
         const mag = vec.lengthSq();
-        if (!best || mag > best.mag) {
-          best = { vec, mag };
+        const score = mag * priority;
+        if (!best || score > best.score) {
+          best = { vec, score };
         }
       }
-      if (best && best.mag > 0.01) {
+      if (best && best.score > 0.01) {
         const dz = 0.12;
         if (Math.abs(best.vec.x) < dz) best.vec.x = 0;
         if (Math.abs(best.vec.y) < dz) best.vec.y = 0;
@@ -316,7 +347,7 @@
       document.getElementById("scoreRight").textContent = state.scores.right;
     }
 
-    function animate() {
+    function animate(time, frame) {
       const dt = Math.min(renderer.xr.isPresenting ? 1/72 : 1/60, 0.033);
       if (state.running) {
         if (renderer.xr.isPresenting) {
