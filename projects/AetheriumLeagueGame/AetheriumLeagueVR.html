@@ -106,9 +106,10 @@
     ball.castShadow = true;
     scene.add(ball);
 
-    const trailGeom = new THREE.CylinderGeometry(0.05, 0.05, 1, 6, 1, true);
-    const trailMat = new THREE.MeshBasicMaterial({ color: 0x5cf2ff, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+    const trailGeom = new THREE.CylinderGeometry(0.05, 0.05, 0.6, 6, 1, true);
+    const trailMat = new THREE.MeshBasicMaterial({ color: 0x5cf2ff, transparent: true, opacity: 0.35, side: THREE.DoubleSide });
     const trail = new THREE.Mesh(trailGeom, trailMat);
+    trail.visible = true;
     scene.add(trail);
 
     const controllerFactory = new XRControllerModelFactory();
@@ -127,7 +128,7 @@
 
     const state = {
       scores: { left: 0, right: 0 },
-      ballVel: new THREE.Vector3(ballSpeed, 0, 0),
+      ballVel: new THREE.Vector3(0, 0, ballSpeed),
       playerZ: arena.d * 0.5 - 1.5,
       aiZ: -arena.d * 0.5 + 1.5,
       playerPos: new THREE.Vector3(0, arena.h * 0.5, 0),
@@ -140,7 +141,9 @@
 
     function resetBall(direction = 1) {
       ball.position.set(0, arena.h * 0.5, 0);
-      state.ballVel.set(ballSpeed * direction, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3);
+      const sideways = (Math.random() - 0.5) * 2;
+      const vertical = (Math.random() - 0.5) * 2;
+      state.ballVel.set(sideways, vertical, ballSpeed * direction);
     }
 
     function setStatus(text) {
@@ -203,11 +206,21 @@
       if (!renderer.xr.isPresenting) return new THREE.Vector3();
       const session = renderer.xr.getSession();
       if (!session) return new THREE.Vector3();
+      let best = null;
       for (const source of session.inputSources) {
-        if (!source.gamepad) continue;
+        if (!source.gamepad || !source.gamepad.axes || source.gamepad.axes.length < 2) continue;
         const axes = source.gamepad.axes;
-        if (!axes || axes.length < 2) continue;
-        return new THREE.Vector3(axes[0], -axes[1], 0).clampLength(0, 1);
+        const vec = new THREE.Vector3(axes[0], -axes[1], 0);
+        const mag = vec.lengthSq();
+        if (!best || mag > best.mag) {
+          best = { vec, mag };
+        }
+      }
+      if (best && best.mag > 0.01) {
+        const dz = 0.12;
+        if (Math.abs(best.vec.x) < dz) best.vec.x = 0;
+        if (Math.abs(best.vec.y) < dz) best.vec.y = 0;
+        return best.vec.clampLength(0, 1);
       }
       return new THREE.Vector3();
     }
@@ -233,8 +246,8 @@
       const velDir = state.ballVel.clone();
       const speed = velDir.length() || 0.001;
       velDir.normalize();
-      trail.position.copy(ball.position).sub(velDir.clone().multiplyScalar(0.4));
-      trail.scale.set(1, THREE.MathUtils.clamp(speed * 0.05, 0.2, 2.2), 1);
+      trail.position.copy(ball.position).sub(velDir.clone().multiplyScalar(0.3));
+      trail.scale.set(1, THREE.MathUtils.clamp(speed * 0.04, 0.4, 1.5), 1);
       trail.lookAt(ball.position.clone().sub(velDir));
       const boundsX = arena.w * 0.5 - 0.4;
       const boundsY = arena.h - 0.6;
@@ -287,7 +300,8 @@
     function animate() {
       const dt = Math.min(renderer.xr.isPresenting ? 1/72 : 1/60, 0.033);
       if (state.running) {
-        const input = getInput(dt).add(getXRInput());
+        const stick = renderer.xr.isPresenting ? getXRInput() : new THREE.Vector3();
+        const input = stick.lengthSq() > 0 ? stick : getInput(dt);
         state.playerPos.addScaledVector(new THREE.Vector3(input.x, input.y, 0), paddleSpeed * dt);
         clampPaddle(state.playerPos);
         handleXRButtons();
