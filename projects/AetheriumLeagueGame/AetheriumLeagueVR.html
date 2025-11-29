@@ -29,10 +29,18 @@
     </div>
     <div class="score" id="scoreRight">0</div>
   </div>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
   <script type="module">
-    import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
-    import { VRButton } from "https://unpkg.com/three@0.160.0/examples/jsm/webxr/VRButton.js";
-    import { XRControllerModelFactory } from "https://unpkg.com/three@0.160.0/examples/jsm/webxr/XRControllerModelFactory.js";
+    import * as THREE from "three";
+    import { VRButton } from "three/addons/webxr/VRButton.js";
+    import { XRControllerModelFactory } from "three/addons/webxr/XRControllerModelFactory.js";
 
     const arenaSize = 10;
     const paddleSize = { x: 2.2, y: 1.4, z: 0.4 };
