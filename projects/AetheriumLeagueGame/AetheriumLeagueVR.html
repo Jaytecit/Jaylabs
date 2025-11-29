@@ -42,7 +42,7 @@
     import { VRButton } from "three/addons/webxr/VRButton.js";
     import { XRControllerModelFactory } from "three/addons/webxr/XRControllerModelFactory.js";
 
-    const arenaSize = 10;
+    const arena = { w: 10, h: 10, d: 30 };
     const paddleSize = { x: 2.2, y: 1.4, z: 0.4 };
     const paddleSpeed = 6;
     const dashImpulse = 12;
@@ -71,10 +71,9 @@
     spot.castShadow = true;
     scene.add(spot);
 
-    const glowMat = new THREE.MeshBasicMaterial({ color: 0x5cf2ff, transparent: true, opacity: 0.08, side: THREE.DoubleSide });
-    const cube = new THREE.Mesh(new THREE.BoxGeometry(arenaSize, arenaSize, arenaSize), glowMat);
-    cube.position.y = arenaSize * 0.5;
-    cube.material.wireframe = true;
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0x5cf2ff, transparent: true, opacity: 0.08, side: THREE.DoubleSide, wireframe: true });
+    const cube = new THREE.Mesh(new THREE.BoxGeometry(arena.w, arena.h, arena.d), glowMat);
+    cube.position.set(0, arena.h * 0.5, 0);
     scene.add(cube);
 
     const glassMat = new THREE.MeshPhysicalMaterial({
@@ -96,7 +95,7 @@
     [playerPaddle, aiPaddle].forEach(p => { p.castShadow = true; p.receiveShadow = true; });
     scene.add(playerPaddle, aiPaddle);
 
-    const ballGeom = new THREE.SphereGeometry(0.35, 24, 24);
+    const ballGeom = new THREE.SphereGeometry(0.28, 24, 24);
     const ballMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x5cf2ff, emissiveIntensity: 1.2, roughness: 0.2, metalness: 0.1 });
     const ball = new THREE.Mesh(ballGeom, ballMat);
     ball.castShadow = true;
@@ -124,14 +123,18 @@
     const state = {
       scores: { left: 0, right: 0 },
       ballVel: new THREE.Vector3(ballSpeed, 0, 0),
-      playerPos: new THREE.Vector3(0, arenaSize * 0.5, arenaSize * 0.5 - 1.5),
-      aiPos: new THREE.Vector3(0, arenaSize * 0.5, -arenaSize * 0.5 + 1.5),
+      playerZ: arena.d * 0.5 - 1.5,
+      aiZ: -arena.d * 0.5 + 1.5,
+      playerPos: new THREE.Vector3(0, arena.h * 0.5, 0),
+      aiPos: new THREE.Vector3(0, arena.h * 0.5, 0),
       dashTimer: 0,
       running: false,
     };
+    state.playerPos.z = state.playerZ;
+    state.aiPos.z = state.aiZ;
 
     function resetBall(direction = 1) {
-      ball.position.set(0, arenaSize * 0.5, 0);
+      ball.position.set(0, arena.h * 0.5, 0);
       state.ballVel.set(ballSpeed * direction, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3);
     }
 
@@ -147,8 +150,9 @@
     }
 
     function clampPaddle(pos) {
-      pos.x = THREE.MathUtils.clamp(pos.x, -arenaSize * 0.5 + paddleSize.x * 0.5, arenaSize * 0.5 - paddleSize.x * 0.5);
-      pos.y = THREE.MathUtils.clamp(pos.y, paddleSize.y * 0.6, arenaSize - paddleSize.y * 0.6);
+      pos.x = THREE.MathUtils.clamp(pos.x, -arena.w * 0.5 + paddleSize.x * 0.5, arena.w * 0.5 - paddleSize.x * 0.5);
+      pos.y = THREE.MathUtils.clamp(pos.y, paddleSize.y * 0.6, arena.h - paddleSize.y * 0.6);
+      pos.z = pos === state.playerPos ? state.playerZ : state.aiZ;
     }
 
     function updatePaddles(dt) {
@@ -157,9 +161,9 @@
     }
 
     function updateCameraRig() {
-      const offset = new THREE.Vector3(0, 0.6, 3.2);
+      const offset = new THREE.Vector3(0, 0.6, 3.8);
       cameraRig.position.copy(state.playerPos).add(offset);
-      cameraRig.lookAt(state.playerPos.x, state.playerPos.y, state.playerPos.z - 2);
+      cameraRig.lookAt(state.playerPos.x, state.playerPos.y, state.playerZ - 2);
     }
 
     const keyState = new Set();
@@ -191,7 +195,7 @@
       const session = renderer.xr.getSession();
       if (!session) return new THREE.Vector3();
       for (const source of session.inputSources) {
-        if (!source.gamepad || source.handedness !== "left") continue;
+        if (!source.gamepad) continue;
         const axes = source.gamepad.axes;
         if (!axes || axes.length < 2) continue;
         return new THREE.Vector3(axes[0], -axes[1], 0).clampLength(0, 1);
@@ -217,21 +221,26 @@
 
     function updateBall(dt) {
       ball.position.addScaledVector(state.ballVel, dt);
-      trail.position.copy(ball.position);
-      trail.scale.set(1, state.ballVel.length() * 0.1, 1);
-      trail.lookAt(ball.position.clone().sub(state.ballVel));
-      const bounds = arenaSize * 0.5 - 0.4;
-      if (ball.position.x < -bounds || ball.position.x > bounds) {
-        state.ballVel.x *= -1; ball.position.x = THREE.MathUtils.clamp(ball.position.x, -bounds, bounds);
+      const velDir = state.ballVel.clone();
+      const speed = velDir.length() || 0.001;
+      velDir.normalize();
+      trail.position.copy(ball.position).sub(velDir.clone().multiplyScalar(0.4));
+      trail.scale.set(1, THREE.MathUtils.clamp(speed * 0.05, 0.2, 2.2), 1);
+      trail.lookAt(ball.position.clone().sub(velDir));
+      const boundsX = arena.w * 0.5 - 0.4;
+      const boundsY = arena.h - 0.6;
+      const boundsZ = arena.d * 0.5 - 0.6;
+      if (ball.position.x < -boundsX || ball.position.x > boundsX) {
+        state.ballVel.x *= -1; ball.position.x = THREE.MathUtils.clamp(ball.position.x, -boundsX, boundsX);
       }
-      if (ball.position.y < 0.6 || ball.position.y > arenaSize - 0.6) {
+      if (ball.position.y < 0.6 || ball.position.y > boundsY) {
         state.ballVel.y *= -1;
       }
-      if (ball.position.z < -bounds) {
+      if (ball.position.z < -boundsZ) {
         state.scores.left += 1;
         updateScore();
         resetBall(1);
-      } else if (ball.position.z > bounds) {
+      } else if (ball.position.z > boundsZ) {
         state.scores.right += 1;
         updateScore();
         resetBall(-1);
