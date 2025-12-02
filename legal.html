@@ -2,127 +2,132 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>JayLabs - Legal Notice</title>
+    <title>JayLabs - Legal Protocol</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&family=Share+Tech+Mono&display=swap');
+
         :root {
-            color-scheme: dark;
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            --bg-deep: #030511;
+            --accent-cyan: #00d9ff;
+            --accent-orange: #ff6b00;
+            --text-1: #ffffff;
+            --text-2: rgba(200, 220, 255, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.1);
         }
 
         body {
             margin: 0;
-            padding: 0;
             min-height: 100vh;
-            background:
-                radial-gradient(circle at top, rgba(255, 111, 0, 0.08) 0, transparent 40%),
-                radial-gradient(circle at bottom, rgba(0, 255, 255, 0.06) 0, transparent 45%),
-                linear-gradient(135deg, #050816 0%, #120435 40%, #080010 100%);
-            color: #eaf7ff;
+            background-color: var(--bg-deep);
+            background-image: 
+                linear-gradient(rgba(0, 217, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 217, 255, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            color: var(--text-1);
+            font-family: "Space Grotesk", sans-serif;
             display: flex;
             justify-content: center;
-            align-items: flex-start;
             padding: 3rem 1.5rem;
         }
 
-        .container {
+        .terminal-container {
             max-width: 800px;
             width: 100%;
-            background: rgba(0, 0, 10, 0.35);
-            border: 1px solid rgba(0, 255, 255, 0.1);
-            border-radius: 1rem;
-            padding: 2rem 2.5rem;
-            box-shadow:
-                0 0 25px rgba(255, 120, 0, 0.15),
-                0 0 45px rgba(0, 255, 255, 0.15);
-            backdrop-filter: blur(10px);
+            background: rgba(10, 15, 30, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 3rem;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Decorative top bar */
+        .terminal-container::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0; height: 4px;
+            background: linear-gradient(90deg, var(--accent-orange), var(--accent-cyan));
         }
 
         h1 {
-            text-align: center;
-            font-size: 2rem;
+            font-family: 'Share Tech Mono', monospace;
             text-transform: uppercase;
-            letter-spacing: 0.15em;
+            letter-spacing: 0.1em;
+            color: var(--accent-orange);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 1rem;
             margin-bottom: 2rem;
-            color: #ffb37f;
-            text-shadow:
-                0 0 8px rgba(255, 120, 0, 0.7),
-                0 0 16px rgba(255, 120, 0, 0.4);
+            text-shadow: 0 0 10px rgba(255, 107, 0, 0.4);
         }
 
         h2 {
-            margin-top: 2rem;
-            font-size: 1.2rem;
-            color: #66e0ff;
-            text-shadow:
-                0 0 8px rgba(0, 255, 255, 0.5),
-                0 0 14px rgba(0, 255, 255, 0.25);
+            font-size: 1.1rem;
+            color: var(--accent-cyan);
+            margin-top: 2.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
 
         p {
-            line-height: 1.65;
-            margin-top: 0.7rem;
-            color: #d8f6ff;
+            line-height: 1.7;
+            color: var(--text-2);
+            font-size: 0.95rem;
         }
 
         .back-link {
-            display: block;
-            margin-top: 2.5rem;
-            text-align: center;
-            color: #66e0ff;
+            display: inline-block;
+            margin-top: 3rem;
+            color: var(--text-1);
             text-decoration: none;
-            font-size: 0.95rem;
-            letter-spacing: 0.05em;
-            transition: 0.2s ease;
+            border: 1px solid var(--accent-cyan);
+            padding: 0.5rem 1.5rem;
+            border-radius: 4px;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.1em;
         }
 
         .back-link:hover {
-            color: #88ffff;
-            text-shadow: 0 0 8px rgba(0, 255, 255, 0.7);
+            background: var(--accent-cyan);
+            color: #000;
+            box-shadow: 0 0 15px var(--accent-cyan);
         }
     </style>
 </head>
-
 <body>
-    <div class="container">
-        <h1>Legal Notice</h1>
+    <main class="terminal-container">
+        <h1>// Legal Notice</h1>
 
-        <h2>Ownership</h2>
+        <h2>Ownership Protocol</h2>
         <p>
             Source code for JayLabs projects is published on GitHub under the MIT License unless otherwise noted.
             Playable builds, artwork, and all original music/audio included with those builds remain the property of
             <strong>JayLabs</strong>.
         </p>
 
-        <h2>Permitted Use</h2>
+        <h2>Access Permissions</h2>
         <p>
             Visitors may view, play, and explore the projects hosted on this site for personal and non-commercial
             purposes only. No content may be copied, redistributed, altered, reposted, or used commercially without
             explicit written permission.
         </p>
 
-        <h2>Music &amp; Audio</h2>
+        <h2>Audio Assets</h2>
         <p>
             All custom music and audio tracks are original compositions by JayLabs and are <strong>not</strong> licensed for reuse.
             Do not copy, sample, redistribute, or include them in derivative works without prior written permission.
-            Third-party libraries retain their own licenses.
-        </p>
-
-        <h2>Prohibited Use</h2>
-        <p>
-            You may not download or extract source code, assets, images, audio, or any part of the interactive
-            experiences unless explicitly allowed. Automated scraping or mirroring of the site is not permitted.
         </p>
 
         <h2>Disclaimer</h2>
         <p>
-            All projects on this website are experimental and provided "as is." JayLabs disclaims any liability for
-            damage, loss, malfunction, or data issues that may arise from using or interacting with any project on this
-            site.
+            All projects are experimental. JayLabs disclaims any liability for damage, loss, malfunction, or data issues 
+            that may arise from using or interacting with any project on this site.
         </p>
 
-        <a href="index.html" class="back-link">&#8592; Back to JayLabs Playground</a>
-    </div>
+        <a href="index.html" class="back-link">&larr; Return to Base</a>
+    </main>
 </body>
 </html>

@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>VR Spaceship - Advanced Combat</title>
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://unpkg.com/aframe-environment-component@1.3.3/dist/aframe-environment-component.min.js"></script>
+  </head>
+  <body>
+    <script>
+      // =========================================================
+      // 1. GAME MANAGER (Waves, Score, Difficulty)
+      // =========================================================
+      AFRAME.registerSystem('game-manager', {
+        init: function() {
+          this.score = 0;
+          this.wave = 1;
+          this.enemiesRemaining = 0;
+          this.isSpawning = false;
+          this.playerHealth = 100;
+          this.gameOver = false;
+
+          // UI References
+          this.scoreText = null; // Will be bound later
+          this.waveText = null;
+        },
+
+        registerUI: function(scoreEl, waveEl) {
+          this.scoreText = scoreEl;
+          this.waveText = waveEl;
+          this.updateUI();
+        },
+
+        enemyDestroyed: function(points) {
+          if(this.gameOver) return;
+          this.score += points;
+          this.enemiesRemaining--;
+          this.updateUI();
+
+          if (this.enemiesRemaining <= 0 && !this.isSpawning) {
+            this.startNextWave();
+          }
+        },
+
+        startNextWave: function() {
+          this.isSpawning = true;
+          // Small delay before next wave
+          setTimeout(() => {
+            this.wave++;
+            this.spawnWave();
+          }, 3000);
+          
+          // Show "WAVE COMPLETE" temporarily (optional logic could go here)
+        },
+
+        spawnWave: function() {
+          if(this.gameOver) return;
+          
+          // Difficulty scaling
+          let enemyCount = 3 + Math.floor(this.wave * 1.5); 
+          this.enemiesRemaining = enemyCount;
+          this.updateUI();
+
+          let spawner = this.el.components['drone-spawner'];
+          if(spawner) {
+             spawner.spawnBatch(enemyCount, this.wave);
+          }
+          this.isSpawning = false;
+        },
+
+        playerHit: function(damage) {
+          if(this.gameOver) return;
+          this.playerHealth -= damage;
+          
+          // Update HUD Health (using the score panel for health too)
+          this.updateUI();
+          
+          // Flash red
+          let damageOverlay = document.getElementById('damage-overlay');
+          damageOverlay.setAttribute('opacity', 0.8);
+          setTimeout(() => {
+             if(!this.gameOver) damageOverlay.setAttribute('opacity', 0);
+          }, 200);
+
+          if (this.playerHealth <= 0) {
+            this.endGame();
+          }
+        },
+
+        endGame: function() {
+          this.gameOver = true;
+          let scene = document.querySelector('a-scene');
+          // Simple visual game over
+          let text = document.createElement('a-text');
+          text.setAttribute('value', 'SYSTEM FAILURE');
+          text.setAttribute('color', 'red');
+          text.setAttribute('align', 'center');
+          text.setAttribute('position', '0 0 -2');
+          text.setAttribute('scale', '2 2 2');
+          document.querySelector('[camera]').appendChild(text);
+        },
+
+        updateUI: function() {
+          if (this.scoreText) {
+             this.scoreText.setAttribute('value', 
+               `SYS STATUS\n----------\nSHIELD: ${Math.max(0, this.playerHealth)}%\nSCORE: ${this.score}`);
+          }
+          if (this.waveText) {
+             this.waveText.setAttribute('value', 
+               `TACTICAL\n----------\nWAVE: ${this.wave}\nTARGETS: ${this.enemiesRemaining}`);
+          }
+        }
+      });
+
+      // =========================================================
+      // 2. SHIP CONTROLS
+      // =========================================================
+      AFRAME.registerComponent('ship-controls', {
+        schema: {
+          accel: { type: 'number', default: 0.05 },      
+          maxSpeed: { type: 'number', default: 2.0 },    
+          turnSpeed: { type: 'number', default: 0.0001 },
+          rollSpeed: { type: 'number', default: 0.02 },  
+          rotDrag: { type: 'number', default: 0.98 }      
+        },
+        init: function () {
+          this.leftHand = document.getElementById('leftHand');
+          this.rightHand = document.getElementById('rightHand');
+          this.rotVel = { x: 0, y: 0, z: 0 }; 
+          this.forwardSpeed = this.data.maxSpeed * 0.5; 
+          
+          let engineSound = document.querySelector('#sound-engine');
+          if(engineSound) engineSound.components.sound.playSound();
+        },
+        tick: function (time, timeDelta) {
+          if(this.el.sceneEl.systems['game-manager'].gameOver) return;
+
+          // Yaw/Pitch
+          if (this.leftHand) {
+            let controls = this.leftHand.components['tracked-controls'];
+            if (controls && controls.axis && controls.axis.length >= 4) {
+              let inputYaw = controls.axis[2]; 
+              let inputPitch = controls.axis[3]; 
+              if (Math.abs(inputYaw) < 0.1) inputYaw = 0;
+              if (Math.abs(inputPitch) < 0.1) inputPitch = 0;
+              this.rotVel.x += inputPitch * this.data.turnSpeed;
+              this.rotVel.y += (-inputYaw) * this.data.turnSpeed;
+            }
+          }
+
+          // Roll
+          let leftGrip = this.isGripDown(this.leftHand) ? 1 : 0;
+          let rightGrip = this.isGripDown(this.rightHand) ? 1 : 0;
+          
+          if (leftGrip) this.rotVel.z += this.data.rollSpeed * 0.1;
+          if (rightGrip) this.rotVel.z -= this.data.rollSpeed * 0.1;
+
+          // Physics Drag
+          this.rotVel.x *= this.data.rotDrag;
+          this.rotVel.y *= this.data.rotDrag;
+          this.rotVel.z *= 0.95;
+
+          // Throttle
+          let targetSpeed = this.data.maxSpeed * 0.5; 
+          if (this.rightHand) {
+            let controls = this.rightHand.components['tracked-controls'];
+            if (controls && controls.axis && controls.axis.length >= 4) {
+              let inputThrust = controls.axis[3]; 
+              if (inputThrust < -0.5) targetSpeed = this.data.maxSpeed; 
+              else if (inputThrust > 0.5) targetSpeed = this.data.maxSpeed * 0.25; 
+            }
+          }
+          this.forwardSpeed += (targetSpeed - this.forwardSpeed) * this.data.accel;
+
+          // Apply Transforms
+          this.el.object3D.rotateX(this.rotVel.x);
+          this.el.object3D.rotateY(this.rotVel.y);
+          this.el.object3D.rotateZ(this.rotVel.z); 
+          this.el.object3D.translateZ(-this.forwardSpeed);
+        },
+
+        isGripDown: function(hand) {
+            if (!hand) return false;
+            let controls = hand.components['tracked-controls'];
+            if (!controls || !controls.buttons) return false;
+            let btn = controls.buttons[1];
+            return btn && btn.value > 0.5;
+        }
+      });
+
+      // =========================================================
+      // 3. ENEMY AI SYSTEM
+      // =========================================================
+      AFRAME.registerComponent('enemy-drone', {
+        init: function() {
+          this.ship = document.querySelector('#ship-rig');
+          this.el.classList.add('enemy-hitbox'); 
+          
+          // AI Properties
+          this.state = 'CHASE'; // CHASE, ORBIT
+          this.speed = 0.2;
+          this.fireCooldown = 0;
+          this.fireRate = 100; // Frames between shots
+          this.orbitOffset = Math.random() * Math.PI * 2;
+          this.orbitDistance = 20 + Math.random() * 10;
+        },
+
+        tick: function(time, timeDelta) {
+          if (!this.ship) return;
+          let shipPos = this.ship.object3D.position;
+          let myPos = this.el.object3D.position;
+          let dist = myPos.distanceTo(shipPos);
+
+          // 1. MOVEMENT AI
+          let target = new THREE.Vector3().copy(shipPos);
+          
+          if (dist > 60) {
+            // Far away? Fly straight at player
+            this.el.object3D.lookAt(target);
+            this.el.object3D.translateZ(this.speed * 2); // Boost speed to catch up
+          } else {
+            // Combat range? Strafe and Orbit
+            // Calculate orbit position
+            let timeSec = time / 1000;
+            let orbitX = shipPos.x + Math.cos(timeSec * 0.5 + this.orbitOffset) * this.orbitDistance;
+            let orbitY = shipPos.y + Math.sin(timeSec * 0.8) * (this.orbitDistance / 2);
+            let orbitZ = shipPos.z + Math.sin(timeSec * 0.5 + this.orbitOffset) * this.orbitDistance;
+            
+            let flyTo = new THREE.Vector3(orbitX, orbitY, orbitZ);
+            this.el.object3D.lookAt(target); // Always look at player to fire
+            
+            // Lerp towards orbit position for smoother movement
+            this.el.object3D.position.lerp(flyTo, 0.02);
+          }
+
+          // 2. FIRING AI
+          if (dist < 100 && dist > 5) {
+            this.fireCooldown--;
+            if (this.fireCooldown <= 0) {
+              this.fire(target);
+              // Randomize next shot time slightly
+              this.fireCooldown = this.fireRate + Math.random() * 50; 
+            }
+          }
+        },
+
+        fire: function(targetPos) {
+          let scene = document.querySelector('a-scene');
+          let laser = document.createElement('a-entity');
+          
+          // Setup Visuals
+          laser.setAttribute('geometry', 'primitive: sphere; radius: 0.2');
+          laser.setAttribute('material', 'color: #FF0000; emissive: #FF0000; emissiveIntensity: 5');
+          
+          // Position at drone
+          laser.object3D.position.copy(this.el.object3D.position);
+          laser.object3D.lookAt(targetPos);
+          
+          laser.setAttribute('enemy-laser', '');
+          scene.appendChild(laser);
+          this.el.sceneEl.systems['game-audio'].playSound('snd-laser');
+        },
+
+        hit: function() {
+          let scene = document.querySelector('a-scene');
+          let explosion = document.createElement('a-entity');
+          explosion.setAttribute('position', this.el.object3D.position);
+          explosion.setAttribute('explosion-effect', '');
+          scene.appendChild(explosion);
+          
+          this.el.sceneEl.systems['game-audio'].playSound('snd-explosion');
+          this.el.sceneEl.systems['game-manager'].enemyDestroyed(100); // 100 Points
+          
+          if(this.el.parentNode) this.el.parentNode.removeChild(this.el);
+        }
+      });
+
+      // Component for enemy projectiles
+      AFRAME.registerComponent('enemy-laser', {
+        init: function() {
+           this.speed = 1.5;
+           this.ship = document.querySelector('#ship-rig');
+        },
+        tick: function() {
+           this.el.object3D.translateZ(this.speed);
+           
+           // Distance check for Despawn
+           if (this.ship.object3D.position.distanceTo(this.el.object3D.position) > 300) {
+              if(this.el.parentNode) this.el.parentNode.removeChild(this.el);
+              return;
+           }
+
+           // Collision with Player
+           let distToPlayer = this.el.object3D.position.distanceTo(this.ship.object3D.position);
+           if (distToPlayer < 2.5) { // Hitbox size of ship
+              this.el.sceneEl.systems['game-manager'].playerHit(10);
+              this.el.sceneEl.systems['game-audio'].playSound('snd-impact');
+              if(this.el.parentNode) this.el.parentNode.removeChild(this.el);
+           }
+        }
+      });
+
+      // =========================================================
+      // 4. SPAWNER (WAVE BASED)
+      // =========================================================
+      AFRAME.registerComponent('drone-spawner', {
+        init: function() {
+          this.ship = document.querySelector('#ship-rig');
+          // Start first wave immediately
+          this.el.sceneEl.systems['game-manager'].spawnWave();
+        },
+        spawnBatch: function(count, difficultyMultiplier) {
+          let scene = document.querySelector('a-scene');
+          let shipPos = this.ship.object3D.position;
+
+          for(let i=0; i<count; i++) {
+            let parent = document.createElement('a-entity');
+            parent.setAttribute('enemy-drone', '');
+
+            let visual = document.createElement('a-entity');
+            visual.setAttribute('gltf-model', '#drone-asset');
+            visual.setAttribute('scale', '0.002 0.002 0.002');
+            visual.setAttribute('rotation', '0 -90 0'); // Model fix
+            
+            // Engine Glow
+            let light = document.createElement('a-entity');
+            light.setAttribute('geometry', 'primitive: sphere; radius: 1.0'); 
+            light.setAttribute('material', 'color: orange; emissive: orange; emissiveIntensity: 2');
+            light.setAttribute('position', '0 0 1'); 
+            visual.appendChild(light);
+            parent.appendChild(visual);
+
+            // Random Position spread around player
+            let angle = Math.random() * Math.PI * 2;
+            let dist = 100 + Math.random() * 50;
+            let height = (Math.random() - 0.5) * 50;
+
+            parent.object3D.position.set(
+              shipPos.x + Math.cos(angle) * dist,
+              shipPos.y + height,
+              shipPos.z + Math.sin(angle) * dist
+            );
+            
+            // Increase fire rate based on wave
+            // (Wait for component to init slightly, or set data directly if schema existed)
+            // Here we hack it via JS object property since init runs after append
+            setTimeout(() => {
+                let ai = parent.components['enemy-drone'];
+                if(ai) ai.fireRate = Math.max(30, 100 - (difficultyMultiplier * 5));
+            }, 100);
+
+            scene.appendChild(parent);
+          }
+        }
+      });
+
+      // =========================================================
+      // 5. PLAYER WEAPONS
+      // =========================================================
+      AFRAME.registerComponent('laser-shooter', {
+        init: function () {
+          this.el.addEventListener('triggerdown', this.shoot.bind(this));
+          this.ship = document.querySelector('#ship-rig'); 
+        },
+        shoot: function () {
+          if(this.el.sceneEl.systems['game-manager'].gameOver) return;
+
+          let scene = document.querySelector('a-scene');
+          let laser = document.createElement('a-entity');
+          laser.setAttribute('geometry', 'primitive: cylinder; height: 3; radius: 0.05');
+          laser.setAttribute('material', 'color: #00FF00; emissive: #00FF00; emissiveIntensity: 3');
+          
+          laser.object3D.position.copy(this.ship.object3D.position);
+          laser.object3D.quaternion.copy(this.ship.object3D.quaternion);
+          laser.object3D.rotateX(-Math.PI / 2); 
+          
+          // Offset to side of ship (guns are usually on wings)
+          // We can't easily do left/right wing without more logic, 
+          // so we center it or offset slightly up
+          laser.object3D.translateY(1.0); 
+          laser.object3D.translateX(0.8); // Right gun offset relative to center
+
+          laser.setAttribute('laser-move', '');
+          scene.appendChild(laser);
+          this.el.sceneEl.systems['game-audio'].playSound('snd-laser');
+        }
+      });
+
+      AFRAME.registerComponent('laser-move', {
+        tick: function () {
+          this.el.object3D.translateY(3.0); // Move forward (local Y is forward for cylinder rot)
+          
+          let enemies = document.querySelectorAll('.enemy-hitbox');
+          let laserPos = this.el.object3D.position;
+
+          for (let i = 0; i < enemies.length; i++) {
+             let enemyParent = enemies[i];
+             // Simple sphere collision
+             if (laserPos.distanceTo(enemyParent.object3D.position) < 3.0) {
+                enemyParent.components['enemy-drone'].hit(); 
+                this.el.parentNode.removeChild(this.el); 
+                return; 
+             }
+          }
+
+          let shipPos = document.querySelector('#ship-rig').object3D.position;
+          if (this.el.object3D.position.distanceTo(shipPos) > 600) {
+            if(this.el.parentNode) this.el.parentNode.removeChild(this.el);
+          }
+        }
+      });
+
+      // =========================================================
+      // 6. FX & UTILS
+      // =========================================================
+      AFRAME.registerSystem('game-audio', {
+        playSound: function(id) {
+            let entity = document.createElement('a-entity');
+            entity.setAttribute('sound', `src: #${id}; autoplay: true; volume: 0.8`);
+            // Clean up audio entity after playing
+            setTimeout(() => { if(entity.parentNode) entity.parentNode.removeChild(entity) }, 2000);
+            document.querySelector('a-scene').appendChild(entity);
+        }
+      });
+
+      AFRAME.registerComponent('explosion-effect', {
+        init: function() {
+          let flash = document.createElement('a-sphere');
+          flash.setAttribute('radius', 1);
+          flash.setAttribute('color', 'white');
+          flash.setAttribute('shader', 'flat');
+          flash.setAttribute('opacity', 1);
+          this.el.appendChild(flash);
+          this.flashEl = flash;
+
+          this.particles = [];
+          for(let i=0; i<15; i++) {
+             let part = document.createElement('a-sphere');
+             part.setAttribute('radius', 0.2 + Math.random() * 0.4);
+             part.setAttribute('color', Math.random() > 0.5 ? '#FF4400' : '#FFFF00'); 
+             part.setAttribute('shader', 'flat');
+             this.el.appendChild(part);
+             this.particles.push({
+               el: part,
+               dir: { 
+                 x: (Math.random()-0.5)*0.8, 
+                 y: (Math.random()-0.5)*0.8, 
+                 z: (Math.random()-0.5)*0.8 
+               }
+             });
+          }
+          this.life = 40; 
+        },
+        tick: function() {
+          this.life--;
+          if (this.life <= 0) { this.el.parentNode.removeChild(this.el); return; }
+          
+          if (this.flashEl) {
+             let s = this.flashEl.object3D.scale.x + 0.5;
+             this.flashEl.object3D.scale.set(s,s,s);
+             this.flashEl.setAttribute('opacity', this.life / 40); 
+          }
+          for(let p of this.particles) {
+             p.el.object3D.position.x += p.dir.x;
+             p.el.object3D.position.y += p.dir.y;
+             p.el.object3D.position.z += p.dir.z;
+             let s = p.el.object3D.scale.x * 0.9; 
+             p.el.object3D.scale.set(s,s,s);
+          }
+        }
+      });
+      
+      AFRAME.registerComponent('camera-shaker', {
+        init: function() {
+          this.intensity = 0;
+          this.originalPos = this.el.object3D.position.clone();
+        },
+        shake: function(amount) { this.intensity = amount; },
+        tick: function() {
+          if (this.intensity > 0) {
+            let rx = (Math.random() - 0.5) * this.intensity;
+            let ry = (Math.random() - 0.5) * this.intensity;
+            let rz = (Math.random() - 0.5) * this.intensity;
+            this.el.object3D.position.set(this.originalPos.x + rx, this.originalPos.y + ry, this.originalPos.z + rz);
+            this.intensity *= 0.9;
+            if(this.intensity < 0.01) { this.intensity = 0; this.el.object3D.position.copy(this.originalPos); }
+          }
+        }
+      });
+
+      // HUD Initializer
+      AFRAME.registerComponent('hud-binder', {
+        init: function() {
+          let scoreEl = document.querySelector('#hud-display-left');
+          let waveEl = document.querySelector('#hud-display-right');
+          this.el.sceneEl.systems['game-manager'].registerUI(scoreEl, waveEl);
+        }
+      });
+
+      AFRAME.registerComponent('infinite-star-field', {
+        init: function() {
+          this.stars = [];
+          this.ship = document.querySelector('#ship-rig');
+          for(let i=0; i<600; i++) {
+            let star = document.createElement('a-sphere');
+            let pos = this.randomPos(500);
+            star.setAttribute('position', pos);
+            star.setAttribute('radius', Math.random() * 0.3 + 0.05);
+            star.setAttribute('color', 'white');
+            star.setAttribute('shader', 'flat');
+            this.el.appendChild(star);
+            this.stars.push(star);
+          }
+        },
+        randomPos: function(radius) {
+            let x = (Math.random() - 0.5) * 2 * radius; let y = (Math.random() - 0.5) * 2 * radius; let z = (Math.random() - 0.5) * 2 * radius;
+            return {x, y, z};
+        },
+        tick: function() {
+          let shipPos = this.ship.object3D.position;
+          for (let star of this.stars) {
+             let dist = star.object3D.position.distanceTo(shipPos);
+             if (dist > 400) {
+                let offset = this.randomPos(350); 
+                star.object3D.position.set(shipPos.x + offset.x, shipPos.y + offset.y, shipPos.z + offset.z);
+             }
+          }
+        }
+      });
+
+      AFRAME.registerComponent('planet-system', {
+        init: function() {
+          this.planets = [];
+          this.ship = document.querySelector('#ship-rig');
+          let colors = ['#FF4444', '#4444FF', '#AA8822'];
+          for(let i=0; i<3; i++) {
+            let planet = document.createElement('a-sphere');
+            let pos = this.randomPos(2000, 4000);
+            planet.setAttribute('position', pos);
+            planet.setAttribute('radius', Math.random() * 300 + 100); 
+            planet.setAttribute('color', colors[i]);
+            planet.setAttribute('roughness', 1);
+            this.el.appendChild(planet);
+            this.planets.push(planet);
+          }
+        },
+        randomPos: function(min, max) {
+            let dirX = (Math.random() - 0.5); let dirY = (Math.random() - 0.5); let dirZ = (Math.random() - 0.5);
+            let len = Math.sqrt(dirX*dirX + dirY*dirY + dirZ*dirZ);
+            let dist = min + Math.random() * (max - min);
+            return { x: (dirX / len) * dist, y: (dirY / len) * dist, z: (dirZ / len) * dist };
+        },
+        tick: function() {
+           let shipPos = this.ship.object3D.position;
+           for(let planet of this.planets) {
+             if(planet.object3D.position.distanceTo(shipPos) > 5000) {
+                let offset = this.randomPos(2000, 4000);
+                planet.object3D.position.set(shipPos.x + offset.x, shipPos.y + offset.y, shipPos.z + offset.z);
+             }
+           }
+        }
+      });
+    </script>
+
+    <a-scene background="color: #000000" drone-spawner hud-binder>
+      <a-assets>
+        <a-asset-item id="cockpit-asset" src="cockpit.glb"></a-asset-item>
+        <a-asset-item id="drone-asset" src="drone.glb"></a-asset-item>
+        <audio id="snd-bg" src="Audio/background.mp3" loop="true"></audio>
+        <audio id="snd-engine" src="Audio/engine.mp3" loop="true"></audio>
+        <audio id="snd-laser" src="Audio/laser.mp3"></audio>
+        <audio id="snd-explosion" src="Audio/explosion.mp3"></audio>
+        <audio id="snd-impact" src="Audio/impact.mp3"></audio>
+      </a-assets>
+
+      <a-entity infinite-star-field></a-entity>
+      <a-entity planet-system></a-entity>
+      <a-light type="ambient" color="#888"></a-light>
+      <a-light type="directional" position="0.5 1 0" intensity="0.8" color="#FFFFAA"></a-light>
+      
+      <!-- Ambient Music -->
+      <a-entity sound="src: #snd-bg; autoplay: true; loop: true; volume: 0.2"></a-entity>
+      
+      <!-- SHIP RIG -->
+      <a-entity id="ship-rig" position="0 0 0" ship-controls>
+
+        <!-- CAMERA -->
+        <a-entity id="cam-wrapper" camera-shaker>
+          <a-entity camera position="0 0 0" look-controls="pointerLockEnabled: false">
+            <!-- Damage Overlay (Full screen red flash) -->
+            <a-entity id="damage-overlay" geometry="primitive: plane; width: 4; height: 4" 
+                      material="color: #FF0000; transparent: true; opacity: 0; shader: flat" 
+                      position="0 0 -0.1"></a-entity>
+          </a-entity>
+        </a-entity>
+
+        <!-- COCKPIT MODEL -->
+        <a-entity 
+          gltf-model="#cockpit-asset" 
+          position="-0.005 -3.445 -1.883" 
+          rotation="0 180 0" 
+          scale="1.479 1.479 1.479">
+        </a-entity>
+
+        <!-- DIGITAL HUD OVERLAYS (Positioned over the green panels) -->
+        <!-- These positions are relative to the ship rig (0,0,0 is camera/head position) -->
+        <!-- Adjust X/Y/Z slightly to fit exact model geometry -->
+        
+        <!-- Left Panel: Score & Health -->
+        <a-text id="hud-display-left" 
+                value="INIT..." 
+                font="sourcecodepro" 
+                color="#00FF00" 
+                scale="0.5 0.5 0.5" 
+                position="0.32 0.22 0.45" 
+                rotation="-25 25 0"
+                align="center">
+        </a-text>
+
+        <!-- Right Panel: Wave Info -->
+        <a-text id="hud-display-right" 
+                value="SCANNING..." 
+                font="sourcecodepro" 
+                color="#00FF00" 
+                scale="0.15 0.15 0.15" 
+                position="0.32 -0.22 -0.45" 
+                rotation="-25 -25 0"
+                align="center">
+        </a-text>
+
+        <!-- Engine Sound -->
+        <a-entity id="sound-engine" sound="src: #snd-engine; autoplay: true; loop: true; volume: 0.3"></a-entity>
+
+        <!-- Hands -->
+        <a-entity id="leftHand" oculus-touch-controls="hand: left; model: false"></a-entity>
+        <a-entity id="rightHand" oculus-touch-controls="hand: right; model: false" laser-shooter></a-entity>
+        
+      </a-entity>
+    </a-scene>
+  </body>
+</html>

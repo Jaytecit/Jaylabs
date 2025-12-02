@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Cockpit & HUD Calibrator</title>
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://unpkg.com/aframe-environment-component@1.3.3/dist/aframe-environment-component.min.js"></script>
+  </head>
+  <body>
+    <script>
+      // COMPONENT: Universal Calibrator
+      AFRAME.registerComponent('calibrator', {
+        init: function () {
+          this.uiText = document.querySelector('#debug-text');
+          this.leftHand = document.getElementById('leftHand');
+          this.rightHand = document.getElementById('rightHand');
+          
+          // --- CONFIGURATION OBJECTS (DEFAULTS FROM INDEX.HTML) ---
+          this.objects = [
+            {
+              id: 'cockpit',
+              name: 'COCKPIT MODEL',
+              el: document.querySelector('#target-cockpit'),
+              pos: { x: -0.005, y: -3.445, z: -1.883 },
+              rot: { x: 0, y: 180, z: 0 },
+              scale: 1.479
+            },
+            {
+              id: 'hudLeft',
+              name: 'LEFT HUD (Score)',
+              el: document.querySelector('#target-hud-left'),
+              pos: { x: -0.32, y: -0.22, z: -0.45 },
+              rot: { x: -25, y: 25, z: 0 },
+              scale: 0.15
+            },
+            {
+              id: 'hudRight',
+              name: 'RIGHT HUD (Wave)',
+              el: document.querySelector('#target-hud-right'),
+              pos: { x: 0.32, y: -0.22, z: -0.45 },
+              rot: { x: -25, y: -25, z: 0 },
+              scale: 0.15
+            }
+          ];
+
+          this.selectedIndex = 0; // Start with Cockpit
+          this.cooldown = 0;
+          
+          // Apply initial defaults to scene
+          this.updateScene();
+        },
+        
+        tick: function (time, timeDelta) {
+          if (!this.leftHand || !this.rightHand) return;
+          if (this.cooldown > 0) this.cooldown--;
+
+          let currentObj = this.objects[this.selectedIndex];
+
+          // --- CONTROLLER INPUTS ---
+          let leftCtrl = this.leftHand.components['tracked-controls'];
+          let rightCtrl = this.rightHand.components['tracked-controls'];
+
+          let leftAxis = leftCtrl?.axis || [0,0,0,0];
+          let rightAxis = rightCtrl?.axis || [0,0,0,0];
+          let leftBtns = leftCtrl?.buttons || [];
+          let rightBtns = rightCtrl?.buttons || [];
+
+          // 1. SWITCH SELECTION (Button X - Left Controller [3] or similar depending on browser mapping)
+          // Usually X is button 3 on Oculus. If not working, try Trigger temporarily.
+          if (leftBtns[3] && leftBtns[3].pressed && this.cooldown <= 0) {
+            this.selectedIndex = (this.selectedIndex + 1) % this.objects.length;
+            this.cooldown = 20;
+          }
+
+          // 2. POSITION (Left Stick X/Y) -> Map to X/Z
+          if (Math.abs(leftAxis[2]) > 0.1) currentObj.pos.x += leftAxis[2] * 0.005;
+          if (Math.abs(leftAxis[3]) > 0.1) currentObj.pos.z += leftAxis[3] * 0.005;
+
+          // 3. HEIGHT (Right Stick Y) -> Map to Y
+          if (Math.abs(rightAxis[3]) > 0.1) currentObj.pos.y -= rightAxis[3] * 0.005;
+
+          // 4. SCALE (Right Stick X)
+          if (Math.abs(rightAxis[2]) > 0.1) {
+            currentObj.scale += rightAxis[2] * 0.001;
+            if(currentObj.scale < 0.001) currentObj.scale = 0.001;
+          }
+
+          // 5. ROTATION (Triggers & Grips)
+          // Left Trigger/Grip = PITCH (X Axis)
+          if (leftBtns[0] && leftBtns[0].value > 0.5) currentObj.rot.x += 0.5; // Trigger
+          if (leftBtns[1] && leftBtns[1].pressed) currentObj.rot.x -= 0.5;     // Grip
+
+          // Right Trigger/Grip = YAW (Y Axis)
+          if (rightBtns[0] && rightBtns[0].value > 0.5) currentObj.rot.y -= 0.5; // Trigger
+          if (rightBtns[1] && rightBtns[1].pressed) currentObj.rot.y += 0.5;     // Grip
+
+          // 6. EXPORT (Button B - Right Controller [1])
+          if (rightBtns[1] && rightBtns[1].pressed && this.cooldown <= 0) {
+            this.exportJSON();
+            this.cooldown = 50;
+          }
+
+          // APPLY & RENDER UI
+          this.updateScene();
+          this.renderUI(currentObj);
+        },
+
+        updateScene: function() {
+          this.objects.forEach(obj => {
+            obj.el.object3D.position.set(obj.pos.x, obj.pos.y, obj.pos.z);
+            
+            // A-Text needs separate handling if scaling uniform, but usually setAttribute scale handles vec3
+            obj.el.setAttribute('scale', `${obj.scale} ${obj.scale} ${obj.scale}`);
+            
+            obj.el.object3D.rotation.set(
+              THREE.MathUtils.degToRad(obj.rot.x),
+              THREE.MathUtils.degToRad(obj.rot.y),
+              THREE.MathUtils.degToRad(obj.rot.z)
+            );
+          });
+        },
+
+        renderUI: function(obj) {
+          this.uiText.setAttribute('value', 
+            `>> ${obj.name} <<\n` +
+            `------------------\n` +
+            `POS: ${obj.pos.x.toFixed(3)}, ${obj.pos.y.toFixed(3)}, ${obj.pos.z.toFixed(3)}\n` +
+            `ROT: ${obj.rot.x.toFixed(1)}, ${obj.rot.y.toFixed(1)}, ${obj.rot.z.toFixed(1)}\n` +
+            `SCL: ${obj.scale.toFixed(4)}\n\n` +
+            `[X Button] Switch Object\n` +
+            `[L Stick] Move X/Z  | [R Stick Y] Move Y\n` +
+            `[R Stick X] Scale\n` +
+            `[L Trig/Grip] Pitch | [R Trig/Grip] Yaw\n` +
+            `[B Button] Export JSON`
+          );
+        },
+
+        exportJSON: function() {
+          let output = {};
+          this.objects.forEach(obj => {
+            output[obj.id] = {
+              position: `${obj.pos.x.toFixed(3)} ${obj.pos.y.toFixed(3)} ${obj.pos.z.toFixed(3)}`,
+              rotation: `${obj.rot.x.toFixed(1)} ${obj.rot.y.toFixed(1)} ${obj.rot.z.toFixed(1)}`,
+              scale: `${obj.scale.toFixed(3)} ${obj.scale.toFixed(3)} ${obj.scale.toFixed(3)}`
+            };
+          });
+          
+          let jsonStr = JSON.stringify(output, null, 2);
+          console.log(jsonStr);
+          
+          let blob = new Blob([jsonStr], {type: "application/json"});
+          let url = URL.createObjectURL(blob);
+          let a = document.createElement('a');
+          a.href = url;
+          a.download = "calibrated_offsets.json";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+
+          let originalVal = this.uiText.getAttribute('value');
+          this.uiText.setAttribute('value', "SAVED TO DOWNLOADS!");
+        }
+      });
+    </script>
+
+    <a-scene background="color: #111">
+      <a-assets>
+        <a-asset-item id="cockpit-asset" src="cockpit.glb"></a-asset-item>
+      </a-assets>
+
+      <a-light type="ambient" color="#FFF"></a-light>
+      <a-light type="directional" position="-1 1 0"></a-light>
+
+      <!-- CALIBRATOR RIG -->
+      <a-entity id="calibrator-rig" calibrator>
+        
+        <!-- Debug UI -->
+        <a-text id="debug-text" 
+                value="Waiting for controllers..." 
+                position="0 1.5 -2" 
+                align="center" 
+                font="monoid"
+                color="#00FF00"
+                width="2.5"
+                side="double"
+                background="color: black"></a-text>
+
+        <!-- 1. COCKPIT MODEL -->
+        <a-entity id="target-cockpit" gltf-model="#cockpit-asset"></a-entity>
+
+        <!-- 2. LEFT HUD (Score/Health) -->
+        <a-text id="target-hud-left" 
+                value="SHIELD: 100%\nSCORE: 0500" 
+                font="sourcecodepro" 
+                color="#00FF00" 
+                align="center"
+                width="4"
+                geometry="primitive: plane; height: 1.5; width: 3"
+                material="color: #002200; opacity: 0.5"></a-text>
+
+        <!-- 3. RIGHT HUD (Wave Info) -->
+        <a-text id="target-hud-right" 
+                value="WAVE: 02\nTARGETS: 05" 
+                font="sourcecodepro" 
+                color="#00FF00" 
+                align="center"
+                width="4"
+                geometry="primitive: plane; height: 1.5; width: 3"
+                material="color: #002200; opacity: 0.5"></a-text>
+
+        <!-- Rig -->
+        <a-entity camera position="0 0 0" look-controls></a-entity>
+        <a-entity id="leftHand" oculus-touch-controls="hand: left; model: true"></a-entity>
+        <a-entity id="rightHand" oculus-touch-controls="hand: right; model: true"></a-entity>
+      </a-entity>
+
+    </a-scene>
+  </body>
+</html>
