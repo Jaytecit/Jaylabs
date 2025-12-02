@@ -14,6 +14,7 @@
           this.uiText = document.querySelector('#debug-text');
           this.leftHand = document.getElementById('leftHand');
           this.rightHand = document.getElementById('rightHand');
+          this.cycleSelection = this.cycleSelection.bind(this);
           
           // --- CONFIGURATION OBJECTS (DEFAULTS FROM INDEX.HTML) ---
           this.objects = [
@@ -45,6 +46,7 @@
 
           this.selectedIndex = 0; // Start with Cockpit
           this.cooldown = 0;
+          this.boundEvents = false;
           
           // Apply initial defaults to scene
           this.updateScene();
@@ -52,6 +54,17 @@
         
         tick: function (time, timeDelta) {
           if (!this.leftHand || !this.rightHand) return;
+          if (!this.boundEvents) {
+            // Bind button events once controllers are present to catch Quest mappings reliably.
+            ['xbuttondown', 'ybuttondown', 'thumbstickdown'].forEach(evt => {
+              this.leftHand.addEventListener(evt, this.cycleSelection);
+            });
+            // Also allow right hand thumbstick click as a fallback.
+            ['abuttondown', 'bbuttondown', 'thumbstickdown'].forEach(evt => {
+              this.rightHand.addEventListener(evt, this.cycleSelection);
+            });
+            this.boundEvents = true;
+          }
           if (this.cooldown > 0) this.cooldown--;
 
           let currentObj = this.objects[this.selectedIndex];
@@ -127,12 +140,18 @@
             `POS: ${obj.pos.x.toFixed(3)}, ${obj.pos.y.toFixed(3)}, ${obj.pos.z.toFixed(3)}\n` +
             `ROT: ${obj.rot.x.toFixed(1)}, ${obj.rot.y.toFixed(1)}, ${obj.rot.z.toFixed(1)}\n` +
             `SCL: ${obj.scale.toFixed(4)}\n\n` +
-            `[X Button] Switch Object\n` +
+            `[X/Y/Thumbstick] Switch Object\n` +
             `[L Stick] Move X/Z  | [R Stick Y] Move Y\n` +
             `[R Stick X] Scale\n` +
             `[L Trig/Grip] Pitch | [R Trig/Grip] Yaw\n` +
             `[B Button] Export JSON`
           );
+        },
+
+        cycleSelection: function() {
+          if (this.cooldown > 0) return;
+          this.selectedIndex = (this.selectedIndex + 1) % this.objects.length;
+          this.cooldown = 20;
         },
 
         exportJSON: function() {
