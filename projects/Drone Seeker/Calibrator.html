@@ -22,7 +22,7 @@
               id: 'cockpit',
               name: 'COCKPIT MODEL',
               el: document.querySelector('#target-cockpit'),
-              pos: { x: -0.005, y: -3.445, z: -1.883 },
+              pos: { x: -0.045, y: -2.993, z: -1.567 },
               rot: { x: 0, y: 180, z: 0 },
               scale: 1.479
             },
@@ -30,17 +30,17 @@
               id: 'hudLeft',
               name: 'LEFT HUD (Score)',
               el: document.querySelector('#target-hud-left'),
-              pos: { x: -0.32, y: -0.22, z: -0.45 },
-              rot: { x: -25, y: 25, z: 0 },
-              scale: 0.15
+              pos: { x: -0.347, y: 0.526, z: -0.7 },
+              rot: { x: -25, y: 10, z: 1 },
+              scale: 0.1079
             },
             {
               id: 'hudRight',
               name: 'RIGHT HUD (Wave)',
               el: document.querySelector('#target-hud-right'),
-              pos: { x: 0.32, y: -0.22, z: -0.45 },
-              rot: { x: -25, y: -25, z: 0 },
-              scale: 0.15
+              pos: { x: 0.258, y: 0.526, z: -0.7 },
+              rot: { x: -25, y: -10, z: 1 },
+              scale: 0.1000
             }
           ];
 
@@ -214,8 +214,8 @@
                 color="#00FF00" 
                 align="center"
                 width="4"
-                geometry="primitive: plane; height: 1.5; width: 3"
-                material="color: #002200; opacity: 0.5"></a-text>
+                geometry="primitive: plane; width: 0.6; height: 0.18"
+                material="color: #001100; opacity: 0.7"></a-text>
 
         <!-- 3. RIGHT HUD (Wave Info) -->
         <a-text id="target-hud-right" 
@@ -224,8 +224,8 @@
                 color="#00FF00" 
                 align="center"
                 width="4"
-                geometry="primitive: plane; height: 1.5; width: 3"
-                material="color: #002200; opacity: 0.5"></a-text>
+                geometry="primitive: plane; width: 0.6; height: 0.18"
+                material="color: #001100; opacity: 0.7"></a-text>
 
         <!-- Rig -->
         <a-entity camera position="0 0 0" look-controls></a-entity>
