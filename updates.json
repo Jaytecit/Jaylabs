@@ -8,6 +8,11 @@
         "date":  "2025-11-30",
         "title":  "Audio Corridor WebXR",
         "summary":  "Added Quest-ready WebXR mode with controller firing, touch controls, and a VR lab card for Audio Corridor."
+    },
+    {
+        "date": "2025-12-02",
+        "title": "Drone Seeker cockpit combat",
+        "summary": "New Drone Seeker WebXR build with cockpit HUDs, wave-based enemy drones, procedural engine/laser audio, and calibrator-exported offsets."
     }
     
 ]
