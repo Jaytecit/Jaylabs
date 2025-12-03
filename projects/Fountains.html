@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VR Pyrotechnics Lab</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: sans-serif; }
+        #overlay {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; text-align: center; pointer-events: none;
+            background: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="overlay">
+        <h1>VR MODE REQUIRED</h1>
+        <p>Click "ENTER VR" below to start.</p>
+    </div>
+
+    <!-- Import Map -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { VRButton } from 'three/addons/webxr/VRButton.js';
+        import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+        
+        // --- CONFIG ---
+        const CONFIG = {
+            gravity: -9.8,
+            groundBounce: 0.5,
+            groundFriction: 0.7,
+            simSpeed: 1.0,
+            locomotionSpeed: 2.0
+        };
+
+        const FIREWORK_TYPES = [
+            { id: "classic_gold", name: "Classic Gold", color: "#ffaa00", speed: 18, spread: 0.3, life: 1.2, ramp: false },
+            { id: "red_flare", name: "Emergency Red", color: "#ff0000", speed: 22, spread: 0.1, life: 0.8 },
+            { id: "green_strobe", name: "Barium Strobe", color: "#00ff00", speed: 15, spread: 0.5, life: 1.5, strobe: true },
+            { id: "blue_willow", name: "Blue Willow", color: "#0022ff", speed: 12, spread: 0.6, life: 2.0 },
+            { id: "dragon_crackle", name: "Crackling Dragon", color: "#ff8800", speed: 25, spread: 0.8, life: 0.6, turbulence: 0.5 },
+            { id: "silver_sparkler", name: "Titanium Silver", color: "#cccccc", speed: 14, spread: 0.2, life: 0.5 },
+            { id: "volcano", name: "The Volcano", color: "#ff5500", speed: 20, spread: 0.4, life: 1.0, ramp: true },
+            { id: "fairy_dust", name: "Fairy Dust", color: "#ff00ff", speed: 10, spread: 1.2, life: 3.0, rainbow: true },
+            { id: "heavy_ash", name: "Dirty Coal", color: "#330000", speed: 16, spread: 0.3, life: 1.5, heavy: true },
+            { id: "hyper_beam", name: "Hyper Beam", color: "#00ffff", speed: 35, spread: 0.05, life: 1.0 },
+            { id: "ground_bloom", name: "Ground Bloom", color: "#00ff00", speed: 5, spread: 2.0, life: 1.0, spin: true },
+            { id: "chaos_theory", name: "Chaos Theory", color: "#ffffff", speed: 20, spread: 1.0, life: 1.0, random: true }
+        ];
+
+        let currentTypeIndex = 0;
+
+        // --- SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050505);
+        scene.fog = new THREE.FogExp2(0x050505, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+        
+        // THE RIG (User's Body)
+        const dolly = new THREE.Group();
+        dolly.position.set(0, 0, 5); // Start 5 meters back
+        dolly.add(camera);
+        scene.add(dolly);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.xr.enabled = true;
+        renderer.toneMapping = THREE.ReinhardToneMapping;
+        document.body.appendChild(renderer.domElement);
+        document.body.appendChild(VRButton.createButton(renderer));
+
+        // --- ENV ---
+        const floorGeo = new THREE.PlaneGeometry(100, 100);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.4, metalness: 0.5 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
+        
+        const gridHelper = new THREE.GridHelper(100, 50, 0x333333, 0x111111);
+        scene.add(gridHelper);
+
+        const ambientLight = new THREE.AmbientLight(0x222222);
+        scene.add(ambientLight);
+
+        // --- CONTROLLERS ---
+        const controller1 = renderer.xr.getController(0); // Right (usually)
+        const controller2 = renderer.xr.getController(1); // Left (usually)
+        
+        const controllerModelFactory = new XRControllerModelFactory();
+
+        // Setup Right Controller (Pointer)
+        const controllerGrip1 = renderer.xr.getControllerGrip(0);
+        controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+        dolly.add(controllerGrip1);
+        dolly.add(controller1);
+
+        // Setup Left Controller (Inventory)
+        const controllerGrip2 = renderer.xr.getControllerGrip(1);
+        controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
+        dolly.add(controllerGrip2);
+        dolly.add(controller2);
+
+        // Raycaster for Right Hand
+        const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
+        const line = new THREE.Line(geometry);
+        line.name = 'line';
+        line.scale.z = 5;
+        controller1.add(line.clone());
+
+        const raycaster = new THREE.Raycaster();
+        const tempMatrix = new THREE.Matrix4();
+
+        // --- HUD (Left Hand Inventory) ---
+        // Create a canvas to draw text
+        const canvas = document.createElement('canvas');
+        canvas.width = 512; canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        
+        const hudTexture = new THREE.CanvasTexture(canvas);
+        const hudMat = new THREE.MeshBasicMaterial({ map: hudTexture, transparent: true });
+        const hudMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.15), hudMat);
+        hudMesh.position.set(0.2, 0.05, 0); // Offset from hand
+        hudMesh.rotation.x = -Math.PI / 4;
+        controller2.add(hudMesh);
+
+        function updateHUD() {
+            ctx.fillStyle = "rgba(0,0,0,0.8)";
+            ctx.fillRect(0,0, 512, 256);
+            
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 10;
+            ctx.strokeRect(5,5,502,246);
+
+            ctx.font = "40px Arial";
+            ctx.fillStyle = "white";
+            ctx.textAlign = "center";
+            ctx.fillText("INVENTORY", 256, 60);
+
+            const fw = FIREWORK_TYPES[currentTypeIndex];
+            ctx.font = "bold 60px Arial";
+            ctx.fillStyle = fw.color;
+            ctx.fillText(fw.name, 256, 150);
+            
+            ctx.font = "30px Arial";
+            ctx.fillStyle = "#aaaaaa";
+            ctx.fillText("Use Thumbstick to cycle", 256, 210);
+            
+            hudTexture.needsUpdate = true;
+        }
+        updateHUD();
+
+        // --- GAMEPAD LOGIC (Locomotion & Inv) ---
+        let lastLeftStickX = 0;
+        
+        function handleControllerInput(dt) {
+            // 1. Right Hand Thumbstick -> Locomotion
+            const session = renderer.xr.getSession();
+            if (session) {
+                for (const source of session.inputSources) {
+                    if (source.gamepad) {
+                        const gp = source.gamepad;
+                        
+                        // Right Controller (Index 0 usually, but check handedness)
+                        if (source.handedness === 'right') {
+                            // Axis 2 & 3 are usually thumbsticks
+                            const x = gp.axes[2]; 
+                            const y = gp.axes[3];
+                            
+                            if (Math.abs(x) > 0.1 || Math.abs(y) > 0.1) {
+                                const speed = CONFIG.locomotionSpeed * dt;
+                                // Move Dolly relative to camera direction
+                                const dir = new THREE.Vector3(x, 0, y);
+                                dir.applyQuaternion(camera.quaternion);
+                                dir.y = 0; // Keep feet on ground
+                                dir.normalize();
+                                dolly.position.addScaledVector(dir, speed);
+                            }
+                        }
+
+                        // Left Controller (Inventory Cycle)
+                        if (source.handedness === 'left') {
+                            const x = gp.axes[2];
+                            // Simple debounce logic for stick flick
+                            if (Math.abs(x) > 0.5 && Math.abs(lastLeftStickX) < 0.5) {
+                                if (x > 0) currentTypeIndex = (currentTypeIndex + 1) % FIREWORK_TYPES.length;
+                                else currentTypeIndex = (currentTypeIndex - 1 + FIREWORK_TYPES.length) % FIREWORK_TYPES.length;
+                                updateHUD();
+                            }
+                            lastLeftStickX = x;
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- INTERACTION LOGIC ---
+        // Ghost Mesh for placement
+        const ghostMesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.15, 0.2, 0.4, 16),
+            new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.4, wireframe: true })
+        );
+        scene.add(ghostMesh);
+
+        controller1.addEventListener('selectstart', onSelectStart);
+
+        function onSelectStart() {
+            // "Select" is usually the Trigger button
+            // Perform logic based on what the raycaster is hitting
+            if (ghostMesh.visible) {
+                // Place new firework
+                const type = FIREWORK_TYPES[currentTypeIndex];
+                const fw = new FireworkInstance(type, ghostMesh.position);
+                placedFireworks.push(fw);
+            } else {
+                // Check if hitting existing firework
+                tempMatrix.identity().extractRotation(controller1.matrixWorld);
+                raycaster.ray.origin.setFromMatrixPosition(controller1.matrixWorld);
+                raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+                
+                const tubeMeshes = placedFireworks.map(f => f.mesh);
+                const intersects = raycaster.intersectObjects(tubeMeshes);
+                
+                if(intersects.length > 0) {
+                    const fw = intersects[0].object.userData.parent;
+                    fw.ignite();
+                }
+            }
+        }
+
+        // --- PARTICLE ENGINE (Optimized for VR) ---
+        // Same physics, but simplified shader for VR performance
+        const MAX_PARTICLES = 12000;
+        const particleGeo = new THREE.BufferGeometry();
+        const pPos = new Float32Array(MAX_PARTICLES * 3);
+        const pCol = new Float32Array(MAX_PARTICLES * 3);
+        const pSize = new Float32Array(MAX_PARTICLES);
+        
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+        particleGeo.setAttribute('color', new THREE.BufferAttribute(pCol, 3));
+        particleGeo.setAttribute('size', new THREE.BufferAttribute(pSize, 1));
+
+        // VR Friendly Shader (No post-processing bloom, uses brightness to simulate glow)
+        const particleMat = new THREE.ShaderMaterial({
+            uniforms: {
+                pointTexture: { value: new THREE.TextureLoader().load('https://threejs.org/examples/textures/sprites/spark1.png') }
+            },
+            vertexShader: `
+                attribute float size;
+                varying vec3 vColor;
+                void main() {
+                    vColor = color;
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    // Standard size attenuation
+                    gl_PointSize = size * (200.0 / -mvPosition.z);
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D pointTexture;
+                varying vec3 vColor;
+                void main() {
+                    vec4 tex = texture2D(pointTexture, gl_PointCoord);
+                    // Boost color for fake HDR look in VR
+                    gl_FragColor = vec4(vColor * 2.0, 1.0) * tex; 
+                    if (gl_FragColor.a < 0.1) discard;
+                }
+            `,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            transparent: true,
+            vertexColors: true
+        });
+        const particleSystem = new THREE.Points(particleGeo, particleMat);
+        particleSystem.frustumCulled = false;
+        scene.add(particleSystem);
+
+        const particles = [];
+        for(let i=0; i<MAX_PARTICLES; i++) {
+            particles.push({
+                x: 0, y: -100, z: 0, vx: 0, vy: 0, vz: 0,
+                life: -1, maxLife: 1, drag: 0.95,
+                colorStart: new THREE.Color(), colorEnd: new THREE.Color(),
+                strobe: false, offset: Math.random()*10
+            });
+        }
+        let pIndex = 0;
+
+        const placedFireworks = [];
+        const tubeGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.4, 16);
+
+        class FireworkInstance {
+            constructor(data, pos) {
+                this.data = data;
+                this.position = pos.clone();
+                this.active = false;
+                this.fuel = 100;
+                
+                const mat = new THREE.MeshStandardMaterial({ 
+                    color: 0x444444, 
+                    emissive: new THREE.Color(data.color), 
+                    emissiveIntensity: 0.2 
+                });
+                this.mesh = new THREE.Mesh(tubeGeo, mat);
+                this.mesh.position.copy(pos);
+                this.mesh.position.y += 0.2;
+                this.mesh.userData = { parent: this };
+                scene.add(this.mesh);
+
+                this.light = new THREE.PointLight(data.color, 0, 8);
+                this.light.position.set(0, 0.5, 0);
+                this.mesh.add(this.light);
+            }
+
+            ignite() { this.active = true; this.mesh.material.emissiveIntensity = 1.0; }
+
+            update(dt) {
+                if(!this.active) return;
+                if(this.fuel > 0) {
+                    this.fuel -= dt * 15;
+                    this.light.intensity = 3 + Math.random() * 2;
+                    let count = 8;
+                    if(this.data.ramp) count = 4 + (100-this.fuel) * 0.3;
+                    
+                    for(let i=0; i<count; i++) spawnParticle(this);
+                } else {
+                    this.active = false;
+                    this.light.intensity = 0;
+                    this.mesh.material.emissiveIntensity = 0;
+                }
+            }
+        }
+
+        function spawnParticle(fw) {
+            const p = particles[pIndex];
+            const d = fw.data;
+
+            p.x = fw.position.x; p.y = fw.position.y + 0.4; p.z = fw.position.z;
+            
+            const a = Math.random() * 6.28;
+            const r = Math.random() * d.spread;
+            let v = d.speed + (Math.random()-0.5)*5;
+
+            p.vx = Math.cos(a) * r * v;
+            p.vy = v * (0.8 + Math.random()*0.4);
+            p.vz = Math.sin(a) * r * v;
+            
+            p.maxLife = d.life;
+            p.life = p.maxLife;
+            p.colorStart.set(d.color);
+            p.colorEnd.setHex(0x000000); // Fade to black
+            if(d.rainbow) p.colorStart.setHSL(Math.random(), 1, 0.5);
+
+            p.strobe = d.strobe || false;
+
+            pIndex = (pIndex + 1) % MAX_PARTICLES;
+        }
+
+        // --- MAIN LOOP ---
+        const clock = new THREE.Clock();
+        const c1 = new THREE.Color();
+
+        renderer.setAnimationLoop(() => {
+            const dt = Math.min(clock.getDelta(), 0.1);
+            const time = Date.now() * 0.001;
+
+            handleControllerInput(dt);
+
+            // Raycasting for Ghost Placement
+            tempMatrix.identity().extractRotation(controller1.matrixWorld);
+            raycaster.ray.origin.setFromMatrixPosition(controller1.matrixWorld);
+            raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+            const intersects = raycaster.intersectObject(floor);
+            if (intersects.length > 0) {
+                // Ensure we aren't pointing at a firework
+                const tubeMeshes = placedFireworks.map(f => f.mesh);
+                const hitTube = raycaster.intersectObjects(tubeMeshes);
+                
+                if(hitTube.length === 0) {
+                    ghostMesh.visible = true;
+                    ghostMesh.position.copy(intersects[0].point);
+                } else {
+                    ghostMesh.visible = false;
+                }
+            } else {
+                ghostMesh.visible = false;
+            }
+
+            // Update Game Logic
+            placedFireworks.forEach(fw => fw.update(dt));
+
+            // Update Particles
+            for(let i=0; i<MAX_PARTICLES; i++) {
+                const p = particles[i];
+                if(p.life > 0) {
+                    p.vy += CONFIG.gravity * dt;
+                    p.vx *= p.drag; p.vy *= p.drag; p.vz *= p.drag;
+                    
+                    p.x += p.vx * dt;
+                    p.y += p.vy * dt;
+                    p.z += p.vz * dt;
+
+                    if(p.y < 0) {
+                        p.y = 0; p.vy *= -CONFIG.groundBounce;
+                        p.vx *= CONFIG.groundFriction; p.vz *= CONFIG.groundFriction;
+                    }
+
+                    p.life -= dt;
+                    const r = p.life / p.maxLife;
+                    
+                    c1.copy(p.colorEnd).lerp(p.colorStart, r);
+                    if(p.strobe && Math.sin(time*30 + p.offset) < 0) c1.setHex(0x000000);
+
+                    pCol[i*3] = c1.r; pCol[i*3+1] = c1.g; pCol[i*3+2] = c1.b;
+                    pPos[i*3] = p.x; pPos[i*3+1] = p.y; pPos[i*3+2] = p.z;
+                    pSize[i] = r;
+                } else {
+                    pPos[i*3+1] = -500;
+                }
+            }
+
+            particleGeo.attributes.position.needsUpdate = true;
+            particleGeo.attributes.color.needsUpdate = true;
+            particleGeo.attributes.size.needsUpdate = true;
+
+            renderer.render(scene, camera);
+        });
+
+        // Window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+</html>
