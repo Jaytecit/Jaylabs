@@ -238,6 +238,16 @@ const updateMobileVec = (dx, dy, radius) => {
 
 // Gamepad bindings
 const GamepadState = { deadzone: 0.18 };
+const QuestPad = {
+  isQuestPad: (gp) => gp && ((gp.mapping === 'xr-standard') || /oculus|quest|touch/i.test(gp.id || '')),
+  pickHands(pads) {
+    const questPads = pads.filter(QuestPad.isQuestPad);
+    if (!questPads.length) return null;
+    const left = questPads.find(p => p.hand === 'left' || /left/i.test(p.id || '')) || questPads[0];
+    const right = questPads.find(p => p !== left && (p.hand === 'right' || /right/i.test(p.id || ''))) || questPads.find(p => p !== left);
+    return { left, right };
+  }
+};
 
 window.addEventListener('gamepadconnected', (e) => {
   Input.pad.connected = true;
@@ -256,28 +266,50 @@ window.addEventListener('gamepaddisconnected', (e) => {
 });
 
 function pollGamepad() {
-  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  const wasConnected = Input.pad.connected;
+  const padsRaw = navigator.getGamepads ? navigator.getGamepads() : [];
+  const pads = padsRaw ? Array.from(padsRaw).filter(Boolean) : [];
+  const questPair = QuestPad.pickHands(pads);
+
+  if (questPair) {
+    const { left, right } = questPair;
+    const dz = GamepadState.deadzone;
+    const ax = left?.axes ? left.axes[0] : 0;
+    const ay = left?.axes ? left.axes[1] : 0;
+    Input.pad.x = Math.abs(ax) > dz ? ax : 0;
+    Input.pad.y = Math.abs(ay) > dz ? ay : 0;
+    const hasButton = (pad, list) => !!(pad && list.some(i => pad.buttons?.[i]?.pressed));
+    Input.pad.fire = hasButton(left, [0,3,4,5]) || hasButton(right, [0,3,4,5]);
+    Input.pad.bomb = hasButton(left, [1,2]) || hasButton(right, [1,2]);
+    Input.pad.connected = true;
+    Input.pad.index = left?.index ?? right?.index ?? null;
+    if (!wasConnected) updateHUD();
+    return;
+  }
+
   let gp = null;
-  if (Input.pad.index !== null && pads[Input.pad.index]) gp = pads[Input.pad.index];
-  else gp = pads.find(p => p);
+  if (Input.pad.index !== null) gp = pads.find(p => p.index === Input.pad.index);
+  if (!gp) gp = pads[0];
   
   if (!gp) {
     Input.pad.connected = false;
     Input.pad.index = null;
     Input.pad.x = Input.pad.y = 0;
     Input.pad.fire = Input.pad.bomb = false;
+    if (wasConnected) updateHUD();
     return;
   }
 
   Input.pad.connected = true;
   Input.pad.index = gp.index;
   const dz = GamepadState.deadzone;
-  const ax = Math.abs(gp.axes[0]) > dz ? gp.axes[0] : 0;
-  const ay = Math.abs(gp.axes[1]) > dz ? gp.axes[1] : 0;
+  const ax = Math.abs(gp.axes?.[0] || 0) > dz ? gp.axes[0] : 0;
+  const ay = Math.abs(gp.axes?.[1] || 0) > dz ? gp.axes[1] : 0;
   Input.pad.x = ax;
   Input.pad.y = ay;
-  Input.pad.fire = !!(gp.buttons[0]?.pressed || gp.buttons[1]?.pressed || gp.buttons[5]?.pressed || gp.buttons[7]?.pressed);
-  Input.pad.bomb = !!(gp.buttons[2]?.pressed || gp.buttons[6]?.pressed);
+  Input.pad.fire = !!(gp.buttons?.[0]?.pressed || gp.buttons?.[1]?.pressed || gp.buttons?.[5]?.pressed || gp.buttons?.[7]?.pressed);
+  Input.pad.bomb = !!(gp.buttons?.[2]?.pressed || gp.buttons?.[6]?.pressed);
+  if (!wasConnected) updateHUD();
 }
 
 // --- UTILS ---

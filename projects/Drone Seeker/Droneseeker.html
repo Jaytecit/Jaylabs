@@ -218,11 +218,11 @@
       // =========================================================
       AFRAME.registerComponent('ship-controls', {
         schema: {
-          accel: { type: 'number', default: 0.005 },      
+          accel: { type: 'number', default: 0.0005 },      
           maxSpeed: { type: 'number', default: 5.0 },    
-          turnSpeed: { type: 'number', default: 0.00012 },
+          turnSpeed: { type: 'number', default: 0.00014 },
           rollSpeed: { type: 'number', default: 0.02 },  
-          rotDrag: { type: 'number', default: 0.98 }      
+          rotDrag: { type: 'number', default: 0.982 }      
         },
         init: function () {
           this.leftHand = document.getElementById('leftHand');
@@ -252,13 +252,13 @@
           this.rotVel.y *= this.data.rotDrag;
           this.rotVel.z *= 0.95;
 
-          let targetSpeed = this.data.maxSpeed * 0.06; 
+          let targetSpeed = this.data.maxSpeed * 0.03; 
           if (this.rightHand) {
             let controls = this.rightHand.components['tracked-controls'];
             if (controls && controls.axis && controls.axis.length >= 4) {
               let inputThrust = controls.axis[3]; 
               if (inputThrust < -0.5) targetSpeed = this.data.maxSpeed; 
-              else if (inputThrust > 0.5) targetSpeed = this.data.maxSpeed * -0.05; 
+              else if (inputThrust > 0.5) targetSpeed = this.data.maxSpeed * -0.1; 
             }
           }
           this.forwardSpeed += (targetSpeed - this.forwardSpeed) * this.data.accel;
@@ -291,21 +291,30 @@
           this.ship = document.querySelector('#ship-rig');
           this.el.classList.add('enemy-hitbox'); 
           
-          let difficulty = Math.min(10, this.data.wave);
-          this.maxSpeed = 0.5 + (difficulty * 0.1); 
-          this.agility = 0.015 + (difficulty * 0.003); 
+          let difficulty = Math.max(1, this.data.wave);
+          let growth = difficulty - 1; // incremental per wave
+          // Base abilities start below the player but scale up slightly each wave
+          this.maxSpeed = 0.6 + (growth * 0.05); // forward thrust potential (frame scaled)
+          this.accel = 0.04 + (growth * 0.003); // how quickly velocity chases desired vector
+          this.turnRate = 0.06 + (growth * 0.004); // rotational agility for slerp
+          this.driftDamping = 0.018; // how much velocity bleeds off (keeps some slide)
+          this.maxSpeed = Math.min(this.maxSpeed, 3.8); // allow late waves to overtake player pace
+          this.accel = Math.min(this.accel, 0.18);
+          this.turnRate = Math.min(this.turnRate, 0.35);
+
           this.fireRate = Math.max(40, 120 - (difficulty * 5)); 
           this.fireCooldown = Math.random() * 100;
-          this.accuracyError = Math.max(2, 10 - difficulty); 
+          this.accuracyError = Math.max(0.6, 8 - difficulty * 0.35); 
           
           this.targetOffset = new THREE.Vector3(0,0,0);
           this.pickNewTarget();
+          this.vel = new THREE.Vector3(); // carries drift
         },
         pickNewTarget: function() {
            this.targetOffset.set(
-              (Math.random() - 0.5) * 100, 
-              (Math.random() - 0.5) * 60,  
-              -30 - (Math.random() * 50)   
+              (Math.random() - 0.5) * 60,   // lateral strafe near player
+              (Math.random() - 0.5) * 40,   // small vertical offset
+              (Math.random() * 40) - 10     // slight lead/lag instead of fleeing
            );
            this.decisionTimer = 100 + Math.random() * 200; 
         },
@@ -313,10 +322,12 @@
           if (!this.ship) return;
           let shipObj = this.ship.object3D;
           let myObj = this.el.object3D;
+          let dt = timeDelta || 16;
+          let frameScale = dt / 16.666;
 
           // LEASH
           let dist = myObj.position.distanceTo(shipObj.position);
-          if (dist > 350) {
+          if (dist > 450) {
               this.targetOffset.set(0, 0, 0); 
               this.decisionTimer = 20; 
           } else {
@@ -329,20 +340,29 @@
           dest.applyQuaternion(shipObj.quaternion);
           dest.add(shipObj.position);
 
+          // Turn toward the target with limited agility
           let desiredRot = new THREE.Quaternion();
           let lookMatrix = new THREE.Matrix4().lookAt(myObj.position, dest, new THREE.Vector3(0,1,0));
           desiredRot.setFromRotationMatrix(lookMatrix);
-          
-          myObj.quaternion.slerp(desiredRot, this.agility);
-          myObj.translateZ(this.maxSpeed);
+          let turnLerp = Math.min(this.turnRate * frameScale, 0.35);
+          myObj.quaternion.slerp(desiredRot, turnLerp);
+
+          // Drift-aware velocity blend toward facing direction (-Z is the lookAt forward in three.js)
+          let forward = new THREE.Vector3(0,0,-1).applyQuaternion(myObj.quaternion);
+          let desiredVel = forward.multiplyScalar(this.maxSpeed);
+          let accelLerp = Math.min(this.accel * frameScale, 0.6);
+          this.vel.lerp(desiredVel, accelLerp);
+          // bleed a little speed but keep slide
+          this.vel.multiplyScalar(1 - this.driftDamping * frameScale);
+          myObj.position.addScaledVector(this.vel, frameScale);
 
           // Combat
-          if (dist < 150) {
+          if (dist < 350) {
              let toPlayer = shipObj.position.clone().sub(myObj.position).normalize();
-             let forward = new THREE.Vector3(0,0,1).applyQuaternion(myObj.quaternion);
+             let forward = new THREE.Vector3(0,0,-1).applyQuaternion(myObj.quaternion);
              let angle = toPlayer.angleTo(forward);
 
-             if (angle < 0.8) {
+             if (angle < 0.6) {
                 this.fireCooldown--;
                 if (this.fireCooldown <= 0) {
                    this.fire(shipObj.position);
@@ -387,7 +407,8 @@
            this.speed = 1.0; 
            this.ship = document.querySelector('#ship-rig');
         },
-        tick: function() {
+       tick: function() {
+           // laser was aimed with lookAt; advance along local +Z toward the aimed point
            this.el.object3D.translateZ(this.speed);
            if (this.ship.object3D.position.distanceTo(this.el.object3D.position) > 300) {
               if(this.el.parentNode) this.el.parentNode.removeChild(this.el);
@@ -418,7 +439,8 @@
             let visual = document.createElement('a-entity');
             visual.setAttribute('gltf-model', '#drone-asset');
             visual.setAttribute('scale', '0.002 0.002 0.002');
-            visual.setAttribute('rotation', '0 -90 0');
+            // Align the model so its nose matches parent -Z (lookAt forward). Flipping Y fixes "backwards" visuals.
+            visual.setAttribute('rotation', '0 90 0');
             let light = document.createElement('a-entity');
             light.setAttribute('geometry', 'primitive: sphere; radius: 1.0'); 
             light.setAttribute('material', 'color: orange; emissive: orange; emissiveIntensity: 2');
@@ -534,24 +556,6 @@
         }
       });
       
-      AFRAME.registerComponent('camera-shaker', {
-        init: function() {
-          this.intensity = 0;
-          this.originalPos = this.el.object3D.position.clone();
-        },
-        shake: function(amount) { this.intensity = amount; },
-        tick: function() {
-          if (this.intensity > 0) {
-            let rx = (Math.random() - 0.5) * this.intensity;
-            let ry = (Math.random() - 0.5) * this.intensity;
-            let rz = (Math.random() - 0.5) * this.intensity;
-            this.el.object3D.position.set(this.originalPos.x + rx, this.originalPos.y + ry, this.originalPos.z + rz);
-            this.intensity *= 0.9;
-            if(this.intensity < 0.01) { this.intensity = 0; this.el.object3D.position.copy(this.originalPos); }
-          }
-        }
-      });
-
       AFRAME.registerComponent('hud-binder', {
         init: function() {
           let scoreEl = document.querySelector('#hud-display-left');
@@ -681,13 +685,6 @@
 
         <!-- Center: 3D HOLOGRAPHIC NAV ARROW (Fixed Rotation) -->
         <a-entity id="nav-arrow-wrapper" position="-0.045 0.774 -0.671" visible="false">
-            <!-- Rotated 90 on X so Top (+Y) points to Back (+Z) and Base (-Y) points to Forward (-Z) -->
-            <!-- Wait, lookAt points -Z (Forward) to target. -->
-            <!-- If we want Tip to point to target, Tip needs to be at -Z -->
-            <!-- Tip is +Y. Rotate X -90 => +Y becomes -Z. -->
-            <!-- User said -90 was wrong (Fat end pointing). That implies Base was at -Z. -->
-            <!-- So we try 90. +Y becomes +Z. -Y becomes -Z. Base points to target? -->
-            <!-- Actually, let's just rotate 90 0 0 as requested to flip it. -->
             <a-cone id="nav-arrow-geo" 
                     radius-bottom="0.05" radius-top="0" height="0.2" 
                     material="color: #00FFFF; opacity: 0.8; transparent: true; shader: flat; depthTest: false"
