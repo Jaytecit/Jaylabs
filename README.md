@@ -17,7 +17,7 @@ Static site for JayLabs experiments: playable arcade-style games, pattern genera
   - `projects/Audio Corridor/index.html` (Reactive neon tunnel ride-along with music-synced fireworks.)
   - `projects/PendulumVRexperience/chaos_pendulum_3d.html` (Chaos pendulum in deep space: tilt, swing, and dodge with reactive lighting.)
   - `projects/Drone Seeker/Droneseeker.html` (Wave-based VR starfighter intercepting swarming drones.)
-  - `projects/SquashedBalls.html` (WebXR paddle-and-kinetics sandbox with breakable glass, gravity toggles, and throwable spheres.)
+  - `projects/SquashedBalls/SquashedBalls.html` (WebXR paddle-and-kinetics sandbox with breakable glass, gravity toggles, and throwable spheres.)
   - `projects/Fountains.html` (VR pyrotechnics lab: place tubes, ignite procedural fireworks, and tweak inventory mid-show.)
   - Upcoming builds (controller polish, visual optimizations, and new PCVR prototypes)
 - `legal.html` - legal/terms page.
