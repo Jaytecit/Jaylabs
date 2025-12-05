@@ -55,18 +55,38 @@
         },
         playExplosion: function() {
           if (this.context.state === 'suspended') this.context.resume();
-          let bufferSize = this.context.sampleRate * 0.5; 
+          let now = this.context.currentTime;
+          // Noise burst with a lowpass sweep for crunch
+          let bufferSize = this.context.sampleRate * 0.6; 
           let buffer = this.context.createBuffer(1, bufferSize, this.context.sampleRate);
           let data = buffer.getChannelData(0);
           for(let i=0; i<bufferSize; i++) data[i] = Math.random() * 2 - 1;
           let noise = this.context.createBufferSource();
           noise.buffer = buffer;
-          let gain = this.context.createGain();
-          gain.gain.setValueAtTime(0.2, this.context.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, this.context.currentTime + 0.5);
-          noise.connect(gain);
-          gain.connect(this.context.destination);
-          noise.start();
+          let noiseFilter = this.context.createBiquadFilter();
+          noiseFilter.type = 'lowpass';
+          noiseFilter.frequency.setValueAtTime(900, now);
+          noiseFilter.frequency.exponentialRampToValueAtTime(220, now + 0.5);
+          let noiseGain = this.context.createGain();
+          noiseGain.gain.setValueAtTime(0.35, now);
+          noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+          noise.connect(noiseFilter);
+          noiseFilter.connect(noiseGain);
+          noiseGain.connect(this.context.destination);
+          // Low thump for body
+          let thump = this.context.createOscillator();
+          let thumpGain = this.context.createGain();
+          thump.type = 'sawtooth';
+          thump.frequency.setValueAtTime(120, now);
+          thump.frequency.exponentialRampToValueAtTime(40, now + 0.5);
+          thumpGain.gain.setValueAtTime(0.3, now);
+          thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+          thump.connect(thumpGain);
+          thumpGain.connect(this.context.destination);
+          noise.start(now);
+          noise.stop(now + 0.6);
+          thump.start(now);
+          thump.stop(now + 0.6);
         },
         playImpact: function() {
           if (this.context.state === 'suspended') this.context.resume();
@@ -99,12 +119,15 @@
           this.leftText = null;
           this.rightText = null;
           this.navArrow = null; 
+          this.powerArrow = null;
           this.ship = null;
+          this.restartHandler = null;
         },
-        registerUI: function(left, right, arrow, ship) {
+        registerUI: function(left, right, arrow, ship, powerArrow) {
           this.leftText = left;
           this.rightText = right;
           this.navArrow = arrow;
+          this.powerArrow = powerArrow;
           this.ship = ship;
         },
         tick: function(t, dt) {
@@ -119,39 +142,60 @@
           let closestDist = 9999;
           let closestEnemy = null;
           let shipPos = this.ship.object3D.position;
+          let closestPowerup = null;
+          let closestPowerDist = 9999;
           enemies.forEach(el => {
             let dist = el.object3D.position.distanceTo(shipPos);
             if (dist < closestDist) { closestDist = dist; closestEnemy = el; }
           });
-          this.updateHUD(closestEnemy, closestDist);
+          let powerups = document.querySelectorAll('.powerup-item');
+          powerups.forEach(el => {
+            let dist = el.object3D.position.distanceTo(shipPos);
+            if (dist < closestPowerDist) { closestPowerDist = dist; closestPowerup = el; }
+          });
+          this.updateHUD(closestEnemy, closestDist, closestPowerup);
         },
-        updateHUD: function(closestEnemy, dist) {
+        updateHUD: function(closestEnemy, dist, closestPowerup) {
           // LEFT HUD
           if (this.leftText) {
             let vTrack = "---";
             if (closestEnemy) {
                let localPos = closestEnemy.object3D.position.clone();
                this.ship.object3D.worldToLocal(localPos);
-               if (localPos.y > 5) vTrack = "▲ UP";
-               else if (localPos.y < -5) vTrack = "▼ DWN";
-               else vTrack = "► LEVEL";
+               if (localPos.y > 5) vTrack = "?-? UP";
+               else if (localPos.y < -5) vTrack = "?-? DWN";
+               else vTrack = "?-? LEVEL";
+            }
+            let shipSpeed = 0;
+            if (this.ship && this.ship.components['ship-controls']) {
+               shipSpeed = this.ship.components['ship-controls'].forwardSpeed || 0;
+            }
+            let weaponLine = "WPN: ---";
+            let rightHand = document.getElementById('rightHand');
+            if (rightHand && rightHand.components['laser-shooter']) {
+               let shooter = rightHand.components['laser-shooter'];
+               let type = (shooter.currentWeapon || 'pulse').toUpperCase();
+               let lvl = (shooter.weaponLevels && shooter.weaponLevels[shooter.currentWeapon]) || 1;
+               weaponLine = `WPN: ${type} L${lvl}`;
             }
             let healthInt = Math.floor(this.playerHealth);
             let color = healthInt < 30 ? "#FF0000" : "#00FF00";
             this.leftText.setAttribute('color', color);
-            this.leftText.setAttribute('value', `SHIELD: ${healthInt}%\nSCORE: ${this.score}\nV-TRACK: ${vTrack}`);
+            this.leftText.setAttribute('value', `SHIELD: ${healthInt}%\nSCORE: ${this.score}\nSPEED: ${shipSpeed.toFixed(2)}\n${weaponLine}\nV-TRACK: ${vTrack}`);
           }
           // RIGHT HUD
           if (this.rightText) {
              let proxMsg = "CLEAR";
              let distDisplay = "----";
+             let enemiesLeft = this.enemiesRemaining;
+             let waveState = this.isSpawning ? "RECHARGING" : "ENGAGED";
              if (closestEnemy) {
                distDisplay = Math.floor(dist) + "m";
                if (dist < 40) proxMsg = "!DANGER!";
                else if (dist < 100) proxMsg = "WARNING";
                else proxMsg = "TRACKING";
              }
-             this.rightText.setAttribute('value', `WAVE: ${this.wave}\nPROX: ${proxMsg}\nDIST: ${distDisplay}`);
+             this.rightText.setAttribute('value', `WAVE: ${this.wave}\n(${waveState})\nPROX: ${proxMsg}\nDIST: ${distDisplay}\nENM: ${enemiesLeft}`);
           }
           // NAVIGATION ARROW
           if (this.navArrow) {
@@ -162,11 +206,27 @@
               this.navArrow.object3D.visible = false;
             }
           }
+          // POWERUP ARROW
+          if (this.powerArrow) {
+            if (closestPowerup) {
+              this.powerArrow.object3D.visible = true;
+              this.powerArrow.object3D.lookAt(closestPowerup.object3D.position);
+            } else {
+              this.powerArrow.object3D.visible = false;
+            }
+          }
         },
-        enemyDestroyed: function(points) {
+        enemyDestroyed: function(points, position) {
           if(this.gameOver) return;
           this.score += points;
           this.enemiesRemaining--;
+          // 20% chance to spawn a powerup at the destroyed enemy location
+          if (position && Math.random() < 0.2) {
+            let powerSpawner = this.el.components['powerup-spawner'];
+            if (powerSpawner && powerSpawner.spawnPowerupAt) {
+              powerSpawner.spawnPowerupAt(position);
+            }
+          }
           if (this.enemiesRemaining <= 0 && !this.isSpawning) this.startNextWave();
         },
         startNextWave: function() {
@@ -186,16 +246,6 @@
           if(this.gameOver) return;
           this.playerHealth -= damage;
           this.lastHitTime = performance.now();
-          
-          let damageOverlay = document.getElementById('damage-overlay');
-          damageOverlay.setAttribute('visible', true);
-          damageOverlay.setAttribute('opacity', 0.8);
-          setTimeout(() => {
-             if(!this.gameOver) {
-                 damageOverlay.setAttribute('opacity', 0);
-                 setTimeout(() => { damageOverlay.setAttribute('visible', false); }, 200);
-             }
-          }, 200);
 
           if (this.playerHealth <= 0) this.endGame();
         },
@@ -208,6 +258,18 @@
           text.setAttribute('position', '0 0 -2');
           text.setAttribute('scale', '2 2 2');
           document.querySelector('[camera]').appendChild(text);
+          let prompt = document.createElement('a-text');
+          prompt.setAttribute('value', 'Press trigger to restart');
+          prompt.setAttribute('color', '#FFFFFF');
+          prompt.setAttribute('align', 'center');
+          prompt.setAttribute('position', '0 -0.5 -2');
+          prompt.setAttribute('scale', '1 1 1');
+          document.querySelector('[camera]').appendChild(prompt);
+          this.restartHandler = () => { window.location.reload(); };
+          window.addEventListener('triggerdown', this.restartHandler, { once: true });
+          window.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') this.restartHandler();
+          }, { once: true });
           let audioSys = this.el.sceneEl.systems['game-audio'];
           if(audioSys.engineGain) audioSys.engineGain.gain.linearRampToValueAtTime(0, audioSys.context.currentTime + 1);
         }
@@ -218,10 +280,10 @@
       // =========================================================
       AFRAME.registerComponent('ship-controls', {
         schema: {
-          accel: { type: 'number', default: 0.0005 },      
+          accel: { type: 'number', default: 0.001 },      
           maxSpeed: { type: 'number', default: 5.0 },    
-          turnSpeed: { type: 'number', default: 0.00014 },
-          rollSpeed: { type: 'number', default: 0.02 },  
+          turnSpeed: { type: 'number', default: 0.00018 },
+          rollSpeed: { type: 'number', default: 0.015 },  
           rotDrag: { type: 'number', default: 0.982 }      
         },
         init: function () {
@@ -243,14 +305,15 @@
               this.rotVel.y += (-inputYaw) * this.data.turnSpeed;
             }
           }
-          let leftGrip = this.isGripDown(this.leftHand) ? 1 : 0;
-          let rightGrip = this.isGripDown(this.rightHand) ? 1 : 0;
-          if (leftGrip) this.rotVel.z += this.data.rollSpeed * 0.1;
-          if (rightGrip) this.rotVel.z -= this.data.rollSpeed * 0.1;
+          let rollInput = this.getRollInput();
+          if (Math.abs(rollInput) > 0.05) {
+            this.rotVel.z += rollInput * this.data.rollSpeed;
+          }
 
           this.rotVel.x *= this.data.rotDrag;
           this.rotVel.y *= this.data.rotDrag;
-          this.rotVel.z *= 0.95;
+          this.rotVel.z *= this.data.rotDrag;
+          this.rotVel.z = THREE.MathUtils.clamp(this.rotVel.z, -0.05, 0.05);
 
           let targetSpeed = this.data.maxSpeed * 0.03; 
           if (this.rightHand) {
@@ -273,12 +336,31 @@
           this.el.object3D.rotateZ(this.rotVel.z); 
           this.el.object3D.translateZ(-this.forwardSpeed);
         },
-        isGripDown: function(hand) {
-            if (!hand) return false;
+        getGripValue: function(hand) {
+            if (!hand) return 0;
             let controls = hand.components['tracked-controls'];
-            if (!controls || !controls.buttons) return false;
-            let btn = controls.buttons[1];
-            return btn && btn.value > 0.5;
+            let values = [];
+            if (controls && controls.buttons) {
+              [1,2].forEach(idx => {
+                let btn = controls.buttons[idx];
+                if (btn) values.push(btn.value || (btn.pressed ? 1 : 0));
+              });
+            }
+            // Quest 3 grip fallback via gamepad (oculus-touch-controls)
+            let oculus = hand.components['oculus-touch-controls'];
+            if (oculus && oculus.controller && oculus.controller.gamepad && oculus.controller.gamepad.buttons) {
+              let gp = oculus.controller.gamepad.buttons;
+              [1,2].forEach(idx => {
+                let btn = gp[idx];
+                if (btn) values.push(btn.value || (btn.pressed ? 1 : 0));
+              });
+            }
+            return values.length ? Math.max(...values) : 0;
+        },
+        getRollInput: function() {
+            let left = this.getGripValue(this.leftHand);
+            let right = this.getGripValue(this.rightHand);
+            return (left - right);
         }
       });
 
@@ -294,13 +376,13 @@
           let difficulty = Math.max(1, this.data.wave);
           let growth = difficulty - 1; // incremental per wave
           // Base abilities start below the player but scale up slightly each wave
-          this.maxSpeed = 0.6 + (growth * 0.05); // forward thrust potential (frame scaled)
-          this.accel = 0.04 + (growth * 0.003); // how quickly velocity chases desired vector
-          this.turnRate = 0.06 + (growth * 0.004); // rotational agility for slerp
-          this.driftDamping = 0.018; // how much velocity bleeds off (keeps some slide)
-          this.maxSpeed = Math.min(this.maxSpeed, 3.8); // allow late waves to overtake player pace
-          this.accel = Math.min(this.accel, 0.18);
-          this.turnRate = Math.min(this.turnRate, 0.35);
+          this.maxSpeed = 0.5 + (growth * 0.05); // forward thrust potential (frame scaled)
+          this.accel = 0.01 + (growth * 0.003); // how quickly velocity chases desired vector
+          this.turnRate = 0.03 + (growth * 0.004); // rotational agility for slerp
+          this.driftDamping = 0.14; // how much velocity bleeds off (keeps some slide)
+          this.maxSpeed = Math.min(this.maxSpeed, 3.5); // allow late waves to overtake player pace
+          this.accel = Math.min(this.accel, 0.08);
+          this.turnRate = Math.min(this.turnRate, 0.5);
 
           this.fireRate = Math.max(40, 120 - (difficulty * 5)); 
           this.fireCooldown = Math.random() * 100;
@@ -397,7 +479,7 @@
           explosion.setAttribute('explosion-effect', '');
           scene.appendChild(explosion);
           this.el.sceneEl.systems['game-audio'].playExplosion();
-          this.el.sceneEl.systems['game-manager'].enemyDestroyed(100);
+          this.el.sceneEl.systems['game-manager'].enemyDestroyed(100, this.el.object3D.position.clone());
           if(this.el.parentNode) this.el.parentNode.removeChild(this.el);
         }
       });
@@ -448,7 +530,7 @@
             visual.appendChild(light);
             parent.appendChild(visual);
             let angle = Math.random() * Math.PI * 2;
-            let dist = 200 + Math.random() * 100;
+            let dist = 800 + Math.random() * 100;
             parent.object3D.position.set(shipPos.x + Math.cos(angle) * dist, shipPos.y + (Math.random() - 0.5) * 50, shipPos.z + Math.sin(angle) * dist);
             scene.appendChild(parent);
           }
@@ -462,42 +544,128 @@
         init: function () {
           this.el.addEventListener('triggerdown', this.shoot.bind(this));
           this.ship = document.querySelector('#ship-rig'); 
+          this.weaponLevels = { pulse: 1, spread: 1, mine: 1 };
+          this.currentWeapon = 'pulse';
+          this.maxLevel = 5;
+          this.applyPower = this.applyPower.bind(this);
+          this.el.sceneEl.addEventListener('weapon-powerup-collected', this.applyPower);
+        },
+        remove: function() {
+          if (this.el && this.el.sceneEl) {
+            this.el.sceneEl.removeEventListener('weapon-powerup-collected', this.applyPower);
+          }
         },
         shoot: function () {
           if(this.el.sceneEl.systems['game-manager'].gameOver) return;
-          this.fireLaser(0.8);  
-          this.fireLaser(-0.8); 
+          if (this.currentWeapon === 'pulse') this.firePulse();
+          else if (this.currentWeapon === 'spread') this.fireSpread();
+          else if (this.currentWeapon === 'mine') this.fireMine();
           this.el.sceneEl.systems['game-audio'].playLaser(false);
         },
-        fireLaser: function(xOffset) {
+        applyPower: function (evt) {
+          let type = (evt && evt.detail && evt.detail.type) || 'pulse';
+          if (!this.weaponLevels[type]) this.weaponLevels[type] = 1;
+          if (this.currentWeapon !== type) {
+            this.currentWeapon = type; // switch weapon, no upgrade
+          } else {
+            this.weaponLevels[type] = Math.min(this.maxLevel, this.weaponLevels[type] + 1);
+          }
+        },
+        firePulse: function() {
+          let lvl = this.weaponLevels.pulse || 1;
+          let patterns = [
+            [-0.8, 0.8],
+            [-0.9, 0, 0.9],
+            [-1.2, -0.6, 0.6, 1.2],
+            [-1.4, -0.7, 0, 0.7, 1.4],
+            [-1.6, -0.9, -0.2, 0.2, 0.9, 1.6]
+          ];
+          let offsets = patterns[Math.min(patterns.length - 1, lvl - 1)];
+          offsets.forEach(o => this.fireLaser({ xOffset: o, color: '#00FF00', radius: 0.05, height: 3, speed: 4.5 }));
+          this.makeFlash(0, '#AAFF00');
+        },
+        fireSpread: function() {
+          let lvl = this.weaponLevels.spread || 1;
+          let pellets = 5 + Math.min(lvl - 1, 4); // 5..9
+          let maxSpread = THREE.MathUtils.degToRad(8 + lvl * 3); // wider with level
+          let angles = [];
+          if (pellets === 1) angles = [0];
+          else {
+            for (let i = 0; i < pellets; i++) {
+              let t = (i / (pellets - 1)) * 2 - 1; // -1..1
+              angles.push(t * maxSpread);
+            }
+          }
+          angles.forEach(a => this.fireLaser({ xOffset: 0, yaw: a, color: '#FF6600', radius: 0.08, height: 3.2, speed: 4.8, emissiveIntensity: 5 }));
+          this.makeFlash(0, '#FF6600');
+        },
+        fireMine: function() {
+          let lvl = this.weaponLevels.mine || 1;
+          let count = Math.min(lvl, 5); // 1..5
+          let baseRadius = 3 + (lvl - 1) * 1.2;
+          let spreadAngle = THREE.MathUtils.degToRad(12 + lvl * 2);
+          let angles = [];
+          for (let i = 0; i < count; i++) {
+            let t = (count === 1) ? 0 : (i / (count - 1)) * 2 - 1;
+            angles.push(t * spreadAngle * 0.5);
+          }
+          angles.forEach(a => this.fireMineEntity(a, baseRadius));
+          this.makeFlash(0, '#66CCFF');
+        },
+        fireMineEntity: function(yaw, triggerRadius) {
+          let scene = document.querySelector('a-scene');
+          let mine = document.createElement('a-entity');
+          mine.setAttribute('proximity-mine', `triggerRadius: ${triggerRadius}`);
+          mine.object3D.position.copy(this.ship.object3D.position);
+          mine.object3D.quaternion.copy(this.ship.object3D.quaternion);
+          mine.object3D.rotateY(yaw || 0);
+          mine.object3D.translateZ(-2.5);
+          mine.object3D.translateY(-0.5);
+          scene.appendChild(mine);
+        },
+        fireLaser: function(opts) {
           let scene = document.querySelector('a-scene');
           let laser = document.createElement('a-entity');
-          laser.setAttribute('geometry', 'primitive: cylinder; height: 3; radius: 0.05');
-          laser.setAttribute('material', 'color: #00FF00; emissive: #00FF00; emissiveIntensity: 3');
+          let radius = opts.radius || 0.05;
+          let height = opts.height || 3;
+          let color = opts.color || '#00FF00';
+          let emissiveIntensity = opts.emissiveIntensity || 3;
+          laser.setAttribute('geometry', `primitive: cylinder; height: ${height}; radius: ${radius}`);
+          laser.setAttribute('material', `color: ${color}; emissive: ${color}; emissiveIntensity: ${emissiveIntensity}`);
           laser.object3D.position.copy(this.ship.object3D.position);
           laser.object3D.quaternion.copy(this.ship.object3D.quaternion);
           laser.object3D.rotateX(-Math.PI / 2); 
           laser.object3D.translateY(1.0); 
-          laser.object3D.translateX(xOffset); 
-          laser.setAttribute('laser-move', '');
+          laser.object3D.translateX(opts.xOffset || 0); 
+          if (opts.yaw) laser.object3D.rotateY(opts.yaw);
+          let speed = opts.speed || 4.0;
+          let maxDist = opts.maxDist || 800;
+          laser.setAttribute('laser-move', `speed: ${speed}; maxDist: ${maxDist}`);
           scene.appendChild(laser);
+        },
+        makeFlash: function(xOffset, color) {
+          let scene = document.querySelector('a-scene');
           let flash = document.createElement('a-entity');
           flash.setAttribute('geometry', 'primitive: plane; width: 0.5; height: 0.5');
-          flash.setAttribute('material', 'color: #AAFF00; shader: flat; transparent: true; opacity: 1; side: double');
+          flash.setAttribute('material', `color: ${color}; shader: flat; transparent: true; opacity: 1; side: double`);
           flash.object3D.position.copy(this.ship.object3D.position);
           flash.object3D.quaternion.copy(this.ship.object3D.quaternion);
           flash.object3D.translateZ(-2.5); 
-          flash.object3D.translateX(xOffset);
+          flash.object3D.translateX(xOffset || 0);
           flash.object3D.translateY(-1.0);
           flash.setAttribute('animation', 'property: opacity; to: 0; dur: 100; easing: linear');
           scene.appendChild(flash);
-          setTimeout(() => { if(flash.parentNode) flash.parentNode.removeChild(flash); }, 100);
+          setTimeout(() => { if(flash.parentNode) flash.parentNode.removeChild(flash); }, 120);
         }
       });
 
       AFRAME.registerComponent('laser-move', {
+        schema: {
+          speed: { type: 'number', default: 4 },
+          maxDist: { type: 'number', default: 800 }
+        },
         tick: function () {
-          this.el.object3D.translateY(4.0); 
+          this.el.object3D.translateY(this.data.speed); 
           let enemies = document.querySelectorAll('.enemy-hitbox');
           let laserPos = this.el.object3D.position;
           for (let i = 0; i < enemies.length; i++) {
@@ -509,9 +677,76 @@
              }
           }
           let shipPos = document.querySelector('#ship-rig').object3D.position;
-          if (this.el.object3D.position.distanceTo(shipPos) > 800) {
+          if (this.el.object3D.position.distanceTo(shipPos) > this.data.maxDist) {
             if(this.el.parentNode) this.el.parentNode.removeChild(this.el);
           }
+        }
+      });
+
+      AFRAME.registerComponent('proximity-mine', {
+        schema: {
+          speed: { type: 'number', default: 1.5 },
+          maxDist: { type: 'number', default: 600 },
+          triggerRadius: { type: 'number', default: 4 },
+          fuse: { type: 'number', default: 9000 }
+        },
+        init: function() {
+          this.start = performance.now();
+          this.triggered = false;
+          let core = document.createElement('a-sphere');
+          core.setAttribute('radius', 0.25);
+          core.setAttribute('color', '#66CCFF');
+          core.setAttribute('shader', 'flat');
+          core.setAttribute('emissive', '#66CCFF');
+          core.setAttribute('emissiveIntensity', 2);
+          this.el.appendChild(core);
+          let ring = document.createElement('a-torus');
+          ring.setAttribute('radius', 0.45);
+          ring.setAttribute('radius-tubular', 0.05);
+          ring.setAttribute('material', 'color: #66CCFF; emissive: #66CCFF; emissiveIntensity: 1.4; shader: flat; opacity: 0.8; transparent: true');
+          ring.setAttribute('rotation', '0 0 0');
+          this.el.appendChild(ring);
+        },
+        tick: function(time, timeDelta) {
+          if (this.triggered) return;
+          let dt = (timeDelta || 16);
+          this.el.object3D.translateZ(-this.data.speed); // drift forward
+          if (performance.now() - this.start > this.data.fuse) {
+            this.detonate();
+            return;
+          }
+          let shipPos = document.querySelector('#ship-rig').object3D.position;
+          if (this.el.object3D.position.distanceTo(shipPos) > this.data.maxDist) {
+            if(this.el.parentNode) this.el.parentNode.removeChild(this.el);
+            return;
+          }
+          let enemies = document.querySelectorAll('.enemy-hitbox');
+          let minePos = this.el.object3D.position;
+          for (let i = 0; i < enemies.length; i++) {
+             let enemyParent = enemies[i];
+             if (minePos.distanceTo(enemyParent.object3D.position) < this.data.triggerRadius) {
+                this.detonate();
+                return;
+             }
+          }
+        },
+        detonate: function() {
+          if (this.triggered) return;
+          this.triggered = true;
+          let scene = this.el.sceneEl;
+          let minePos = this.el.object3D.position.clone();
+          let explosion = document.createElement('a-entity');
+          explosion.setAttribute('position', minePos);
+          explosion.setAttribute('explosion-effect', '');
+          scene.appendChild(explosion);
+          // damage nearby enemies
+          let enemies = document.querySelectorAll('.enemy-hitbox');
+          enemies.forEach(enemy => {
+            if (minePos.distanceTo(enemy.object3D.position) < this.data.triggerRadius + 0.5) {
+              enemy.components['enemy-drone'].hit();
+            }
+          });
+          if(this.el.parentNode) this.el.parentNode.removeChild(this.el);
         }
       });
 
@@ -520,39 +755,132 @@
       // =========================================================
       AFRAME.registerComponent('explosion-effect', {
         init: function() {
-          let flash = document.createElement('a-sphere');
-          flash.setAttribute('radius', 1);
-          flash.setAttribute('color', 'white');
-          flash.setAttribute('shader', 'flat');
-          flash.setAttribute('opacity', 1);
-          this.el.appendChild(flash);
-          this.flashEl = flash;
+          // Core flash
+          this.flashEl = document.createElement('a-sphere');
+          this.flashEl.setAttribute('radius', 1);
+          this.flashEl.setAttribute('color', '#FFA640');
+          this.flashEl.setAttribute('shader', 'flat');
+          this.flashEl.setAttribute('opacity', 1);
+          this.el.appendChild(this.flashEl);
+          // Shockwave ring
+          this.shockEl = document.createElement('a-ring');
+          this.shockEl.setAttribute('radius-inner', 0.3);
+          this.shockEl.setAttribute('radius-outer', 0.35);
+          this.shockEl.setAttribute('material', 'color: #FFDD88; shader: flat; transparent: true; opacity: 0.9; side: double');
+          this.shockEl.setAttribute('rotation', '90 0 0');
+          this.el.appendChild(this.shockEl);
+          // Embers
           this.particles = [];
-          for(let i=0; i<15; i++) {
+          let colors = ['#FF6600', '#FFAA00', '#FFDD55', '#FFFFFF'];
+          for(let i=0; i<30; i++) {
              let part = document.createElement('a-sphere');
-             part.setAttribute('radius', 0.2 + Math.random() * 0.4);
-             part.setAttribute('color', Math.random() > 0.5 ? '#FF4400' : '#FFFF00'); 
+             part.setAttribute('radius', 0.15 + Math.random() * 0.3);
+             part.setAttribute('color', colors[Math.floor(Math.random()*colors.length)]);
              part.setAttribute('shader', 'flat');
              this.el.appendChild(part);
-             this.particles.push({el: part, dir: { x: (Math.random()-0.5)*0.8, y: (Math.random()-0.5)*0.8, z: (Math.random()-0.5)*0.8 }});
+             this.particles.push({
+               el: part,
+               dir: { x: (Math.random()-0.5)*1.2, y: (Math.random()-0.3)*1.4, z: (Math.random()-0.5)*1.2 }
+             });
           }
-          this.life = 40; 
+          // Light burst
+          this.lightEl = document.createElement('a-entity');
+          this.lightEl.setAttribute('light', 'type: point; color: #FFAA55; intensity: 2; distance: 12; decay: 2');
+          this.el.appendChild(this.lightEl);
+          this.shockOpacity = 0.9;
+          this.life = 60; 
         },
         tick: function() {
           this.life--;
-          if (this.life <= 0) { this.el.parentNode.removeChild(this.el); return; }
+          if (this.life <= 0) { if(this.el.parentNode) this.el.parentNode.removeChild(this.el); return; }
+          let lifeNorm = this.life / 60;
           if (this.flashEl) {
-             let s = this.flashEl.object3D.scale.x + 0.5;
+             let s = this.flashEl.object3D.scale.x + 0.45;
              this.flashEl.object3D.scale.set(s,s,s);
-             this.flashEl.setAttribute('opacity', this.life / 40); 
+             this.flashEl.setAttribute('opacity', Math.max(0, lifeNorm));
+          }
+          if (this.shockEl) {
+             this.shockEl.object3D.scale.multiplyScalar(1.05);
+             this.shockOpacity = Math.max(0, this.shockOpacity - 0.02);
+             this.shockEl.setAttribute('material', `color: #FFDD88; shader: flat; transparent: true; opacity: ${this.shockOpacity}; side: double`);
           }
           for(let p of this.particles) {
              p.el.object3D.position.x += p.dir.x;
              p.el.object3D.position.y += p.dir.y;
              p.el.object3D.position.z += p.dir.z;
+             p.dir.x *= 0.92; p.dir.y *= 0.92; p.dir.z *= 0.92;
              let s = p.el.object3D.scale.x * 0.9; 
              p.el.object3D.scale.set(s,s,s);
+             if (s < 0.02 && p.el.parentNode) p.el.parentNode.removeChild(p.el);
           }
+          if (this.lightEl) {
+             let intensity = Math.max(0, 2 * lifeNorm);
+             this.lightEl.setAttribute('light', `type: point; color: #FFAA55; intensity: ${intensity}; distance: 12; decay: 2`);
+          }
+        }
+      });
+
+      // =========================================================
+      // 8. POWERUPS
+      // =========================================================
+      AFRAME.registerComponent('weapon-powerup', {
+        schema: { type: { type: 'string', default: 'pulse' } },
+        init: function() {
+          this.ship = document.querySelector('#ship-rig');
+          this.el.classList.add('powerup-item');
+          this.baseY = this.el.object3D.position.y;
+          let colors = { pulse: '#00FF66', spread: '#FFAA00', mine: '#66CCFF' };
+          let labels = { pulse: 'PULSE', spread: 'SPREAD', mine: 'MINE' };
+          let color = colors[this.data.type] || '#00FF66';
+          let label = labels[this.data.type] || 'PULSE';
+          let core = document.createElement('a-entity');
+          core.setAttribute('geometry', 'primitive: icosahedron; radius: 0.35');
+          core.setAttribute('material', `color: ${color}; emissive: ${color}; emissiveIntensity: 1.8; shader: flat`);
+          this.el.appendChild(core);
+          let ring = document.createElement('a-torus');
+          ring.setAttribute('radius', '0.5');
+          ring.setAttribute('radius-tubular', '0.03');
+          ring.setAttribute('material', `color: ${color}; emissive: ${color}; emissiveIntensity: 1.2; shader: flat; opacity: 0.9; transparent: true`);
+          ring.setAttribute('rotation', '90 0 0');
+          this.el.appendChild(ring);
+          let text = document.createElement('a-text');
+          text.setAttribute('value', label);
+          text.setAttribute('align', 'center');
+          text.setAttribute('color', '#FFFFFF');
+          text.setAttribute('width', '1.8');
+          text.setAttribute('position', '0 -0.6 0');
+          text.setAttribute('shader', 'msdf');
+          this.el.appendChild(text);
+        },
+        tick: function(time, timeDelta) {
+          let obj = this.el.object3D;
+          obj.rotation.y += 0.0025 * (timeDelta || 16);
+          obj.position.y = this.baseY + Math.sin(time * 0.002) * 0.5;
+          if (!this.ship || !this.ship.object3D) return;
+          if (this.ship.object3D.position.distanceTo(obj.position) < 3.0) {
+            this.el.sceneEl.emit('weapon-powerup-collected', { type: this.data.type });
+            if(this.el.parentNode) this.el.parentNode.removeChild(this.el);
+          }
+        }
+      });
+
+      AFRAME.registerComponent('powerup-spawner', {
+        init: function() {
+          this.ship = document.querySelector('#ship-rig');
+        },
+        spawnPowerupAt: function(position, type) {
+          if (!this.ship) return;
+          let scene = this.el.sceneEl;
+          let types = ['pulse', 'spread', 'mine'];
+          let chosen = type || types[Math.floor(Math.random() * types.length)];
+          let p = document.createElement('a-entity');
+          p.setAttribute('weapon-powerup', `type: ${chosen}`);
+          let pos = position.clone ? position.clone() : position;
+          pos.x += (Math.random() - 0.5) * 6;
+          pos.y += (Math.random() - 0.5) * 6;
+          pos.z += (Math.random() - 0.5) * 6;
+          p.object3D.position.copy(pos);
+          scene.appendChild(p);
         }
       });
       
@@ -561,8 +889,9 @@
           let scoreEl = document.querySelector('#hud-display-left');
           let waveEl = document.querySelector('#hud-display-right');
           let arrowEl = document.querySelector('#nav-arrow-wrapper');
+          let powerArrowEl = document.querySelector('#power-arrow-wrapper');
           let ship = document.querySelector('#ship-rig');
-          this.el.sceneEl.systems['game-manager'].registerUI(scoreEl, waveEl, arrowEl, ship);
+          this.el.sceneEl.systems['game-manager'].registerUI(scoreEl, waveEl, arrowEl, ship, powerArrowEl);
         }
       });
 
@@ -631,7 +960,7 @@
       });
     </script>
 
-    <a-scene background="color: #000000" drone-spawner hud-binder renderer="useLegacyLights: false">
+    <a-scene background="color: #000000" drone-spawner hud-binder powerup-spawner renderer="useLegacyLights: false">
       <a-assets>
         <a-asset-item id="cockpit-asset" src="cockpit.glb"></a-asset-item>
         <a-asset-item id="drone-asset" src="drone.glb"></a-asset-item>
@@ -643,15 +972,12 @@
       <a-light type="directional" position="0.5 1 0" intensity="0.8" color="#FFFFAA"></a-light>
       
       <a-entity id="ship-rig" position="0 0 0" ship-controls>
-
-        <a-entity id="cam-wrapper" camera-shaker>
-          <a-entity camera position="0 0 0" look-controls="pointerLockEnabled: false">
-            <a-entity id="damage-overlay" 
-                      geometry="primitive: plane; width: 4; height: 4" 
-                      material="color: #FF0000; transparent: true; opacity: 0; shader: flat; depthTest: false; depthWrite: false" 
-                      position="0 0 -0.1"
-                      visible="false"></a-entity>
-          </a-entity>
+        <!-- Seated camera inside cockpit; follows the rig -->
+        <a-entity id="pilot-camera"
+                  camera="userHeight: 0"
+                  look-controls="pointerLockEnabled: false"
+                  wasd-controls="enabled: false"
+                  position="0 0 0">
         </a-entity>
 
         <a-entity 
@@ -666,9 +992,9 @@
                 font="sourcecodepro" 
                 color="#00FF00" 
                 width="4"
-                scale="0.1 0.1 0.1" 
+                scale="0.08 0.08 0.08" 
                 position="-0.347 0.522 -0.693" 
-                rotation="-25 10 -1"
+                rotation="-25 10 1"
                 align="center">
         </a-text>
 
@@ -677,9 +1003,9 @@
                 font="sourcecodepro" 
                 color="#00FF00" 
                 width="4"
-                scale="0.1 0.1 0.1" 
+                scale="0.08 0.08 0.08" 
                 position="0.258 0.526 -0.689" 
-                rotation="-25 -10 1"
+                rotation="-25 -10 -1"
                 align="center">
         </a-text>
 
@@ -688,6 +1014,13 @@
             <a-cone id="nav-arrow-geo" 
                     radius-bottom="0.05" radius-top="0" height="0.2" 
                     material="color: #00FFFF; opacity: 0.8; transparent: true; shader: flat; depthTest: false"
+                    rotation="90 0 0">
+            </a-cone>
+        </a-entity>
+        <a-entity id="power-arrow-wrapper" position="-0.045 0.774 -0.671" visible="false">
+            <a-cone 
+                    radius-bottom="0.03" radius-top="0" height="0.12" 
+                    material="color: #00FF66; opacity: 0.9; transparent: true; shader: flat; depthTest: false"
                     rotation="90 0 0">
             </a-cone>
         </a-entity>
