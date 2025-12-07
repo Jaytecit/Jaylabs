@@ -1,0 +1,1523 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VR Space Invaders: Arcade Evolution</title>
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', 'Trebuchet MS', sans-serif;
+      background: radial-gradient(circle at 20% 20%, #0b1230 0%, #050510 45%, #030309 80%);
+      color: #d8f2ff;
+      letter-spacing: 0.5px;
+    }
+    .hud-text { text-transform: uppercase; }
+    #mode-buttons {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      display: flex;
+      gap: 8px;
+      z-index: 10;
+      font-family: inherit;
+    }
+    #mode-buttons button {
+      background: #0f1a3c;
+      color: #d8f2ff;
+      border: 1px solid #35c6ff;
+      border-radius: 6px;
+      padding: 8px 12px;
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(53,198,255,0.4);
+      font-size: 14px;
+    }
+    #mode-buttons button:hover {
+      background: #13244f;
+    }
+  </style>
+</head>
+<body>
+  <div id="mode-buttons">
+    <button id="desktop-btn">Desktop Mode</button>
+    <button id="vr-btn">VR Mode</button>
+  </div>
+  <a-scene background="color: #050510" renderer="antialias: true; colorManagement: true">
+    <a-assets></a-assets>
+
+    <a-sky color="#04060f"></a-sky>
+
+    <!-- Lighting -->
+    <a-entity light="type: ambient; color: #888"></a-entity>
+    <a-entity light="type: directional; color: #fff; intensity: 0.6" position="0 10 -5"></a-entity>
+
+    <!-- Floor and Grid -->
+    <a-plane position="0 0 0" rotation="-90 0 0" width="200" height="200"
+             material="color: #0b1220; metalness:0.4; roughness:0.8"></a-plane>
+    <a-entity geometry="primitive: plane; width: 200; height: 200"
+              position="0 0.01 0" rotation="-90 0 0"
+              material="color: #2ddcff; opacity: 0.18; wireframe: true; side: double"></a-entity>
+
+    <!-- Environmental accents -->
+    <a-entity id="environment">
+      <a-entity geometry="primitive: torus; radius: 7.5; radiusTubular: 0.05" rotation="90 0 0"
+                position="0 0.2 -10" material="color: #123357; emissive: #0c4b9f; opacity: 0.55"></a-entity>
+      <a-entity geometry="primitive: torus; radius: 11; radiusTubular: 0.05" rotation="90 0 0"
+                position="0 0.2 -14" material="color: #111; emissive: #0d5f7f; opacity: 0.35"></a-entity>
+      <a-entity geometry="primitive: box; width: 1; height: 4; depth: 1" position="-8 2 -18"
+                material="color: #0e1a2f; emissive: #0a6bb5; opacity: 0.45"></a-entity>
+      <a-entity geometry="primitive: box; width: 0.8; height: 3.2; depth: 0.8" position="8 1.6 -16"
+                material="color: #0e1a2f; emissive: #0a6bb5; opacity: 0.45"></a-entity>
+      <a-entity id="starfield"></a-entity>
+    </a-entity>
+
+    <!-- Menu -->
+    <a-entity id="menu" position="0 0 0">
+      <a-entity class="menu-cube" data-difficulty="easy" position="-2.5 2 -3.5">
+        <a-ring color="#12ff8b" radius-inner="0.35" radius-outer="0.45" rotation="-90 0 0"></a-ring>
+      </a-entity>
+      <a-text value="EASY" color="#00ff7f" position="-2.95 1.4 -3.5"></a-text>
+
+      <a-entity class="menu-cube" data-difficulty="normal" position="0 2 -3.5">
+        <a-ring color="#00aaff" radius-inner="0.35" radius-outer="0.45" rotation="-90 0 0"></a-ring>
+      </a-entity>
+      <a-text value="NORMAL" color="#00aaff" position="-0.55 1.4 -3.5"></a-text>
+
+      <a-entity class="menu-cube" data-difficulty="hard" position="2.5 2 -3.5">
+        <a-ring color="#ff5f5f" radius-inner="0.35" radius-outer="0.45" rotation="-90 0 0"></a-ring>
+      </a-entity>
+      <a-text value="HARD" color="#ff5f5f" position="2.1 1.4 -3.5"></a-text>
+    </a-entity>
+
+
+    <!-- Player Rig -->
+    <a-entity id="rig" position="0 0 0">
+      <a-entity id="camera" camera position="0 1.6 0"></a-entity>
+
+      <a-entity id="rightHand" oculus-touch-controls="hand: right" gun="hand: right">
+        <a-entity id="gun-container-right" rotation="-40 0 0">
+          <a-box position="0 -0.02 0.08" rotation="15 0 0" depth="0.12" height="0.18" width="0.06" color="#222"></a-box>
+          <a-box position="0 -0.01 0.02" depth="0.08" height="0.12" width="0.05" color="#2a2a2a"></a-box>
+          <a-cylinder position="0 0 -0.2" radius="0.025" height="0.25" rotation="90 0 0"
+                      color="#00ff80" material="emissive: #00ff80"></a-cylinder>
+          <a-entity id="muzzle-right" position="0 0.03 -0.25"></a-entity>
+        </a-entity>
+      </a-entity>
+
+      <a-entity id="leftHand" oculus-touch-controls="hand: left" gun="hand: left">
+        <a-entity id="gun-container-left" class="offhand-gun" rotation="-40 0 0" visible="false">
+          <a-box position="0 -0.02 0.08" rotation="15 0 0" depth="0.12" height="0.18" width="0.06" color="#222"></a-box>
+          <a-box position="0 -0.01 0.02" depth="0.08" height="0.12" width="0.05" color="#2a2a2a"></a-box>
+          <a-cylinder position="0 0 -0.2" radius="0.025" height="0.25" rotation="90 0 0"
+                      color="#00ff80" material="emissive: #00ff80"></a-cylinder>
+          <a-entity id="muzzle-left" position="0 0.03 -0.25"></a-entity>
+        </a-entity>
+      </a-entity>
+
+      <a-entity id="frontShield" position="0 1.35 -0.9" shield>
+        <a-ring id="shield-disc" radius-inner="0.82" radius-outer="0.88" position="0 0 0" rotation="0 0 0"
+                material="color: #8ad8ff; wireframe: true; opacity: 0.4; transparent: true; side: double; depthTest: false"></a-ring>
+      </a-entity>
+    </a-entity>
+
+    <a-entity id="game-manager" game-manager></a-entity>
+  </a-scene>
+
+  <script>
+    const SOUND_TYPES = {
+      shoot: { type: 'sawtooth', freq: 800, decay: 0.08, gain: 0.2 },
+      move: { type: 'square', freq: 80, decay: 0.1, gain: 0.15 },
+      explosion: { type: 'sawtooth', freq: 50, decay: 0.6, gain: 0.4 },
+      powerup: { type: 'sine', freq: 1000, decay: 0.4, gain: 0.2 },
+      shield: { type: 'sine', freq: 400, decay: 0.2, gain: 0.25 }
+    };
+
+    function makeTone(ctx, { type, freq, decay, gain }) {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      osc.connect(g);
+      g.connect(ctx.destination);
+      const now = ctx.currentTime;
+      g.gain.setValueAtTime(gain, now);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + decay);
+      osc.start(now);
+      osc.stop(now + decay);
+    }
+
+    function randomChoice(list) {
+      return list[Math.floor(Math.random() * list.length)];
+    }
+
+    function clamp(val, min, max) {
+      return Math.min(max, Math.max(min, val));
+    }
+
+    const WEAPON_COLORS = {
+      blaster: '#00ffc8',
+      spread: '#ffb347',
+      bomb: '#ff6470',
+      special: '#7df3ff'
+    };
+
+    function weaponLabel(type) {
+      if (type === 'spread') return 'Spread';
+      if (type === 'bomb') return 'Nova';
+      if (type === 'special') return 'Homing';
+      return 'Blaster';
+    }
+
+    const BOSS_REWARDS = ['dual', 'shieldBoost', 'weaponUp', 'extraLife', 'overclock'];
+    const MOTHERSHIP_THEMES = [
+      { body: '#6c3fff', emissive: '#b169ff', crown: '#0ef' },
+      { body: '#1f8b5f', emissive: '#4df5a0', crown: '#f5f56c' },
+      { body: '#a63c3c', emissive: '#ff7b5f', crown: '#8ef5ff' },
+      { body: '#2c4fa8', emissive: '#7fb4ff', crown: '#ff66cc' }
+    ];
+
+    function spawnSparkBurst(scene, at, color = '#ffffff', count = 10, spread = 0.8, size = 0.05, life = 400) {
+      if (!scene) return;
+      for (let i = 0; i < count; i++) {
+        const spark = document.createElement('a-sphere');
+        spark.setAttribute('radius', size * (0.5 + Math.random() * 0.8));
+        spark.setAttribute('color', color);
+        const pos = {
+          x: at.x + (Math.random() - 0.5) * spread,
+          y: at.y + (Math.random() - 0.5) * spread,
+          z: at.z + (Math.random() - 0.5) * spread
+        };
+        spark.setAttribute('position', `${pos.x} ${pos.y} ${pos.z}`);
+        spark.setAttribute('animation__scale', `property: scale; to: 0 0 0; dur: ${life}; easing: linear`);
+        spark.setAttribute('animation__fade', `property: material.opacity; to: 0; dur: ${life}; easing: linear`);
+        scene.appendChild(spark);
+        setTimeout(() => spark.parentNode && spark.parentNode.removeChild(spark), life + 20);
+      }
+    }
+
+    function createStarField(scene) {
+      const holder = document.getElementById('starfield');
+      if (!holder || !scene) return [];
+      const stars = [];
+      for (let i = 0; i < 80; i++) {
+        const star = document.createElement('a-sphere');
+        star.setAttribute('radius', 0.04 + Math.random() * 0.05);
+        star.setAttribute('color', '#9fe3ff');
+        const x = (Math.random() - 0.5) * 80;
+        const y = 6 + Math.random() * 16;
+        const z = -30 - Math.random() * 50;
+        const speed = 0.002 + Math.random() * 0.003;
+        star.dataset.speed = speed;
+        star.setAttribute('position', `${x} ${y} ${z}`);
+        star.setAttribute('animation__twinkle', `property: material.opacity; dir: alternate; dur: ${1200 + Math.random() * 900}; to: 0.1; loop: true; easing: easeInOutQuad`);
+        holder.appendChild(star);
+        stars.push({ el: star, speed, baseY: y });
+      }
+      for (let p = 0; p < 2; p++) {
+        const planet = document.createElement('a-sphere');
+        planet.setAttribute('radius', 1.5 + Math.random());
+        planet.setAttribute('color', '#4455aa');
+        planet.setAttribute('material', 'metalness:0.3; roughness:0.8; opacity:0.6');
+        const px = (Math.random() - 0.5) * 50;
+        const py = 8 + Math.random() * 6;
+        const pz = -60 - Math.random() * 20;
+        const pspeed = 0.0005 + Math.random() * 0.0008;
+        planet.dataset.speed = pspeed;
+        planet.setAttribute('position', `${px} ${py} ${pz}`);
+        holder.appendChild(planet);
+        stars.push({ el: planet, speed: pspeed, baseY: py });
+      }
+      return stars;
+    }
+
+    function createVoxelSprite(type) {
+      const sprites = {
+        squid: [
+          '01110',
+          '11111',
+          '11011',
+          '11111',
+          '10101'
+        ],
+        crab: [
+          '10101',
+          '11111',
+          '11111',
+          '01110',
+          '01010'
+        ],
+        bug: [
+          '00100',
+          '01110',
+          '11111',
+          '10101',
+          '01010'
+        ]
+      };
+      const colors = {
+        squid: '#ff00ff',
+        crab: '#00ffff',
+        bug: '#00ff00'
+      };
+      const root = document.createElement('a-entity');
+      root.setAttribute('class', 'invader');
+      const pattern = sprites[type] || sprites.crab;
+      const color = colors[type] || '#00ffff';
+      const size = 0.14;
+      const half = (pattern[0].length - 1) * 0.5 * size;
+      const vHalf = (pattern.length - 1) * 0.5 * size;
+      pattern.forEach((row, r) => {
+        [...row].forEach((cell, c) => {
+          if (cell !== '1') return;
+          const box = document.createElement('a-box');
+          box.setAttribute('width', size);
+          box.setAttribute('height', size);
+          box.setAttribute('depth', size);
+          box.setAttribute('material', `color: ${color}; metalness:0.8; roughness:0.3; emissive:${color}; emissiveIntensity:0.6`);
+          box.setAttribute('position', `${(c * size) - half} ${(vHalf - r * size)} 0`);
+          root.appendChild(box);
+        });
+      });
+      return root;
+    }
+
+    AFRAME.registerComponent('gun', {
+      schema: { hand: { default: 'right' } },
+      init() {
+        this.manager = document.querySelector('#game-manager');
+        this.el.addEventListener('triggerdown', () => {
+          const gm = this.manager.components['game-manager'];
+          if (gm) {
+            gm.setFireHeld(this.data.hand, true);
+            gm.requestFire(this.data.hand);
+          }
+        });
+        this.el.addEventListener('triggerup', () => {
+          const gm = this.manager.components['game-manager'];
+          if (gm) gm.setFireHeld(this.data.hand, false);
+        });
+      }
+    });
+
+    AFRAME.registerComponent('shield', {
+      init() {
+        this.health = 6;
+        this.disc = this.el.querySelector('#shield-disc');
+        this.updateVisual();
+      },
+      setHealth(hp) {
+        this.health = hp;
+        this.updateVisual();
+      },
+      updateVisual() {
+        if (!this.disc) return;
+        if (this.health <= 0) {
+          this.disc.setAttribute('visible', false);
+          return;
+        }
+        this.disc.setAttribute('visible', true);
+        const color = this.health < 3 ? '#ff6b6b' : '#8ad8ff';
+        this.disc.setAttribute('color', color);
+        this.disc.setAttribute('material', `opacity: 0.4; color: ${color}; wireframe: true; transparent: true; side: double; depthTest: false`);
+      }
+    });
+
+    AFRAME.registerComponent('game-manager', {
+      schema: {},
+      init() {
+        this.state = 'menu';
+        this.score = 0;
+        this.weaponLevel = 1;
+        this.fireDelayBoost = 0;
+        this.handState = {
+          right: { unlocked: true },
+          left: { unlocked: false }
+        };
+        this.shieldHP = 6;
+        this.lives = 3;
+        this.comboCount = 0;
+        this.comboMultiplier = 1;
+        this.comboWindow = 3000;
+        this.lastComboTime = 0;
+        this.invaders = [];
+        this.playerBullets = [];
+        this.enemyBullets = [];
+        this.direction = 1;
+        this.nextMoveAt = 0;
+        this.dropDistance = 1;
+        this.moveSpeed = 0.2;
+        this.fireChanceBase = 0.005;
+        this.fireWave = 0.001;
+        this.baseTick = 900;
+        this.minTick = 500;
+        this.tickStep = 40;
+        this.lastShot = { right: 0, left: 0 };
+        this.fireHeld = { right: false, left: false };
+        this.enemyFireInterval = 6000;
+        this.enemyFireMin = 3200;
+        this.nextEnemyFire = 0;
+        this.ufo = null;
+        this.ufoStart = 0;
+        this.wave = 1;
+        this.mothership = null;
+        this.mothershipPhase = 0;
+        this.inBossFight = false;
+        this.bossCount = 0;
+        this.bossRewardIndex = 0;
+        this.availableBossRewards = [...BOSS_REWARDS];
+        this.enemyVolley = 1;
+        this.enemyFireWaveStep = 40;
+        this.audioCtx = null;
+        this.difficulties = {
+          easy:   { moveSpeed: 0.7, dropDistance: 2.5, baseTick: 800, minTick: 520, tickStep: 40, fireChance: 0.004, fireWave: 0.0012, enemyFireInterval: 6000, enemyFireMin: 3200, enemyFireWaveStep: 35 },
+          normal: { moveSpeed: 0.85, dropDistance: 3.0, baseTick: 750, minTick: 450, tickStep: 45, fireChance: 0.008, fireWave: 0.0015, enemyFireInterval: 5000, enemyFireMin: 2600, enemyFireWaveStep: 40 },
+          hard:   { moveSpeed: 1.0, dropDistance: 3.5, baseTick: 700, minTick: 400, tickStep: 55, fireChance: 0.012, fireWave: 0.002, enemyFireInterval: 4000, enemyFireMin: 2000, enemyFireWaveStep: 45 }
+        };
+        this.headPos = new THREE.Vector3(0, 1.6, 0);
+        this.tempVec = new THREE.Vector3();
+        this.scene = this.el.sceneEl;
+        this.stars = createStarField(this.scene);
+        this.rig = document.querySelector('#rig');
+        this.rightMuzzle = document.querySelector('#muzzle-right');
+        this.leftMuzzle = document.querySelector('#muzzle-left');
+        this.leftGunContainer = document.querySelector('#gun-container-left');
+        this.cameraEl = document.querySelector('#camera');
+        this.shieldEntity = document.querySelector('#frontShield');
+        this.leftHand = document.querySelector('#leftHand');
+        this.rightHand = document.querySelector('#rightHand');
+        this.crosshairLeft = document.createElement('a-ring');
+        this.crosshairLeft.setAttribute('radius-inner', '0.03');
+        this.crosshairLeft.setAttribute('radius-outer', '0.05');
+        this.crosshairLeft.setAttribute('color', '#ffb3ff');
+        this.crosshairLeft.setAttribute('material', 'depthTest:false; side:double; opacity:0.8');
+        this.crosshairLeft.setAttribute('visible', false);
+        this.scene.appendChild(this.crosshairLeft);
+        this.crosshairRight = document.createElement('a-ring');
+        this.crosshairRight.setAttribute('radius-inner', '0.03');
+        this.crosshairRight.setAttribute('radius-outer', '0.05');
+        this.crosshairRight.setAttribute('color', '#a0ffa0');
+        this.crosshairRight.setAttribute('material', 'depthTest:false; side:double; opacity:0.8');
+        this.scene.appendChild(this.crosshairRight);
+        this.menuCubes = Array.from(document.querySelectorAll('.menu-cube'));
+        this.shieldComp = this.shieldEntity.components['shield'];
+        this.desktopMode = false;
+        this.pointerLocked = false;
+        this.desktopYaw = 0;
+        this.desktopPitch = 0;
+        this.modeButtons = {
+          desktop: document.getElementById('desktop-btn'),
+          vr: document.getElementById('vr-btn')
+        };
+        this.updateHUD();
+        this.bindMenu();
+        this.bindInputs();
+        this.setupDesktopControls();
+        this.bindModeButtons();
+      },
+      playSound(name) {
+        if (!SOUND_TYPES[name]) return;
+        if (!this.audioCtx) {
+          this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        makeTone(this.audioCtx, SOUND_TYPES[name]);
+      },
+      bindMenu() {
+        const diffToType = { easy: 'bug', normal: 'crab', hard: 'squid' };
+        this.menuCubes.forEach(cube => {
+          cube.classList.add('menu-target');
+          if (!cube.querySelector('.menu-invader')) {
+            const sprite = createVoxelSprite(diffToType[cube.dataset.difficulty] || 'crab');
+            sprite.classList.add('menu-invader');
+            sprite.setAttribute('scale', '0.9 0.9 0.9');
+            sprite.setAttribute('position', '0 0 0');
+            cube.appendChild(sprite);
+            const glow = document.createElement('a-entity');
+            glow.setAttribute('geometry', 'primitive: circle; radius: 0.6');
+            glow.setAttribute('rotation', '-90 0 0');
+            glow.setAttribute('material', 'color: #0ff; opacity: 0.25; side: double');
+            cube.appendChild(glow);
+          }
+        });
+      },
+      bindInputs() {
+        window.addEventListener('keydown', (e) => {
+          if (e.key === 'b' || e.key === 'B') this.useBomb();
+          if (e.key === 'm' || e.key === 'M') this.enableDesktopMode(true);
+        });
+      },
+      setupDesktopControls() {
+        const prefersDesktop = !navigator.xr;
+        if (prefersDesktop) this.enableDesktopMode(false);
+        const scene = this.scene;
+        const canvas = scene ? scene.canvas : null;
+        if (!canvas) return;
+        const lockChange = () => {
+          this.pointerLocked = document.pointerLockElement === canvas;
+          if (!this.pointerLocked) this.setFireHeld('right', false);
+        };
+        document.addEventListener('pointerlockchange', lockChange);
+        canvas.addEventListener('mousedown', (e) => {
+          if (!this.desktopMode) return;
+          if (!this.pointerLocked) {
+            canvas.requestPointerLock();
+          }
+          if (e.button === 0) {
+            this.setFireHeld('right', true);
+            this.requestFire('right');
+          }
+        });
+        window.addEventListener('mouseup', (e) => {
+          if (!this.desktopMode) return;
+          if (e.button === 0) this.setFireHeld('right', false);
+        });
+        window.addEventListener('mousemove', (e) => {
+          if (!this.desktopMode || !this.pointerLocked) return;
+          // Invert mouse directions for desktop mode
+          this.desktopYaw -= e.movementX * 0.12;
+          // Invert vertical movement (mouse up moves view down)
+          this.desktopPitch = clamp(this.desktopPitch - e.movementY * 0.1, -60, 60);
+          if (this.rig && this.rig.object3D) {
+            this.rig.object3D.rotation.set(
+              THREE.MathUtils.degToRad(this.desktopPitch),
+              THREE.MathUtils.degToRad(this.desktopYaw),
+              0
+            );
+          }
+        });
+      },
+      bindModeButtons() {
+        if (this.modeButtons.desktop) {
+          this.modeButtons.desktop.addEventListener('click', () => {
+            this.enterDesktopPlay('normal');
+          });
+        }
+        if (this.modeButtons.vr) {
+          this.modeButtons.vr.addEventListener('click', () => {
+            this.desktopMode = false;
+            this.setFireHeld('right', false);
+            this.setFireHeld('left', false);
+            if (document.pointerLockElement) document.exitPointerLock();
+            this.resetGame('normal');
+          });
+        }
+      },
+      enterDesktopPlay(diff = 'normal') {
+        this.enableDesktopMode(true);
+        this.resetGame(diff);
+        const canvas = this.scene ? this.scene.canvas : null;
+        if (canvas) canvas.requestPointerLock();
+      },
+      enableDesktopMode(force = false) {
+        if (this.desktopMode && !force) return;
+        this.desktopMode = true;
+        this.pointerLocked = false;
+        this.desktopYaw = 0;
+        this.desktopPitch = 0;
+        if (this.rig && this.rig.object3D) {
+          const rot = this.rig.object3D.rotation;
+          this.desktopYaw = THREE.MathUtils.radToDeg(rot.y);
+          this.desktopPitch = THREE.MathUtils.radToDeg(rot.x);
+        }
+      },
+      setFireHeld(hand, state) {
+        this.fireHeld[hand] = state;
+      },
+      updateHUD() {
+        const lineEl = document.getElementById('hud-line');
+        if (lineEl) lineEl.setAttribute('value', '');
+      },
+      addScore(base, reason = 'hit') {
+        this.incrementCombo(reason);
+        const gain = Math.round(base * this.comboMultiplier);
+        this.score += gain;
+        this.updateHUD();
+      },
+      incrementCombo(reason = 'hit') {
+        const now = performance.now();
+        if (now - this.lastComboTime > this.comboWindow) {
+          this.comboCount = 0;
+        }
+        this.comboCount += 1;
+        this.lastComboTime = now;
+        this.comboMultiplier = Math.min(4, 1 + Math.floor(this.comboCount / 3) * 0.5);
+        this.updateHUD();
+      },
+      resetCombo() {
+        this.comboCount = 0;
+        this.comboMultiplier = 1;
+        this.lastComboTime = performance.now();
+        this.updateHUD();
+      },
+      setDifficulty(key) {
+        const def = this.difficulties[key];
+        if (!def) return;
+        this.moveSpeed = def.moveSpeed;
+        this.dropDistance = def.dropDistance;
+        this.fireChanceBase = def.fireChance;
+        this.fireWave = def.fireWave;
+        this.baseTick = def.baseTick;
+        this.minTick = def.minTick;
+        this.tickStep = def.tickStep;
+        this.enemyFireInterval = def.enemyFireInterval || 2200;
+        this.enemyFireMin = def.enemyFireMin || 1100;
+        this.enemyFireWaveStep = def.enemyFireWaveStep || this.enemyFireWaveStep;
+      },
+      resetGame(diffKey) {
+        this.state = 'playing';
+        this.score = 0;
+        this.weaponLevel = 1;
+        this.fireDelayBoost = 0;
+        this.handState = { right: { unlocked: true }, left: { unlocked: false } };
+        this.shieldHP = 6;
+        this.lives = 3;
+        this.comboCount = 0;
+        this.comboMultiplier = 1;
+        this.lastComboTime = 0;
+        const defKey = diffKey || 'easy';
+        this.startTime = performance.now();
+        if (this.shieldComp) this.shieldComp.setHealth(this.shieldHP);
+        this.direction = 1;
+        this.lastShot = { right: 0, left: 0 };
+        this.wave = 1;
+        this.bossCount = 0;
+        this.bossRewardIndex = 0;
+        this.availableBossRewards = [...BOSS_REWARDS];
+        this.enemyVolley = 1;
+        this.inBossFight = false;
+        this.mothership = null;
+        this.setDifficulty(defKey);
+        const def = this.difficulties[defKey] || {};
+        this.enemyFireInterval = def.enemyFireInterval || this.enemyFireInterval;
+        this.enemyFireMin = def.enemyFireMin || this.enemyFireMin;
+        this.nextEnemyFire = performance.now() + this.enemyFireInterval;
+        this.clearEntities();
+        this.spawnFormation();
+        this.hideMenu();
+        this.nextMoveAt = performance.now() + this.baseTick;
+        this.ufo = null;
+        if (this.leftGunContainer) this.leftGunContainer.setAttribute('visible', false);
+        this.updateHUD();
+      },
+      hideMenu() {
+        const menu = document.querySelector('#menu');
+        if (menu) menu.setAttribute('visible', false);
+      },
+      showMenu() {
+        const menu = document.querySelector('#menu');
+        if (menu) menu.setAttribute('visible', true);
+      },
+      clearEntities() {
+        [...this.invaders, ...this.playerBullets, ...this.enemyBullets].forEach(obj => {
+          if (obj.el && obj.el.parentNode) obj.el.parentNode.removeChild(obj.el);
+        });
+        this.invaders = [];
+        this.playerBullets = [];
+        this.enemyBullets = [];
+        if (this.ufo && this.ufo.el && this.ufo.el.parentNode) {
+          this.ufo.el.parentNode.removeChild(this.ufo.el);
+        }
+        this.ufo = null;
+        if (this.mothership && this.mothership.el && this.mothership.el.parentNode) {
+          this.mothership.el.parentNode.removeChild(this.mothership.el);
+        }
+        this.mothership = null;
+        this.inBossFight = false;
+      },
+      spawnFormation() {
+        this.direction = 1;
+        const rows = 5;
+        const cols = 8;
+        const xGap = 1.5;
+        const yGap = 1.0;
+        const startZ = -25;
+        const startY = 8;
+        this.formRows = rows;
+        this.formStartY = startY;
+        this.formYGap = yGap;
+        const offsetX = (cols - 1) * xGap * 0.5;
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const type = r === 0 ? 'squid' : r === rows - 1 ? 'bug' : 'crab';
+            const invader = createVoxelSprite(type);
+            invader.setAttribute('position', `${c * xGap - offsetX} ${startY - r * yGap} ${startZ}`);
+            this.scene.appendChild(invader);
+            this.invaders.push({
+              el: invader,
+              type,
+              row: r,
+              col: c,
+              baseY: startY - r * yGap,
+              x: c * xGap - offsetX,
+              z: startZ,
+              bobPhase: Math.random() * Math.PI * 2
+            });
+          }
+        }
+        const base = this.enemyFireInterval || 2600;
+        this.nextEnemyFire = performance.now() + base;
+      },
+      requestFire(hand = 'right') {
+        if (this.state !== 'playing' && this.state !== 'menu') return;
+        const handState = this.handState[hand];
+        if (!handState || (!handState.unlocked && hand === 'left')) return;
+        const muzzle = hand === 'left' ? this.leftMuzzle : this.rightMuzzle;
+        if (!muzzle && !this.desktopMode) return;
+        const now = performance.now();
+        const delay = this.getFireDelay(handState);
+        if (now - (this.lastShot[hand] || 0) < delay) return;
+        this.lastShot[hand] = now;
+        this.spawnShotBurst(muzzle, hand);
+      },
+      getFireDelay(handState) {
+        if (!handState) return 300;
+        const lvl = this.weaponLevel || 1;
+        const bonus = this.fireDelayBoost || 0;
+        return Math.max(70, 320 - lvl * 40 - bonus);
+      },
+      maybeAutoFire(time) {
+        ['right', 'left'].forEach(hand => {
+          if (!this.fireHeld[hand]) return;
+          this.requestFire(hand);
+        });
+      },
+      spawnShotBurst(muzzle, hand) {
+        let dir = new THREE.Vector3();
+        let origin = new THREE.Vector3();
+        if (this.desktopMode && this.cameraEl && this.cameraEl.object3D) {
+          this.cameraEl.object3D.getWorldDirection(dir);
+          dir.multiplyScalar(-1);
+          this.cameraEl.object3D.getWorldPosition(origin);
+        } else {
+          if (!muzzle) return;
+          muzzle.object3D.getWorldDirection(dir);
+          dir.multiplyScalar(-1); // ensure forward from muzzle toward scene -Z
+          muzzle.object3D.getWorldPosition(origin);
+        }
+        const lvl = this.weaponLevel || 1;
+        const speed = 20 + lvl * 3;
+        this.spawnPlayerBullet(origin, dir, { color: WEAPON_COLORS.blaster, hand, kind: 'blaster', level: lvl, speed });
+      },
+      spawnPlayerBullet(origin, direction, opts = {}) {
+        const speed = opts.speed || 20;
+        const radius = opts.radius || 0.03;
+        const bullet = document.createElement('a-sphere');
+        bullet.setAttribute('radius', radius);
+        bullet.setAttribute('color', opts.color || '#00ffcc');
+        bullet.object3D.position.copy(origin);
+        this.scene.appendChild(bullet);
+        this.playerBullets.push({
+          el: bullet,
+          velocity: direction.clone().multiplyScalar(speed),
+          born: performance.now(),
+          radius,
+          pierce: opts.pierce || 0,
+          hand: opts.hand || 'right',
+          kind: opts.kind || 'blaster',
+          level: opts.level || 1
+        });
+        this.playSound('shoot');
+      },
+      emitSparkBurst(at, color = '#ffffff') {
+        spawnSparkBurst(this.scene, at.clone ? at.clone() : at, color, 10, 0.8, 0.05, 360);
+      },
+      spawnShockwave(at, level = 1, color = '#ff7744') {
+        const pos = at.clone ? at.clone() : new THREE.Vector3(at.x, at.y, at.z);
+        const wave = document.createElement('a-entity');
+        wave.setAttribute('geometry', 'primitive: ring; radiusInner: 0.2; radiusOuter: 0.22');
+        wave.setAttribute('rotation', '-90 0 0');
+        wave.setAttribute('material', `color: ${color}; opacity: 0.65; transparent: true; side: double; depthTest: false`);
+        wave.setAttribute('position', `${pos.x} ${pos.y} ${pos.z}`);
+        const scale = 1.4 + level * 0.3;
+        const dur = 260;
+        wave.setAttribute('animation__scale', `property: scale; to: ${scale} ${scale} ${scale}; dur: ${dur}; easing: easeOutQuad`);
+        wave.setAttribute('animation__fade', `property: material.opacity; to: 0; dur: ${dur}; easing: easeOutQuad`);
+        this.scene.appendChild(wave);
+        setTimeout(() => wave.parentNode && wave.parentNode.removeChild(wave), dur + 60);
+        this.emitSparkBurst(pos, color);
+      },
+      flashShield(hitPos) {
+        if (hitPos) this.spawnShockwave(hitPos, 1, '#66d6ff');
+        const disc = document.querySelector('#shield-disc');
+        if (!disc) return;
+        const t = clamp(1 - this.shieldHP / 6, 0, 1);
+        const r = Math.round(0 + t * (255 - 0));
+        const g = Math.round(234 - t * (234 - 51));
+        const b = Math.round(255 - t * (255 - 68));
+        const color = `rgb(${r},${g},${b})`;
+        disc.setAttribute('material', `color: ${color}; opacity: 0.5; wireframe: true; transparent: true; side: double; depthTest: false`);
+        disc.setAttribute('animation__shake', 'property: position; dir: alternate; dur: 140; easing: easeOutQuad; to: 0.05 0 0');
+        clearTimeout(this.shieldFlashTimer);
+        this.shieldFlashTimer = setTimeout(() => {
+          disc.setAttribute('material', 'opacity: 0.4; wireframe: true; transparent: true; side: double; color: #8ad8ff; depthTest: false');
+          if (this.shieldComp) this.shieldComp.updateVisual();
+        }, 140);
+      },
+      flashDamage() {
+        if (!this.cameraEl) return;
+        const overlay = document.createElement('a-plane');
+        overlay.setAttribute('position', '0 0 -0.35');
+        overlay.setAttribute('rotation', '0 0 0');
+        overlay.setAttribute('width', 2);
+        overlay.setAttribute('height', 2);
+        overlay.setAttribute('material', 'color: #ff2244; opacity: 0.32; transparent: true; depthTest: false');
+        overlay.setAttribute('animation__fade', 'property: material.opacity; to: 0; dur: 220; easing: easeOutQuad');
+        this.cameraEl.appendChild(overlay);
+        setTimeout(() => overlay.parentNode && overlay.parentNode.removeChild(overlay), 260);
+        this.emitSparkBurst(this.headPos.clone(), '#ff4477');
+      },
+      spawnEnemyBullet(invader, opts = {}) {
+        const bullet = document.createElement('a-sphere');
+        bullet.setAttribute('radius', opts.radius || 0.15);
+        bullet.setAttribute('color', opts.color || '#ff0000');
+        const pos = new THREE.Vector3();
+        invader.el.object3D.getWorldPosition(pos);
+        bullet.object3D.position.copy(pos);
+        this.scene.appendChild(bullet);
+        const lat = opts.lateral !== undefined ? opts.lateral : 0;
+        const vert = opts.vertical !== undefined ? opts.vertical : 0;
+        const dir = this.headPos.clone().sub(pos).normalize();
+        dir.x += lat;
+        dir.y += vert;
+        dir.normalize().multiplyScalar(8 + (opts.speedBoost || 0));
+        this.enemyBullets.push({ el: bullet, velocity: dir, born: performance.now(), wobble: opts.wobble || 0, owner: opts.owner || 'invader' });
+      },
+      maybeSpawnUfo(time) {
+        if (this.ufo || this.state !== 'playing' || this.inBossFight) return;
+        const spawnChance = (this.wave % 5 === 0) ? 0.00035 : 0.00045;
+        if (Math.random() > spawnChance) return;
+        const roll = Math.random();
+        const type = roll < 0.8 ? 'level' : 'shield';
+        const el = document.createElement('a-entity');
+        if (type === 'shield') {
+          el.setAttribute('geometry', 'primitive: octahedron; radius: 0.8');
+          el.setAttribute('material', 'color: #00aaff; emissive: #00aaff; metalness:0.5; roughness:0.2');
+        } else {
+          el.setAttribute('geometry', 'primitive: box; width: 1.2; height: 0.4; depth: 0.6');
+          el.setAttribute('material', 'color: #ffde59; emissive: #ffde59; metalness:0.5; roughness:0.2');
+        }
+        el.setAttribute('position', '-24 9 -22');
+        this.scene.appendChild(el);
+        const dur = 4500;
+        const speed = 7;
+        this.ufo = { el, type, start: time, duration: dur, speed, phase: Math.random() * Math.PI * 2 };
+        this.ufoStart = time;
+      },
+      pickBossReward() {
+        if (!this.availableBossRewards || !this.availableBossRewards.length) {
+          this.bossRewardIndex += 1;
+          return `overclock_${this.bossRewardIndex}`;
+        }
+        const reward = this.availableBossRewards.shift();
+        this.bossRewardIndex += 1;
+        return reward || 'weaponUp';
+      },
+      startMothershipEncounter() {
+        if (this.mothership) return;
+        this.inBossFight = true;
+        const stage = Math.max(1, Math.floor(this.wave / 5));
+        const health = 18 + stage * 10;
+        const width = 5.5 + stage * 0.6;
+        const depth = 3 + stage * 0.4;
+        const theme = randomChoice(MOTHERSHIP_THEMES);
+        const now = performance.now();
+        const el = document.createElement('a-entity');
+        el.setAttribute('id', 'mothership');
+        const body = document.createElement('a-entity');
+        body.setAttribute('geometry', `primitive: box; width: ${width}; height: 1.2; depth: ${depth}`);
+        body.setAttribute('material', `color: ${theme.body}; metalness:0.45; roughness:0.25; emissive:${theme.emissive}; emissiveIntensity:0.65`);
+        body.setAttribute('position', '0 0 0');
+        el.appendChild(body);
+        const crown = document.createElement('a-entity');
+        crown.setAttribute('geometry', 'primitive: cone; radiusBottom: 1.4; radiusTop: 0.4; height: 1.2');
+        crown.setAttribute('material', `color: ${theme.crown}; emissive:${theme.crown}; metalness:0.35; roughness:0.35`);
+        crown.setAttribute('position', '0 0.9 0');
+        el.appendChild(crown);
+        const finL = document.createElement('a-entity');
+        finL.setAttribute('geometry', `primitive: box; width: ${width * 0.35}; height: 0.5; depth: ${depth * 0.8}`);
+        finL.setAttribute('material', `color:${theme.emissive}; emissive:${theme.emissive}; emissiveIntensity:0.35; opacity:0.75; transparent:true`);
+        finL.setAttribute('position', `${-width * 0.65} 0 ${-depth * 0.2}`);
+        finL.setAttribute('rotation', '0 12 0');
+        el.appendChild(finL);
+        const finR = finL.cloneNode(true);
+        finR.setAttribute('position', `${width * 0.65} 0 ${-depth * 0.2}`);
+        finR.setAttribute('rotation', '0 -12 0');
+        el.appendChild(finR);
+        const baseBarWidth = 3.2 + stage * 0.6;
+        const barBg = document.createElement('a-box');
+        barBg.setAttribute('geometry', `primitive: box; width: ${baseBarWidth + 0.4}; height: 0.14; depth: 0.12`);
+        barBg.setAttribute('material', 'color: #1a0f2c; opacity:0.7; transparent:true; emissive:#1a0f2c');
+        barBg.setAttribute('position', '0 -1.0 0');
+        el.appendChild(barBg);
+        const bar = document.createElement('a-box');
+        bar.setAttribute('geometry', `primitive: box; width: ${baseBarWidth}; height: 0.12; depth: 0.08`);
+        bar.setAttribute('material', `color: ${theme.emissive}; emissive:${theme.emissive}; emissiveIntensity:0.8; opacity:0.85; transparent:true`);
+        bar.setAttribute('position', '0 -1.0 0.02');
+        el.appendChild(bar);
+        const targets = this.buildMothershipTargets(el, width, depth, stage, theme);
+        el.setAttribute('position', '0 8 -22');
+        this.scene.appendChild(el);
+        this.mothership = {
+          el,
+          stage,
+          health,
+          maxHealth: health,
+          targets,
+          targetIndex: 0,
+          nextDrop: now + 1200,
+          dropInterval: Math.max(1600, 3400 - stage * 240),
+          nextWeapon: now + 1600,
+          weaponInterval: Math.max(1200, 2600 - stage * 180),
+          baseBarWidth,
+          bar,
+          barBg,
+          reward: this.pickBossReward(),
+          phase: Math.random() * Math.PI * 2,
+          weaponType: randomChoice(['burst', 'sweep', 'spiral']),
+          theme
+        };
+        this.updateMothershipHealthBar();
+        this.updateMothershipTargets();
+      },
+      buildMothershipTargets(el, width, depth, stage, theme) {
+        const radius = 0.22 + stage * 0.04;
+        const glow = (theme && theme.emissive) || '#ff66cc';
+        const slots = [
+          { pos: [-width * 0.3, 0.45, depth * 0.32] },
+          { pos: [0, 0.05, -0.2] },
+          { pos: [width * 0.3, 0.55, depth * 0.28] }
+        ];
+        return slots.map((slot, idx) => {
+          const target = document.createElement('a-sphere');
+          target.setAttribute('radius', radius);
+          target.setAttribute('color', '#2a304f');
+          target.setAttribute('material', `emissive:${glow}; emissiveIntensity:0.2; metalness:0.3; roughness:0.5; opacity:0.8; transparent:true`);
+          target.setAttribute('position', `${slot.pos[0]} ${slot.pos[1]} ${slot.pos[2]}`);
+          target.dataset.index = idx;
+          const ring = document.createElement('a-ring');
+          ring.setAttribute('radius-inner', radius + 0.06);
+          ring.setAttribute('radius-outer', radius + 0.16);
+          ring.setAttribute('color', glow);
+          ring.setAttribute('material', `emissive:${glow}; emissiveIntensity:0.7; opacity:0.45; transparent:true`);
+          ring.setAttribute('rotation', '90 0 0');
+          target.appendChild(ring);
+          const beam = document.createElement('a-entity');
+          beam.setAttribute('geometry', `primitive: cylinder; radius: ${radius * 0.75}; height: ${0.9 + stage * 0.1}`);
+          beam.setAttribute('material', `color:${glow}; opacity:0.35; transparent:true; emissive:${glow}; emissiveIntensity:0.9`);
+          beam.setAttribute('position', `0 ${0.8 + stage * 0.05} 0`);
+          beam.setAttribute('visible', false);
+          target.appendChild(beam);
+          el.appendChild(target);
+          return { el: target, slot, ring, beam };
+        });
+      },
+      updateMothershipTargets() {
+        if (!this.mothership || !this.mothership.targets) return;
+        const themeColor = (this.mothership.theme && this.mothership.theme.emissive) || '#ff66cc';
+        this.mothership.targets.forEach((target, idx) => {
+          if (!target.el) return;
+          const active = idx === this.mothership.targetIndex;
+          const color = active ? themeColor : '#304070';
+          target.el.setAttribute('color', color);
+          target.el.setAttribute('material', `emissive:${active ? themeColor : '#22304f'}; emissiveIntensity:${active ? 0.8 : 0.25}; opacity:${active ? 0.95 : 0.65}; transparent:true`);
+          target.el.setAttribute('scale', active ? '1.15 1.15 1.15' : '0.95 0.95 0.95');
+          if (target.ring) {
+            target.ring.setAttribute('visible', active);
+            if (active) {
+              target.ring.setAttribute('animation__pulse', 'property: scale; dir: alternate; dur: 420; to: 1.25 1.25 1.25; loop: true; easing: easeInOutQuad');
+            } else {
+              target.ring.removeAttribute('animation__pulse');
+            }
+          }
+          if (target.beam) target.beam.setAttribute('visible', active);
+        });
+      },
+      advanceMothershipTarget() {
+        if (!this.mothership) return;
+        this.mothership.targetIndex = (this.mothership.targetIndex + 1) % (this.mothership.targets.length || 1);
+        this.updateMothershipTargets();
+      },
+      updateMothershipHealthBar() {
+        if (!this.mothership || !this.mothership.bar) return;
+        const ratio = clamp(this.mothership.health / this.mothership.maxHealth, 0, 1);
+        const width = this.mothership.baseBarWidth * ratio;
+        this.mothership.bar.setAttribute('geometry', `primitive: box; width: ${Math.max(0.1, width)}; height: 0.12; depth: 0.08`);
+        const offset = (1 - ratio) * -this.mothership.baseBarWidth * 0.25;
+        this.mothership.bar.setAttribute('position', `${offset} -1.0 0.02`);
+      },
+      damageMothership(amount = 1, hitPos) {
+        if (!this.mothership) return;
+        this.mothership.health = Math.max(0, this.mothership.health - amount);
+        const pos = hitPos ? (hitPos.clone ? hitPos.clone() : hitPos) : this.mothership.el.object3D.position.clone();
+        this.spawnShockwave(pos, 1.2, '#ff66cc');
+        this.updateMothershipHealthBar();
+        if (this.mothership.health <= 0) {
+          this.finishMothership(true);
+        } else {
+          this.advanceMothershipTarget();
+        }
+      },
+      finishMothership(defeated = false) {
+        if (this.mothership && this.mothership.el && this.mothership.el.parentNode) {
+          this.mothership.el.parentNode.removeChild(this.mothership.el);
+        }
+        if (defeated) {
+          this.bossCount += 1;
+          this.enemyVolley = (this.enemyVolley || 1) + 1;
+          this.invaders.forEach(inv => inv.el && inv.el.parentNode && inv.el.parentNode.removeChild(inv.el));
+          this.enemyBullets.forEach(b => b.el && b.el.parentNode && b.el.parentNode.removeChild(b.el));
+          this.invaders = [];
+          this.enemyBullets = [];
+          const reward = this.mothership ? this.mothership.reward : this.pickBossReward();
+          this.applyBossReward(reward);
+          this.playSound('powerup');
+          this.wave += 1;
+          this.inBossFight = false;
+          this.spawnFormation();
+          this.nextMoveAt = performance.now() + this.baseTick;
+        }
+        this.mothership = null;
+        this.inBossFight = false;
+        this.hideBossHud();
+      },
+      dropInvaderFromMothership() {
+        if (!this.mothership) return;
+        const msPos = this.mothership.el.object3D.position;
+        const type = randomChoice(['squid', 'crab', 'bug']);
+        const invader = createVoxelSprite(type);
+        const targetRow = (this.formRows || 5) - 1;
+        const baseY = (this.formStartY || 8) - targetRow * (this.formYGap || 1);
+        const x = msPos.x + (Math.random() - 0.5) * 6;
+        const z = msPos.z + 1 + Math.sin(performance.now() * 0.002) * 1.2;
+        invader.setAttribute('position', `${x} ${baseY} ${z}`);
+        this.scene.appendChild(invader);
+        this.invaders.push({
+          el: invader,
+          type,
+          row: targetRow,
+          col: Math.floor(Math.random() * 8),
+          baseY,
+          x,
+          z,
+          bobPhase: Math.random() * Math.PI * 2,
+          dropped: true
+        });
+      },
+      fireMothershipWeapon(now = performance.now()) {
+        if (!this.mothership) return;
+        const msPos = this.mothership.el.object3D.position.clone();
+        const stage = this.mothership.stage || 1;
+        const weapon = this.mothership.weaponType || 'burst';
+        const baseSpeed = 8.5 + stage * 1.2;
+        if (weapon === 'sweep') {
+          const lanes = 7;
+          const dirSign = this.mothership.sweepDir || 1;
+          for (let i = 0; i < lanes; i++) {
+            const offset = (i - (lanes - 1) * 0.5) * 0.8 * dirSign;
+            const bullet = document.createElement('a-sphere');
+            bullet.setAttribute('radius', 0.16);
+            bullet.setAttribute('color', '#ffcc55');
+            bullet.object3D.position.copy(msPos.clone().add(new THREE.Vector3(offset, -0.3, 0)));
+            this.scene.appendChild(bullet);
+            const dir = new THREE.Vector3(dirSign * 0.6, -0.05, 1).normalize().multiplyScalar(baseSpeed * 0.9);
+            this.enemyBullets.push({
+              el: bullet,
+              velocity: dir,
+              born: now,
+              wobble: 0.0025 + stage * 0.0008,
+              owner: 'mothership'
+            });
+          }
+          this.mothership.sweepDir = -dirSign;
+        } else if (weapon === 'spiral') {
+          const shots = 10;
+          const baseAngle = (this.mothership.weaponPhase || 0) + 0.6;
+          this.mothership.weaponPhase = baseAngle;
+          for (let i = 0; i < shots; i++) {
+            const angle = baseAngle + (Math.PI * 2 * i) / shots;
+            const dir = new THREE.Vector3(Math.cos(angle), Math.sin(angle) * 0.3, 1).normalize().multiplyScalar(baseSpeed * 0.85);
+            const bullet = document.createElement('a-sphere');
+            bullet.setAttribute('radius', 0.18);
+            bullet.setAttribute('color', '#88ddff');
+            bullet.object3D.position.copy(msPos.clone().add(new THREE.Vector3(0, 0.1, 0)));
+            this.scene.appendChild(bullet);
+            this.enemyBullets.push({
+              el: bullet,
+              velocity: dir,
+              born: now,
+              wobble: 0.004 + stage * 0.0008,
+              owner: 'mothership'
+            });
+          }
+        } else {
+          const volleys = 2 + stage;
+          for (let i = 0; i < volleys; i++) {
+            const bullet = document.createElement('a-sphere');
+            bullet.setAttribute('radius', 0.2);
+            bullet.setAttribute('color', '#ff44aa');
+            bullet.object3D.position.copy(msPos.clone().add(new THREE.Vector3((i - (volleys - 1) * 0.5) * 0.6, -0.4, 0)));
+            this.scene.appendChild(bullet);
+            const dir = this.headPos.clone().sub(bullet.object3D.position).normalize();
+            dir.x += (Math.random() - 0.5) * 0.4 * (1 + stage * 0.25);
+            dir.y += (Math.random() - 0.5) * 0.3;
+            dir.normalize().multiplyScalar(baseSpeed);
+            this.enemyBullets.push({
+              el: bullet,
+              velocity: dir,
+              born: now,
+              wobble: 0.003 + stage * 0.001,
+              owner: 'mothership'
+            });
+          }
+        }
+      },
+      updateMothership(time, dt) {
+        if (!this.mothership || !this.mothership.el) return;
+        const now = performance.now();
+        const sway = Math.sin(time * 0.0011 + this.mothership.phase) * (2 + this.mothership.stage * 0.2);
+        const bob = Math.sin(time * 0.0008 + this.mothership.phase * 0.8) * 0.8;
+        this.mothership.el.object3D.position.set(sway, 8 + bob, -19 + Math.sin(time * 0.0009) * 1.5);
+        if (now >= this.mothership.nextDrop) {
+          this.dropInvaderFromMothership();
+          this.mothership.nextDrop = now + this.mothership.dropInterval + Math.random() * 500;
+        }
+        if (now >= this.mothership.nextWeapon) {
+          this.fireMothershipWeapon(now);
+          const interval = Math.max(900, this.mothership.weaponInterval - this.bossCount * 80);
+          this.mothership.nextWeapon = now + interval + Math.random() * 300;
+        }
+      },
+      checkMothershipHit(pos) {
+        if (!this.mothership || !this.mothership.targets || this.mothership.targets.length === 0) return false;
+        const target = this.mothership.targets[this.mothership.targetIndex];
+        if (!target || !target.el) return false;
+        const tPos = target.el.object3D.getWorldPosition(new THREE.Vector3());
+        const radius = parseFloat(target.el.getAttribute('radius')) || 0.25;
+        if (pos.distanceTo(tPos) < radius + 0.35) {
+          this.damageMothership(2, tPos);
+          return true;
+        }
+        return false;
+      },
+      applyBossReward(type) {
+        const key = (type || '').toString();
+        if (key === 'dual') {
+          this.applyUfoReward('dual');
+        } else if (key === 'shieldBoost') {
+          this.shieldHP = Math.max(this.shieldHP, 6 + Math.min(4, this.bossCount));
+          if (this.shieldComp) this.shieldComp.setHealth(this.shieldHP);
+        } else if (key === 'weaponUp') {
+          this.weaponLevel = clamp(this.weaponLevel + 1, 1, 6);
+        } else if (key === 'extraLife') {
+          this.lives = Math.min(6, this.lives + 1);
+        } else if (key.startsWith('overclock')) {
+          this.fireDelayBoost = (this.fireDelayBoost || 0) + 25;
+        }
+        this.updateHUD();
+      },
+      areaDamage(center, radius, level = 1) {
+        const hits = [];
+        this.invaders.forEach((inv, idx) => {
+          const invPos = inv.el.object3D.position.clone();
+          if (invPos.distanceTo(center) <= radius) hits.push({ idx, pos: invPos });
+        });
+        hits.sort((a, b) => b.idx - a.idx).forEach(hit => {
+          this.removeInvader(hit.idx);
+        });
+        this.spawnShockwave(center, level, WEAPON_COLORS.blaster);
+      },
+      applyUfoReward(type) {
+        if (type === 'shield') {
+          this.shieldHP = 6;
+          if (this.shieldComp) this.shieldComp.setHealth(this.shieldHP);
+        } else if (type === 'dual') {
+          this.handState.left.unlocked = true;
+          if (this.leftGunContainer) this.leftGunContainer.setAttribute('visible', true);
+        } else {
+          // weapon level up
+          this.weaponLevel = clamp(this.weaponLevel + 1, 1, 5);
+        }
+        this.updateHUD();
+      },
+      removeInvader(idx) {
+        const inv = this.invaders[idx];
+        if (!inv) return;
+        if (inv.el && inv.el.parentNode) inv.el.parentNode.removeChild(inv.el);
+        this.invaders.splice(idx, 1);
+        this.addScore(100, 'invader');
+        this.compressRows();
+      },
+      compressRows() {
+        if (!this.invaders.length) return;
+        const rows = {};
+        this.invaders.forEach(inv => {
+          if (!rows[inv.row]) rows[inv.row] = [];
+          rows[inv.row].push(inv);
+        });
+        let target = (this.formRows || 5) - 1;
+        for (let i = target; i >= 0; i--) {
+          if (rows[i] && rows[i].length) {
+            const newRow = target;
+            if (newRow !== i) {
+              rows[i].forEach(inv => {
+                inv.row = newRow;
+                inv.baseY = this.formStartY - newRow * this.formYGap;
+                inv.el.object3D.position.y = inv.baseY;
+              });
+            }
+            target--;
+          }
+        }
+      },
+      handlePlayerHit() {
+        if (this.state !== 'playing') return;
+        this.lives = Math.max(0, this.lives - 1);
+        this.resetCombo();
+        this.shieldHP = 0;
+        if (this.shieldComp) this.shieldComp.setHealth(this.shieldHP);
+        this.enemyBullets.forEach(b => {
+          if (b.el && b.el.parentNode) b.el.parentNode.removeChild(b.el);
+        });
+        this.enemyBullets = [];
+        if (this.lives <= 0) {
+          this.gameOver('Out of lives');
+          return;
+        }
+        this.flashDamage();
+        this.spawnShockwave(this.headPos.clone ? this.headPos.clone() : this.headPos, 1.3, '#ff3355');
+        this.playSound('explosion');
+        this.updateHUD();
+      },
+      gameOver(reason) {
+        this.state = 'menu';
+        this.clearEntities();
+        this.showMenu();
+        this.resetCombo();
+        this.updateHUD();
+        console.warn('Game Over:', reason);
+      },
+      useBomb() {
+        return;
+      },
+      handleMenuHit(bullet, idx) {
+        const pos = bullet.el.object3D.position;
+        for (const cube of this.menuCubes) {
+          const cpos = cube.object3D.getWorldPosition(this.tempVec);
+          const size = 0.3;
+          if (Math.abs(pos.x - cpos.x) <= size && Math.abs(pos.y - cpos.y) <= size && Math.abs(pos.z - cpos.z) <= size) {
+            const difficulty = cube.dataset.difficulty || 'easy';
+            this.resetGame(difficulty);
+            return true;
+          }
+        }
+        return false;
+      },
+      tick(time, timeDelta) {
+        if (this.state === 'menu') {
+          this.updateBullets(timeDelta, true);
+          return;
+        }
+        this.maybeAutoFire(time);
+        if (this.cameraEl && this.cameraEl.object3D) {
+          this.cameraEl.object3D.getWorldPosition(this.headPos);
+        }
+        if (this.comboCount > 0 && time - this.lastComboTime > this.comboWindow) {
+          this.resetCombo();
+        }
+        this.maybeSpawnUfo(time);
+        this.updateMothership(time, timeDelta);
+        this.updateInvaders(time);
+        this.maybeEnemyFire(time);
+        this.updateBullets(timeDelta, false);
+        this.updateEnemyBullets(timeDelta);
+        this.updateCrosshairs();
+        this.updateSky(timeDelta);
+        this.updateUfo(time);
+      },
+      maybeEnemyFire(time) {
+        if (this.state !== 'playing') return;
+        if (!this.invaders.length) return;
+        const now = performance.now();
+        if (now < this.nextEnemyFire) return;
+        const elapsed = this.startTime ? Math.max(0, now - this.startTime) : now;
+        const waveStep = this.enemyFireWaveStep || 60;
+        const interval = Math.max(this.enemyFireMin || 900,
+          (this.enemyFireInterval || 2200)
+          - (this.wave - 1) * waveStep
+          - Math.min(320, (elapsed / 60000) * 100));
+        const inv = randomChoice(this.invaders);
+        if (inv) {
+          const count = Math.max(1, this.enemyVolley || 1);
+          const spread = 0.14 + Math.min(0.3, this.wave * 0.01);
+          for (let i = 0; i < count; i++) {
+            const offset = (i - (count - 1) * 0.5) * spread;
+            this.spawnEnemyBullet(inv, { lateral: offset, speedBoost: this.bossCount * 0.3 });
+          }
+        }
+        this.nextEnemyFire = now + interval + Math.random() * 140;
+      },
+      updateInvaders(time) {
+        if (this.invaders.length === 0) {
+          if (this.state === 'playing') {
+            if (!this.inBossFight && this.wave % 5 === 0) {
+              this.startMothershipEncounter();
+              return;
+            }
+            if (!this.inBossFight) {
+              this.wave += 1;
+              this.spawnFormation();
+              this.nextMoveAt = time + this.baseTick;
+            }
+          }
+          if (this.inBossFight) return;
+        }
+        if (time >= this.nextMoveAt) {
+          const tickRate = Math.max(this.minTick, this.baseTick - (this.wave - 1) * this.tickStep);
+          this.nextMoveAt = time + tickRate;
+          const xs = this.invaders.map(i => i.x);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const bound = 9;
+          const shift = this.moveSpeed * this.direction;
+          let dropped = false;
+          if (this.direction > 0 && maxX + shift > bound) {
+            const toEdge = bound - maxX;
+            if (toEdge !== 0) this.invaders.forEach(inv => inv.x += toEdge);
+            this.invaders.forEach(inv => inv.z += this.dropDistance);
+            dropped = true;
+            this.direction *= -1;
+          } else if (this.direction < 0 && minX + shift < -bound) {
+            const toEdge = -bound - minX;
+            if (toEdge !== 0) this.invaders.forEach(inv => inv.x += toEdge);
+            this.invaders.forEach(inv => inv.z += this.dropDistance);
+            dropped = true;
+            this.direction *= -1;
+          } else {
+            this.invaders.forEach(inv => inv.x += shift);
+          }
+          this.playSound('move');
+          // game over if any invader crosses Z > 0
+          if (dropped && this.invaders.some(inv => inv.z > 0)) {
+            this.gameOver('Invaders reached you');
+          }
+        }
+        // Animate bobbing and random fire
+        const bobTime = time * 0.002;
+        this.invaders.forEach(inv => {
+          const bob = Math.sin(bobTime + inv.bobPhase) * 0.3;
+          const flowScale = Math.min(1, Math.max(0, (this.wave - 1) / 4));
+          const driftX = Math.sin(time * 0.001 + inv.col) * 0.4 * flowScale;
+          const driftZ = Math.cos(time * 0.0011 + inv.row) * 0.5 * flowScale;
+          const wideScale = Math.max(0, (this.wave - 6) / 6);
+          const swirlX = Math.sin(time * 0.0006 + inv.col * 0.8) * 0.6 * wideScale;
+          const swirlZ = Math.cos(time * 0.0006 + inv.col * 0.8) * 0.6 * wideScale;
+          const zPos = inv.z + driftZ + swirlZ;
+          inv.el.object3D.position.set(inv.x + driftX + swirlX, inv.baseY + bob, Math.max(-30, Math.min(2, zPos)));
+        });
+      },
+      updateBullets(dt, menuMode) {
+        const removeIdx = [];
+        const enemyRemove = [];
+        for (let i = 0; i < this.playerBullets.length; i++) {
+          const b = this.playerBullets[i];
+          const pos = b.el.object3D.position;
+          if (b.kind === 'special' && this.invaders.length) {
+            const target = this.invaders.reduce((best, inv) => {
+              const p = inv.el.object3D.position;
+              const d = pos.distanceTo(p);
+              if (!best || d < best.d) return { d, p };
+              return best;
+            }, null);
+            if (target) {
+              const desired = target.p.clone().sub(pos).normalize().multiplyScalar(b.velocity.length());
+              b.velocity.lerp(desired, 0.08);
+            }
+          }
+          pos.x += b.velocity.x * (dt / 1000);
+          pos.y += b.velocity.y * (dt / 1000);
+          pos.z += b.velocity.z * (dt / 1000);
+          if (pos.z < -60 || pos.z > 5 || Math.abs(pos.x) > 50 || Math.abs(pos.y) > 50) {
+            removeIdx.push(i);
+            continue;
+          }
+          if (menuMode) {
+            if (this.handleMenuHit(b, i)) {
+              removeIdx.push(i);
+            }
+            continue;
+          }
+          if (this.mothership && this.checkMothershipHit(pos)) {
+            removeIdx.push(i);
+            continue;
+          }
+          // Enemy bullet interception
+          for (let e = 0; e < this.enemyBullets.length; e++) {
+            if (enemyRemove.includes(e)) continue;
+            const eb = this.enemyBullets[e];
+            const ebPos = eb.el.object3D.position;
+            const hitDist = (b.radius || 0.02) + 0.15;
+            if (pos.distanceTo(ebPos) < hitDist) {
+              enemyRemove.push(e);
+              removeIdx.push(i);
+              this.addScore(25, 'deflect');
+              this.spawnShockwave(ebPos.clone ? ebPos.clone() : ebPos, b.level || 1, '#77ddff');
+              break;
+            }
+          }
+          if (removeIdx.includes(i)) continue;
+          // UFO collision
+          if (this.ufo && this.ufo.el) {
+            const uPos = this.ufo.el.object3D.position;
+            if (pos.distanceTo(uPos) < 1.0) {
+              this.addScore(1000, 'ufo');
+              this.applyUfoReward(this.ufo.type || 'level');
+              this.playSound('explosion');
+              if (this.ufo.el.parentNode) this.ufo.el.parentNode.removeChild(this.ufo.el);
+              this.ufo = null;
+              removeIdx.push(i);
+              this.updateHUD();
+              continue;
+            }
+          }
+          // Invader collision
+          for (let j = 0; j < this.invaders.length; j++) {
+            const inv = this.invaders[j];
+            const invPos = inv.el.object3D.position.clone();
+            if (pos.distanceTo(invPos) < 0.5) {
+              this.playSound('explosion');
+              this.emitSparkBurst(invPos, '#ff9966');
+              this.removeInvader(j);
+              removeIdx.push(i);
+              break;
+            }
+          }
+        }
+        // remove bullets
+        removeIdx.sort((a, b) => b - a).forEach(idx => {
+          const b = this.playerBullets[idx];
+          if (b && b.el && b.el.parentNode) b.el.parentNode.removeChild(b.el);
+          this.playerBullets.splice(idx, 1);
+        });
+        enemyRemove.sort((a, b) => b - a).forEach(idx => {
+          const eb = this.enemyBullets[idx];
+          if (eb && eb.el && eb.el.parentNode) eb.el.parentNode.removeChild(eb.el);
+          this.enemyBullets.splice(idx, 1);
+        });
+      },
+      updateEnemyBullets(dt) {
+        const removes = [];
+        const shieldPos = new THREE.Vector3();
+        if (this.shieldEntity && this.shieldEntity.object3D) {
+          this.shieldEntity.object3D.getWorldPosition(shieldPos);
+        }
+        for (let i = 0; i < this.enemyBullets.length; i++) {
+          const b = this.enemyBullets[i];
+          const pos = b.el.object3D.position;
+          if (b.wobble) {
+            const wobblePhase = (performance.now() * b.wobble) + i * 0.7;
+            const wobbleX = Math.sin(wobblePhase) * 0.35 * (b.owner === 'mothership' ? 1.6 : 1);
+            const wobbleY = Math.cos(wobblePhase * 0.9) * 0.22;
+            b.velocity.x += wobbleX * (dt / 1000);
+            b.velocity.y += wobbleY * (dt / 1000);
+            b.velocity.normalize().multiplyScalar(b.velocity.length());
+          }
+          pos.x += b.velocity.x * (dt / 1000);
+          pos.y += b.velocity.y * (dt / 1000);
+          pos.z += b.velocity.z * (dt / 1000);
+          // Shield interception
+          if (this.shieldHP > 0 && pos.distanceTo(shieldPos) < 0.9) {
+            this.shieldHP = Math.max(0, this.shieldHP - 1);
+            if (this.shieldComp) this.shieldComp.setHealth(this.shieldHP);
+            this.playSound('shield');
+            this.flashShield(shieldPos.clone ? shieldPos.clone() : shieldPos);
+            removes.push(i);
+            this.updateHUD();
+            continue;
+          }
+          // Head hit
+          if (pos.distanceTo(this.headPos) < 0.5) {
+            this.handlePlayerHit();
+            removes.push(i);
+            continue;
+          }
+          if (pos.z > 5 || pos.z < -60 || Math.abs(pos.x) > 50 || Math.abs(pos.y) > 50) {
+            removes.push(i);
+          }
+        }
+        removes.sort((a, b) => b - a).forEach(idx => {
+          const b = this.enemyBullets[idx];
+          if (b && b.el && b.el.parentNode) b.el.parentNode.removeChild(b.el);
+          this.enemyBullets.splice(idx, 1);
+        });
+      },
+      updateUfo(time) {
+        if (!this.ufo || !this.ufo.el) return;
+        const t = clamp((time - this.ufoStart) / this.ufo.duration, 0, 1);
+        const baseX = THREE.MathUtils.lerp(-22, 22, t);
+        const sway = Math.sin(time * 0.009 + this.ufo.phase) * 2.4;
+        const bob = Math.sin(time * 0.006 + this.ufo.phase * 0.5) * 1.1;
+        const y = 9 + bob;
+        const z = -18 + sway;
+        this.ufo.el.object3D.position.set(baseX, y, z);
+        if (t >= 1) {
+          if (this.ufo.el.parentNode) this.ufo.el.parentNode.removeChild(this.ufo.el);
+          this.ufo = null;
+        }
+      },
+      updateSky(timeDelta) {
+        if (!this.stars) return;
+        this.stars.forEach(item => {
+          if (!item.el || !item.el.object3D) return;
+          const pos = item.el.object3D.position;
+          pos.z += item.speed * -timeDelta * 0.05;
+          if (pos.z > -5) pos.z = -70;
+        });
+      },
+      updateCrosshairs() {
+        if (this.desktopMode && this.cameraEl && this.cameraEl.object3D) {
+          const dir = new THREE.Vector3();
+          this.cameraEl.object3D.getWorldDirection(dir);
+          dir.multiplyScalar(-1);
+          const origin = new THREE.Vector3();
+          this.cameraEl.object3D.getWorldPosition(origin);
+          const pos = origin.clone().add(dir.clone().multiplyScalar(18));
+          this.crosshairRight.setAttribute('position', `${pos.x} ${pos.y} ${pos.z}`);
+          this.crosshairRight.setAttribute('look-at', '#camera');
+          this.crosshairRight.setAttribute('visible', true);
+          if (this.crosshairLeft) this.crosshairLeft.setAttribute('visible', false);
+          return;
+        }
+        const targetZ = this.invaders.length
+          ? this.invaders.reduce((s, inv) => s + inv.z, 0) / this.invaders.length
+          : -20;
+        const updateForHand = (hand, crosshair, muzzle, unlocked) => {
+          if (!crosshair || !muzzle || (!unlocked && hand === 'left')) {
+            if (crosshair) crosshair.setAttribute('visible', false);
+            return;
+          }
+          const dir = new THREE.Vector3();
+          muzzle.object3D.getWorldDirection(dir);
+          dir.multiplyScalar(-1);
+          const origin = new THREE.Vector3();
+          muzzle.object3D.getWorldPosition(origin);
+          if (Math.abs(dir.z) < 0.001) {
+            crosshair.setAttribute('visible', false);
+            return;
+          }
+          const t = (targetZ - origin.z) / dir.z;
+          if (t <= 0) {
+            crosshair.setAttribute('visible', false);
+            return;
+          }
+          const pos = origin.clone().add(dir.clone().multiplyScalar(t));
+          crosshair.setAttribute('position', `${pos.x} ${pos.y} ${pos.z}`);
+          crosshair.setAttribute('look-at', '#camera');
+          crosshair.setAttribute('visible', true);
+        };
+        updateForHand('right', this.crosshairRight, this.rightMuzzle, true);
+        updateForHand('left', this.crosshairLeft, this.leftMuzzle, this.handState.left.unlocked);
+      }
+    });
+  </script>
+</body>
+</html>

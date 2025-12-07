@@ -13,8 +13,13 @@ Static site for JayLabs experiments: playable arcade-style games, pattern genera
   - `projects/PatternGenerators/PatternStudio.html` (audio-reactive harmonograph)
   - `projects/PatternGenerators/SpiroDeluxe.html` (spirograph sandbox)
 - `pcvr.html` - VR/3D experiments:
-  - `projects/PendulumVRexperience/chaos_pendulum_3d.html`
-  - `projects/BongsVR/Bongs.html` (Bongs VR sandbox: unstoppable double pendulum with WebXR)
+  - `projects/BongsVR/Bongs.html` (chaos pendulum sandbox with WebXR)
+  - `projects/Audio Corridor/index.html` (reactive neon corridor ride for VR/desktop)
+  - `projects/PendulumVRexperience/chaos_pendulum_3d.html` (space-set chaos pendulum)
+  - `projects/Drone Seeker/Droneseeker.html` (cockpit shooter vs. drone swarms)
+  - `projects/SquashedBalls.html` (physics lab with breakable glass and throwable spheres)
+  - `projects/Fountains.html` (pyrotechnics playground for placing and firing tubes)
+  - `projects/SpaceInflators.html` (Space Invaders-inspired PCVR arcade with shields and bosses)
 - `legal.html` - legal/terms page.
 - `Images/` - favicon, logo, and hero video assets.
 - `.gitignore` - ignores OS/editor cruft and common Node/tooling folders (`node_modules`, `dist`, `.env`).
