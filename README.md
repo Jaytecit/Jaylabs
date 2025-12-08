@@ -17,6 +17,7 @@ Static site for JayLabs experiments: playable arcade-style games, pattern genera
   - `projects/Audio Corridor/index.html` (reactive neon corridor ride for VR/desktop)
   - `projects/PendulumVRexperience/chaos_pendulum_3d.html` (space-set chaos pendulum)
   - `projects/Drone Seeker/Droneseeker.html` (cockpit shooter vs. drone swarms)
+  - `projects/Curling/index.html` (WebXR curling rink with AI ends and tweakable ice friction/curl)
   - `projects/SquashedBalls.html` (physics lab with breakable glass and throwable spheres)
   - `projects/Fountains.html` (pyrotechnics playground for placing and firing tubes)
   - `projects/SpaceInflators.html` (Space Invaders-inspired PCVR arcade with shields and bosses)

@@ -1,0 +1,1923 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebXR Curling</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b192d'/%3E%3Ccircle cx='16' cy='16' r='11' fill='%234de1ff'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23040912'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      --panel-bg: rgba(6, 10, 18, 0.9);
+      --accent: #4de1ff;
+      --danger: #ff6584;
+      --text: #e9f2ff;
+      --muted: #9fb4cc;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; overflow: hidden; background: #040912; color: var(--text); }
+    #hud {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: var(--panel-bg);
+      padding: 12px 14px;
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      border: 1px solid rgba(255,255,255,0.08);
+      min-width: 240px;
+      z-index: 10;
+      pointer-events: none;
+      line-height: 1.4;
+    }
+    #hud strong { color: var(--accent); }
+    #hud .title { font-size: 18px; margin-bottom: 6px; font-weight: 700; }
+    #hud .muted { color: var(--muted); font-size: 12px; }
+    #uiPanel {
+      position: absolute;
+      top: 50%;
+      right: 16px;
+      transform: translateY(-50%);
+      background: var(--panel-bg);
+      padding: 14px;
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      width: 320px;
+      max-height: calc(100% - 32px);
+      overflow-y: auto;
+      border: 1px solid rgba(255,255,255,0.08);
+      display: none;
+      z-index: 20;
+    }
+    #uiPanel h3 { margin: 4px 0 8px; color: var(--accent); }
+    .control { margin-bottom: 10px; }
+    .control label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+    .control input[type="range"],
+    .control input[type="number"] {
+      width: 100%;
+      margin-top: 4px;
+    }
+    .control .value { color: var(--text); font-weight: 600; }
+    .section { margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    #toast {
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.6);
+      padding: 8px 12px;
+      border-radius: 20px;
+      color: var(--text);
+      font-size: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: var(--shadow);
+      z-index: 11;
+    }
+    #crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 12px;
+      height: 12px;
+      margin-left: -6px;
+      margin-top: -6px;
+      border: 2px solid rgba(255,255,255,0.5);
+      border-radius: 50%;
+      pointer-events: none;
+      display: none;
+      z-index: 9;
+    }
+    #miniMap {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 220px;
+      height: 220px;
+      background: rgba(4, 9, 18, 0.9);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      z-index: 9;
+    }
+    #endOverlay {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.6);
+      z-index: 30;
+    }
+    #endOverlay .card {
+      background: var(--panel-bg);
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      min-width: 320px;
+      border: 1px solid rgba(255,255,255,0.12);
+      color: var(--text);
+    }
+    #endOverlay h3 { margin: 0 0 8px; color: var(--accent); }
+    #endOverlay .actions { display: flex; gap: 8px; margin-top: 12px; }
+    #endOverlay button {
+      flex: 1;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: #13334c;
+      color: var(--text);
+      cursor: pointer;
+    }
+    #endOverlay button.primary { background: #1f7fff; color: #fff; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div class="title">WebXR Curling</div>
+    <div id="turnLabel">Turn: Player</div>
+    <div id="stonesLabel">Stones: 0 / 0</div>
+    <div id="scoreLabel">Score (Player / AI): 0 - 0</div>
+    <div id="statusLabel" class="muted">Grip to pick up and release to throw. Press B to open tuning UI.</div>
+  </div>
+  <div id="crosshair"></div>
+  <canvas id="miniMap" width="220" height="220"></canvas>
+  <div id="uiPanel">
+    <h3>Runtime Controls</h3>
+    <div id="uiContent"></div>
+  </div>
+  <div id="toast">Right controller B toggles tuning UI. Keyboard fallback: press U.</div>
+  <div id="endOverlay">
+    <div class="card">
+      <h3 id="endTitle"></h3>
+      <div id="endBody" class="muted"></div>
+      <div id="endScores" style="margin-top:8px;"></div>
+      <div class="actions">
+        <button id="nextEndBtn" class="primary">Next End</button>
+        <button id="playAgainBtn">Play Again</button>
+        <button id="quitBtn">Quit</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.164.1/build/three.module.js"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'https://unpkg.com/three@0.164.1/examples/jsm/controls/OrbitControls.js';
+    import { GLTFLoader } from 'https://unpkg.com/three@0.164.1/examples/jsm/loaders/GLTFLoader.js';
+    import { XRButton } from 'https://unpkg.com/three@0.164.1/examples/jsm/webxr/XRButton.js';
+    import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js';
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#0b192d');
+    const playerRig = new THREE.Group();
+    scene.add(playerRig);
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 200);
+    camera.position.set(0, 4, 8);
+    playerRig.add(camera);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.xr.enabled = true;
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    // Strip unsupported XR optional features (notably "layers") to avoid noisy console warnings on platforms
+    // that don't implement them yet.
+    (function patchXRSessionRequests() {
+      const xr = navigator.xr;
+      if (!xr || xr.__patchedForLayers) return;
+      const sanitizeInit = (init = {}) => {
+        const optional = Array.isArray(init.optionalFeatures) ? init.optionalFeatures.filter(f => f !== 'layers') : [];
+        const required = Array.isArray(init.requiredFeatures) ? init.requiredFeatures : [];
+        return { ...init, optionalFeatures: optional, requiredFeatures: required };
+      };
+      const wrap = (key) => {
+        if (!xr[key]) return;
+        const original = xr[key].bind(xr);
+        xr[key] = (mode, init) => original(mode, sanitizeInit(init));
+      };
+      wrap('requestSession');
+      wrap('offerSession');
+      xr.__patchedForLayers = true;
+    })();
+
+    document.body.appendChild(XRButton.createButton(renderer, { optionalFeatures: ['local-floor', 'bounded-floor'] }));
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0.5, 0);
+    controls.update();
+
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x223344, 0.9);
+    scene.add(hemi);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    dirLight.position.set(6, 10, 3);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.set(2048, 2048);
+    scene.add(dirLight);
+    const arenaLight = new THREE.PointLight(0xc4e1ff, 0.6, 80, 1.5);
+    arenaLight.position.set(0, 15, 0);
+    scene.add(arenaLight);
+
+    const params = {
+      sheetLength: 44,
+      sheetWidth: 5,
+      houseRadius: 2.0,
+      stoneRadius: 1.0,
+      stoneHeight: 1.44,
+      stoneScale: 0.025, // physics wrap scale
+      visualStoneScale: 0.25, // fixed visual scale
+      aiStoneScaleFactor: 10,
+      stoneMass: 25,
+      friction: 0.00003,
+      restitution: 0.01,
+      iceDrag: 0.00002,
+      iceCurl: 0.05,
+      spinCurl: 0.05,
+      throwPower: 8,
+      pushSpeed: 6,
+      pushDirectionDeg: 0,
+      pushSpin: 0,
+      motionPowerScale: 2.0,
+      twistSpinScale: 0.2,
+      useControllerAim: true,
+      aiAccuracy: 0.2,
+      aiWeightBias: 0.8
+    };
+
+    const hud = {
+      turn: document.getElementById('turnLabel'),
+      stones: document.getElementById('stonesLabel'),
+      score: document.getElementById('scoreLabel'),
+      status: document.getElementById('statusLabel')
+    };
+
+    const uiPanel = document.getElementById('uiPanel');
+    const crosshair = document.getElementById('crosshair');
+    const uiContent = document.getElementById('uiContent');
+    const toast = document.getElementById('toast');
+    const miniMap = document.getElementById('miniMap');
+    const miniCtx = miniMap.getContext('2d');
+    const endOverlay = document.getElementById('endOverlay');
+    const endTitle = document.getElementById('endTitle');
+    const endBody = document.getElementById('endBody');
+    const endScores = document.getElementById('endScores');
+    const nextEndBtn = document.getElementById('nextEndBtn');
+    const playAgainBtn = document.getElementById('playAgainBtn');
+    const quitBtn = document.getElementById('quitBtn');
+
+    let uiVisible = false;
+    let bButtonState = false;
+    const hudCanvas = document.createElement('canvas');
+    hudCanvas.width = 512;
+    hudCanvas.height = 256;
+    const hudCtx = hudCanvas.getContext('2d');
+    let hudTexture = null;
+    let hudMesh = null;
+    let miniMapTexture = null;
+    let miniMapMesh = null;
+    const panelGroup = new THREE.Group();
+    scene.add(panelGroup);
+    const pointerLines = [];
+    const raycasters = [new THREE.Raycaster(), new THREE.Raycaster()];
+    const vrPrompt = { group: null, buttons: [] };
+    const crowdData = { mesh: null, material: null, cheer: 0, lights: [], targets: [] };
+    const audio = {
+      ctx: null,
+      ready: false,
+      buffers: {},
+      ambience: null,
+      slideBuffers: {}
+    };
+
+    const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
+    world.broadphase = new CANNON.SAPBroadphase(world);
+    world.allowSleep = true;
+
+    const iceMaterial = new CANNON.Material('ice');
+    const stoneMaterial = new CANNON.Material('stone');
+    const contact = new CANNON.ContactMaterial(iceMaterial, stoneMaterial, {
+      friction: params.friction,
+      restitution: params.restitution
+    });
+    world.addContactMaterial(contact);
+
+    let groundBody;
+    let wallBodies = [];
+    let sheetMesh;
+    const houseRings = [];
+    const lines = [];
+
+    let housePositionZ = -params.sheetLength / 2 + 4;
+    const loader = new GLTFLoader();
+    let playerStoneTemplate = null;
+    let aiStoneTemplate = null;
+
+    const stones = [];
+    const gameState = {
+      stonesPerTeam: 5,
+      thrown: { player: 0, ai: 0 },
+      currentTeam: 'player',
+      activeStone: null,
+      scores: { player: 0, ai: 0 },
+      endScores: [],
+      currentEnd: 1,
+      totalEnds: 8,
+      waitingForNextEnd: false,
+      gameOver: false,
+      inEnd: true
+    };
+
+    const controller1 = renderer.xr.getController(0);
+    const controller2 = renderer.xr.getController(1);
+    playerRig.add(controller1);
+    playerRig.add(controller2);
+
+    const controllerGrip1 = renderer.xr.getControllerGrip(0);
+    const controllerGrip2 = renderer.xr.getControllerGrip(1);
+    playerRig.add(controllerGrip1);
+    playerRig.add(controllerGrip2);
+
+    const aimArrow = createAimArrow();
+    scene.add(aimArrow);
+    const envGroup = new THREE.Group();
+    scene.add(envGroup);
+    const wrapHelpers = new THREE.Group();
+    wrapHelpers.visible = false;
+    scene.add(wrapHelpers);
+
+    const controllerState = new Map(); // tracks world velocity for throw release
+    const grabState = { stone: null, controller: null };
+    nextEndBtn.addEventListener('click', handleNextEnd);
+    playAgainBtn.addEventListener('click', resetGame);
+    quitBtn.addEventListener('click', handleQuit);
+
+    initUI();
+    uiPanel.style.display = 'none';
+    initSheet();
+    buildEnvironment();
+    buildVRPanels();
+    updateRigPosition();
+    loadStones().then(() => {
+      startTurn('player');
+    });
+    setupAudioUnlock();
+
+    controller1.addEventListener('selectstart', () => handlePlayerThrow(controller1));
+    controller2.addEventListener('selectstart', () => handlePlayerThrow(controller2));
+    controller1.addEventListener('squeezestart', () => beginGrab(controller1));
+    controller2.addEventListener('squeezestart', () => beginGrab(controller2));
+    controller1.addEventListener('squeezeend', () => endGrab(controller1));
+    controller2.addEventListener('squeezeend', () => endGrab(controller2));
+
+    window.addEventListener('resize', onWindowResize);
+    window.addEventListener('keydown', (e) => {
+      if (e.key.toLowerCase() === 'u') toggleUI();
+      if (e.key.toLowerCase() === 't') handlePlayerThrow(null);
+      if (e.key.toLowerCase() === 'r') resetEnd();
+      startAudio();
+    });
+
+    function initSheet() {
+      if (sheetMesh) scene.remove(sheetMesh);
+      lines.forEach(l => scene.remove(l));
+      lines.length = 0;
+      houseRings.forEach(r => scene.remove(r));
+      houseRings.length = 0;
+
+      const sheetGeo = new THREE.PlaneGeometry(params.sheetWidth, params.sheetLength);
+      const sheetMat = new THREE.MeshPhongMaterial({ color: '#9cd6ff', transparent: true, opacity: 0.95 });
+      sheetMesh = new THREE.Mesh(sheetGeo, sheetMat);
+      sheetMesh.rotation.x = -Math.PI / 2;
+      sheetMesh.receiveShadow = true;
+      scene.add(sheetMesh);
+
+      housePositionZ = -params.sheetLength / 2 + 4;
+      buildHouseRings();
+      buildLines();
+      rebuildPhysicsSurface();
+    }
+
+    function buildHouseRings() {
+      const sizes = [
+        { radius: params.houseRadius, color: '#c82b41' },
+        { radius: params.houseRadius * 0.66, color: '#1d68ff' },
+        { radius: params.houseRadius * 0.33, color: '#ffffff' }
+      ];
+      sizes.forEach((cfg, idx) => {
+        const geo = new THREE.RingGeometry(cfg.radius * 0.66, cfg.radius, 48);
+        const mat = new THREE.MeshBasicMaterial({ color: cfg.color, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+        const ring = new THREE.Mesh(geo, mat);
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.z = housePositionZ;
+        ring.position.y = 0.001 * (idx + 1);
+        scene.add(ring);
+        houseRings.push(ring);
+      });
+    }
+
+    function buildLines() {
+      const lineMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+      const hogZ = params.sheetLength * 0.15;
+      const teeZ = housePositionZ;
+      const backZ = housePositionZ - params.houseRadius;
+
+      const addLine = (zPos, color = '#ffffff', width = params.sheetWidth) => {
+        const geo = new THREE.PlaneGeometry(width, 0.05);
+        const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.z = zPos;
+        mesh.position.y = 0.002;
+        scene.add(mesh);
+        lines.push(mesh);
+      };
+
+      addLine(hogZ, '#ffcc00');
+      addLine(hogZ * -1, '#ffcc00');
+      addLine(teeZ, '#ffffff', params.sheetWidth * 0.5);
+      addLine(backZ, '#aa0000', params.sheetWidth * 0.5);
+    }
+
+    function rebuildPhysicsSurface() {
+      if (groundBody) world.removeBody(groundBody);
+      wallBodies.forEach(w => world.removeBody(w));
+      wallBodies = [];
+
+      groundBody = new CANNON.Body({ mass: 0, material: iceMaterial });
+      groundBody.addShape(new CANNON.Plane());
+      groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+      world.addBody(groundBody);
+
+      const wrapHeight = stoneDimsFor('player').height * 1.1;
+      const wallHalfHeight = Math.max(0.05, wrapHeight / 2);
+      const wallShape = (w, h, d) => new CANNON.Box(new CANNON.Vec3(w, h, d));
+      const sideOffset = params.sheetWidth / 2;
+      const lengthHalf = params.sheetLength / 2;
+      const side1 = new CANNON.Body({ mass: 0, material: iceMaterial, position: new CANNON.Vec3(sideOffset, wallHalfHeight, 0) });
+      side1.addShape(wallShape(0.05, wallHalfHeight, lengthHalf));
+      const side2 = new CANNON.Body({ mass: 0, material: iceMaterial, position: new CANNON.Vec3(-sideOffset, wallHalfHeight, 0) });
+      side2.addShape(wallShape(0.05, wallHalfHeight, lengthHalf));
+      const back = new CANNON.Body({ mass: 0, material: iceMaterial, position: new CANNON.Vec3(0, wallHalfHeight, -lengthHalf) });
+      back.addShape(wallShape(params.sheetWidth / 2, wallHalfHeight, 0.05));
+      const front = new CANNON.Body({ mass: 0, material: iceMaterial, position: new CANNON.Vec3(0, wallHalfHeight, lengthHalf) });
+      front.addShape(wallShape(params.sheetWidth / 2, wallHalfHeight, 0.05));
+      wallBodies.push(side1, side2, back, front);
+      wallBodies.forEach(w => {
+        w.collisionResponse = true;
+        world.addBody(w);
+      });
+      rebuildWrapHelpers(wallHalfHeight, sideOffset, lengthHalf);
+    }
+
+    function rebuildWrapHelpers(wallHalfHeight, sideOffset, lengthHalf) {
+      if (!wrapHelpers) return;
+      wrapHelpers.clear();
+      const hw = sideOffset;
+      const hl = lengthHalf;
+      const y = wallHalfHeight * 2;
+      const baseCorners = [
+        new THREE.Vector3(-hw, 0.01, -hl),
+        new THREE.Vector3(hw, 0.01, -hl),
+        new THREE.Vector3(hw, 0.01, hl),
+        new THREE.Vector3(-hw, 0.01, hl)
+      ];
+      const topCorners = baseCorners.map(c => c.clone().setY(y));
+      const pts = [];
+      for (let i = 0; i < 4; i++) {
+        const next = (i + 1) % 4;
+        pts.push(baseCorners[i], baseCorners[next]);
+        pts.push(topCorners[i], topCorners[next]);
+        pts.push(baseCorners[i], topCorners[i]);
+      }
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      const mat = new THREE.LineBasicMaterial({
+        color: 0x4de1ff,
+        transparent: true,
+        opacity: 0.7,
+        depthTest: false
+      });
+      const lines = new THREE.LineSegments(geo, mat);
+      lines.renderOrder = 10;
+      wrapHelpers.add(lines);
+    }
+
+    async function loadStones() {
+      const yellow = await loader.loadAsync('curlyellow.glb');
+      aiStoneTemplate = yellow.scene;
+      playerStoneTemplate = cloneWithTint(yellow.scene, '#ff4d6d');
+      [playerStoneTemplate, aiStoneTemplate].forEach((root) => {
+        root.traverse((child) => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+      });
+    }
+
+    function cloneWithTint(root, color) {
+      const clone = root.clone(true);
+      clone.traverse((child) => {
+        if (child.isMesh && child.material) {
+          child.material = child.material.clone();
+          if (child.material.color) child.material.color.set(color);
+          if (child.material.emissive) child.material.emissive.set(color).multiplyScalar(0.25);
+        }
+      });
+      return clone;
+    }
+
+    function stoneScaleFor(team) {
+      return params.stoneScale * params.aiStoneScaleFactor;
+    }
+
+    function stoneDimsFor(team) {
+      const scale = stoneScaleFor(team);
+      return {
+        radius: params.stoneRadius * scale,
+        height: params.stoneHeight * scale
+      };
+    }
+
+    function createStoneMesh(team) {
+      const base = team === 'player' ? playerStoneTemplate : aiStoneTemplate;
+      const mesh = base.clone(true);
+      mesh.scale.setScalar(params.visualStoneScale);
+      return mesh;
+    }
+
+    function makeStoneBody(team) {
+      const dims = stoneDimsFor(team);
+      const body = new CANNON.Body({
+        mass: params.stoneMass,
+        material: stoneMaterial,
+        linearDamping: params.iceDrag,
+        angularDamping: params.iceDrag
+      });
+      body.angularFactor.set(0, 1, 0); // allow spin only around up-axis
+      body.linearFactor.set(1, 0, 1); // lock vertical translation
+      const shape = new CANNON.Cylinder(dims.radius, dims.radius, dims.height, 20);
+      body.addShape(shape);
+      body.sleepSpeedLimit = 0.05;
+      body.sleepTimeLimit = 1.2;
+      return body;
+    }
+
+    function getSpawnZ() {
+      return params.sheetLength / 2 - 2;
+    }
+
+    function spawnStone(team) {
+      if (!playerStoneTemplate || !aiStoneTemplate) return;
+      const mesh = createStoneMesh(team);
+      const body = makeStoneBody(team);
+      const dims = stoneDimsFor(team);
+      const spawnZ = getSpawnZ();
+      body.position.set(0, dims.height / 2, spawnZ);
+      mesh.position.copy(body.position);
+      mesh.castShadow = true;
+      const stone = { team, mesh, body, spin: 0, thrown: false, debug: null };
+      stone.debug = createPhysicsDebugMesh(team);
+      stone.debug.visible = false;
+      scene.add(stone.debug);
+      stones.push(stone);
+      scene.add(mesh);
+      world.addBody(body);
+      attachStoneAudio(body);
+      gameState.activeStone = stones[stones.length - 1];
+      updateHud();
+    }
+
+    // Test stone helpers removed
+
+    function keepStonesUpright(list) {
+      list.forEach((s) => {
+        const q = s.body.quaternion;
+        // Extract yaw from quaternion directly to avoid unsupported toEuler order in Cannon.
+        const w = q.w, x = q.x, y = q.y, z = q.z;
+        const yaw = Math.atan2(2 * (w * y + x * z), 1 - 2 * (y * y + z * z));
+        q.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), yaw);
+        s.body.quaternion.copy(q);
+        s.body.angularVelocity.set(0, s.body.angularVelocity.y, 0);
+        const dims = stoneDimsFor(s.team);
+        s.body.velocity.y = 0;
+        s.body.position.y = dims.height / 2;
+      });
+    }
+
+    function repositionWaitingStone() {
+      const spawnZ = getSpawnZ();
+      stones.forEach((s) => {
+        if (!s.thrown) {
+          const dims = stoneDimsFor(s.team);
+          s.body.position.set(0, dims.height / 2, spawnZ);
+          s.body.velocity.set(0, 0, 0);
+          s.body.angularVelocity.set(0, 0, 0);
+          s.mesh.position.copy(s.body.position);
+        }
+      });
+    }
+
+    function handlePlayerThrow(controller) {
+      if (grabState.stone) return;
+      if (gameState.waitingForNextEnd || gameState.gameOver) {
+        tryPromptClick(controller);
+        return;
+      }
+      startAudio();
+      if (gameState.currentTeam !== 'player' || !gameState.activeStone || gameState.activeStone.thrown === true) return;
+      const motion = computeMotionThrow(controller);
+      if (motion) {
+        throwStone(gameState.activeStone, motion.dir, motion.speed, motion.spin);
+      } else {
+        const dir = computePushDirection(controller);
+        throwStone(gameState.activeStone, dir, params.pushSpeed, params.pushSpin);
+      }
+    }
+
+    function beginGrab(controller) {
+      if (gameState.waitingForNextEnd || gameState.gameOver) return;
+      if (gameState.currentTeam !== 'player' || !gameState.activeStone || gameState.activeStone.thrown) return;
+      startAudio();
+      grabState.stone = gameState.activeStone;
+      grabState.controller = controller;
+      const s = grabState.stone;
+      s.body.type = CANNON.Body.KINEMATIC;
+      s.body.velocity.set(0, 0, 0);
+      s.body.angularVelocity.set(0, 0, 0);
+      s.body.updateMassProperties();
+      s.body.wakeUp();
+      hud.status.textContent = 'Hold grip, move to aim, release grip to throw.';
+    }
+
+    function endGrab(controller) {
+      if (!grabState.stone || grabState.controller !== controller) return;
+      const s = grabState.stone;
+      if (gameState.waitingForNextEnd || gameState.gameOver) {
+        grabState.stone = null;
+        grabState.controller = null;
+        tryPromptClick(controller);
+        return;
+      }
+      const motion = computeMotionThrow(controller);
+      if (motion) {
+        const vel = new CANNON.Vec3(motion.dir.x, 0, motion.dir.z).scale(motion.speed);
+        releaseStone(s, vel, motion.spin);
+      } else {
+        const dir = computePushDirection(controller);
+        const vel = new CANNON.Vec3(dir.x, 0, dir.z).scale(params.pushSpeed);
+        releaseStone(s, vel, params.pushSpin);
+      }
+      grabState.stone = null;
+      grabState.controller = null;
+    }
+
+    function aiThrow() {
+      if (!gameState.activeStone) return;
+      const start = gameState.activeStone.body.position;
+      const accuracy = THREE.MathUtils.clamp(params.aiAccuracy, 0, 1);
+      const center = new THREE.Vector3(0, 0, housePositionZ);
+      const opponents = stones.filter(s => s.team === 'player' && s.thrown);
+      const aiStones = stones.filter(s => s.team === 'ai' && s.thrown);
+      const opponentInHouse = opponents.filter((s) => {
+        const dist = Math.hypot(s.body.position.x - center.x, s.body.position.z - center.z);
+        return dist <= params.houseRadius * 1.25;
+      });
+      const aiInHouse = aiStones.filter((s) => {
+        const dist = Math.hypot(s.body.position.x - center.x, s.body.position.z - center.z);
+        return dist <= params.houseRadius * 1.3;
+      });
+
+      const pickTargetStone = (list) => list.reduce((best, s) => {
+        const dist = Math.hypot(s.body.position.x - center.x, s.body.position.z - center.z);
+        if (!best || dist < best.dist) return { dist, stone: s };
+        return best;
+      }, null)?.stone;
+
+      let shotType = 'draw';
+      if (opponentInHouse.length && Math.random() < 0.55) {
+        shotType = 'takeout';
+      } else if (!opponentInHouse.length && (aiInHouse.length || Math.random() < 0.4)) {
+        shotType = 'guard';
+      }
+
+      const curlSign = Math.random() < 0.5 ? -1 : 1;
+      const lateralNoise = (spread) => THREE.MathUtils.randFloatSpread(spread * (1.25 - accuracy * 0.5));
+      let target = new THREE.Vector3(0, start.y, housePositionZ);
+      let power = params.throwPower;
+      let spin = THREE.MathUtils.lerp(params.spinCurl * 0.22, params.spinCurl * 0.65, accuracy) * curlSign;
+
+      if (shotType === 'guard') {
+        const cover = aiInHouse[0] || opponentInHouse[0];
+        const guardZ = housePositionZ + params.houseRadius + 2.2 + THREE.MathUtils.randFloatSpread(0.8);
+        target = new THREE.Vector3(
+          (cover ? cover.body.position.x : 0) + lateralNoise(params.houseRadius * 0.35),
+          start.y,
+          guardZ
+        );
+        power *= THREE.MathUtils.lerp(0.5, 0.7, accuracy);
+      } else if (shotType === 'takeout' && opponentInHouse.length) {
+        const targetStone = pickTargetStone(opponentInHouse);
+        target = targetStone ? targetStone.body.position.clone() : target;
+        target.x += lateralNoise(params.houseRadius * 0.15);
+        spin = THREE.MathUtils.lerp(params.spinCurl * 0.1, params.spinCurl * 0.35, accuracy) * curlSign;
+        power *= THREE.MathUtils.lerp(0.82, 0.98, accuracy);
+      } else {
+        target = new THREE.Vector3(
+          lateralNoise(params.houseRadius * 0.5) + curlSign * THREE.MathUtils.lerp(0.35, 0.9, accuracy),
+          start.y,
+          housePositionZ + THREE.MathUtils.randFloatSpread(params.houseRadius * 0.4)
+        );
+        power *= THREE.MathUtils.lerp(0.64, 0.82, accuracy);
+      }
+
+      const dist = Math.abs(start.z - target.z);
+      const distanceScale = THREE.MathUtils.clamp(dist / (params.sheetLength * 0.95), 0.55, 1);
+      const weightJitter = 0.9 + (1 - accuracy) * 0.25 + THREE.MathUtils.randFloatSpread(0.12);
+      power = Math.max(3, power * params.aiWeightBias * distanceScale * weightJitter);
+
+      const dir = new THREE.Vector3(target.x - start.x, 0, target.z - start.z).normalize();
+      throwStone(gameState.activeStone, dir, power, spin);
+    }
+
+    function throwStone(stone, dir, power, spin) {
+      stone.thrown = true;
+      const force = new CANNON.Vec3(dir.x, 0, dir.z).scale(power);
+      stone.body.velocity.copy(force);
+      stone.spin = spin;
+      gameState.thrown[stone.team] += 1;
+      hud.status.textContent = `Stone released (${stone.team === 'player' ? 'Player' : 'AI'})`;
+      if (stone.team === 'player') triggerCrowdCheer(0.2);
+      startAudio();
+      ensureSlideSound(stone.body);
+    }
+
+    function releaseStone(stone, velocity, spin) {
+      stone.body.type = CANNON.Body.DYNAMIC;
+      stone.body.mass = params.stoneMass;
+      stone.body.updateMassProperties();
+      stone.body.velocity.copy(velocity);
+      stone.body.angularVelocity.set(0, 0, 0);
+      stone.body.wakeUp();
+      stone.thrown = true;
+      stone.spin = spin || 0;
+      gameState.thrown[stone.team] += 1;
+      hud.status.textContent = `Stone released (${stone.team === 'player' ? 'Player' : 'AI'})`;
+      startAudio();
+      ensureSlideSound(stone.body);
+    }
+
+    function syncStoneTransforms(list) {
+      list.forEach(s => {
+        s.mesh.position.copy(s.body.position);
+        s.mesh.quaternion.copy(s.body.quaternion);
+        if (s.debug) {
+          s.debug.position.copy(s.body.position);
+          s.debug.quaternion.copy(s.body.quaternion);
+        }
+      });
+    }
+
+    function computePushDirection(controller) {
+      if (params.useControllerAim && controller) {
+        const dir = new THREE.Vector3();
+        controller.getWorldDirection(dir);
+        dir.y = 0;
+        if (dir.lengthSq() < 0.001) dir.set(0, 0, -1);
+        return dir.normalize();
+      }
+      if (params.useControllerAim && !controller) {
+        const dir = new THREE.Vector3();
+        camera.getWorldDirection(dir);
+        dir.y = 0;
+        if (dir.lengthSq() < 0.001) dir.set(0, 0, -1);
+        return dir.normalize();
+      }
+      const angle = THREE.MathUtils.degToRad(params.pushDirectionDeg);
+      return new THREE.Vector3(Math.sin(angle), 0, -Math.cos(angle)).normalize();
+    }
+
+    function computeMotionThrow(controller) {
+      if (!controller) return null;
+      const state = controllerState.get(controller);
+      if (!state) return null;
+      const flatVel = state.vel.clone();
+      flatVel.y = 0;
+      const speed = flatVel.length();
+      if (speed < 0.05) return null;
+      const dir = flatVel.normalize();
+      const cappedSpeed = Math.min(speed * params.motionPowerScale, params.pushSpeed);
+      const spin = THREE.MathUtils.clamp((state.angVel ? state.angVel.y : 0) * params.twistSpinScale, -5, 5);
+      return { dir, speed: cappedSpeed, spin };
+    }
+
+    function setupAudioUnlock() {
+      const unlock = () => startAudio();
+      ['pointerdown', 'touchstart', 'keydown'].forEach(evt => {
+        window.addEventListener(evt, unlock, { once: true });
+      });
+    }
+
+    async function startAudio() {
+      if (audio.ready) return;
+      try {
+        audio.ctx = audio.ctx || new (window.AudioContext || window.webkitAudioContext)();
+        await audio.ctx.resume();
+        audio.slideBuffers.brown = createBrownNoiseBuffer();
+        audio.slideBuffers.pink = createPinkNoiseBuffer();
+        audio.buffers.ambience = await loadAudioBuffer('Ambience.mp3');
+        audio.buffers.hard = await loadAudioBuffer('hardhit.wav');
+        audio.buffers.soft = await loadAudioBuffer('softhit.wav');
+        playAmbience();
+        audio.ready = true;
+      } catch (e) {
+        console.warn('Audio init failed', e);
+      }
+    }
+
+    async function loadAudioBuffer(path) {
+      const res = await fetch(path);
+      const arr = await res.arrayBuffer();
+      return await audio.ctx.decodeAudioData(arr);
+    }
+
+    function playAmbience() {
+      if (!audio.buffers.ambience || !audio.ctx) return;
+      const src = audio.ctx.createBufferSource();
+      src.buffer = audio.buffers.ambience;
+      src.loop = true;
+      const gain = audio.ctx.createGain();
+      gain.gain.value = 0.12;
+      src.connect(gain).connect(audio.ctx.destination);
+      src.start();
+      audio.ambience = src;
+    }
+
+    function createBrownNoiseBuffer() {
+      const sampleRate = audio.ctx.sampleRate;
+      const bufferSize = sampleRate * 2;
+      const buffer = audio.ctx.createBuffer(1, bufferSize, sampleRate);
+      const data = buffer.getChannelData(0);
+      let lastOut = 0;
+      for (let i = 0; i < bufferSize; i++) {
+        const white = Math.random() * 2 - 1;
+        lastOut = (lastOut + 0.02 * white) / 1.02;
+        data[i] = lastOut * 3.5;
+      }
+      return buffer;
+    }
+
+    function createPinkNoiseBuffer() {
+      const sampleRate = audio.ctx.sampleRate;
+      const bufferSize = sampleRate * 2;
+      const buffer = audio.ctx.createBuffer(1, bufferSize, sampleRate);
+      const data = buffer.getChannelData(0);
+      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+      for (let i = 0; i < bufferSize; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522;
+        b5 = -0.7616 * b5 - white * 0.0168980;
+        data[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+        data[i] *= 0.11;
+        b6 = white * 0.115926;
+      }
+      return buffer;
+    }
+
+    function attachStoneAudio(body) {
+      body.addEventListener('collide', (e) => handleStoneCollision(e));
+      body.userData = body.userData || {};
+    }
+
+    function stopStoneAudio(body) {
+      const slide = body.userData?.slide;
+      if (!slide) return;
+      ['brown', 'pink'].forEach((key) => {
+        const src = slide[key];
+        try { src?.stop?.(); } catch (e) { /* ignore ended node */ }
+        src?.disconnect?.();
+      });
+      [slide.rumbleGain, slide.scrapeGain, slide.master].forEach((node) => node?.disconnect?.());
+      body.userData.slide = null;
+    }
+
+    function ensureSlideSound(body) {
+      if (!audio.ready || body.userData?.slide) return;
+      const brown = audio.ctx.createBufferSource();
+      brown.buffer = audio.slideBuffers.brown;
+      brown.loop = true;
+      const pink = audio.ctx.createBufferSource();
+      pink.buffer = audio.slideBuffers.pink;
+      pink.loop = true;
+
+      const rumbleFilter = audio.ctx.createBiquadFilter();
+      rumbleFilter.type = 'lowpass';
+      rumbleFilter.frequency.value = 80;
+
+      const scrapeFilter = audio.ctx.createBiquadFilter();
+      scrapeFilter.type = 'bandpass';
+      scrapeFilter.Q.value = 1;
+      scrapeFilter.frequency.value = 400;
+
+      const rumbleGain = audio.ctx.createGain();
+      rumbleGain.gain.value = 0;
+      const scrapeGain = audio.ctx.createGain();
+      scrapeGain.gain.value = 0;
+
+      const master = audio.ctx.createGain();
+      master.gain.value = 0.5;
+
+      brown.connect(rumbleFilter).connect(rumbleGain).connect(master);
+      pink.connect(scrapeFilter).connect(scrapeGain).connect(master);
+      master.connect(audio.ctx.destination);
+
+      brown.start();
+      pink.start();
+
+      body.userData = body.userData || {};
+      body.userData.slide = { brown, pink, rumbleFilter, scrapeFilter, rumbleGain, scrapeGain, master };
+    }
+
+    function updateSlideSound(body, isMoving) {
+      if (!audio.ready || !body.userData?.slide) return;
+      const slide = body.userData.slide;
+      const speed = body.velocity.length();
+      const vNorm = Math.min(1, Math.max(0, (speed - 0.05) / 5));
+      const grit = THREE.MathUtils.clamp(params.friction / 0.002, 0, 1);
+      const t = audio.ctx.currentTime;
+      const rumbleVol = vNorm * 0.4;
+      const rumbleFreq = 60 + vNorm * 150;
+      const scrapeVol = vNorm * (0.2 + grit * 0.4);
+      const scrapeFreq = 300 + vNorm * 800 + grit * 200;
+      const scrapeQ = 0.5 + vNorm * 2;
+
+      slide.rumbleGain.gain.setTargetAtTime(rumbleVol, t, 0.05);
+      slide.rumbleFilter.frequency.setTargetAtTime(rumbleFreq, t, 0.05);
+      slide.scrapeGain.gain.setTargetAtTime(scrapeVol, t, 0.05);
+      slide.scrapeFilter.frequency.setTargetAtTime(scrapeFreq, t, 0.05);
+      slide.scrapeFilter.Q.setTargetAtTime(scrapeQ, t, 0.05);
+
+      if (!isMoving || speed < 0.05) {
+        slide.rumbleGain.gain.setTargetAtTime(0, t, 0.08);
+        slide.scrapeGain.gain.setTargetAtTime(0, t, 0.08);
+      }
+    }
+
+    function handleStoneCollision(e) {
+      if (!audio.ready) return;
+      const other = e.body;
+      const contact = e.contact;
+      let impact = 0;
+      if (contact && contact.getImpactVelocityAlongNormal) {
+        impact = Math.abs(contact.getImpactVelocityAlongNormal());
+      } else if (contact && contact.impactVelocity) {
+        impact = Math.abs(contact.impactVelocity);
+      } else {
+        const rv = e.target.velocity.vsub(other.velocity);
+        impact = rv.length();
+      }
+      if (impact < 0.15) return;
+      const isStoneHit = other.material && other.material.name === 'stone';
+      const buf = impact > 2 || isStoneHit ? audio.buffers.hard : audio.buffers.soft;
+      if (!buf) return;
+      const src = audio.ctx.createBufferSource();
+      src.buffer = buf;
+      const gain = audio.ctx.createGain();
+      gain.gain.value = Math.min(0.2, 0.04 + impact * 0.06);
+      src.connect(gain).connect(audio.ctx.destination);
+      src.start();
+    }
+
+    function updateMiniMap() {
+      if (!miniCtx) return;
+      const w = miniMap.width, h = miniMap.height;
+      miniCtx.clearRect(0, 0, w, h);
+      miniCtx.fillStyle = 'rgba(6,12,20,0.95)';
+      miniCtx.fillRect(0, 0, w, h);
+      const cx = w / 2, cy = h / 2;
+      const scale = Math.min(w, h) * 0.45 / params.houseRadius;
+      const drawRing = (r, color) => {
+        miniCtx.beginPath();
+        miniCtx.strokeStyle = color;
+        miniCtx.lineWidth = 4;
+        miniCtx.arc(cx, cy, r * scale, 0, Math.PI * 2);
+        miniCtx.stroke();
+      };
+      drawRing(params.houseRadius, '#c82b41');
+      drawRing(params.houseRadius * 0.66, '#1d68ff');
+      drawRing(params.houseRadius * 0.33, '#ffffff');
+      const scoring = computeScoringData();
+      stones.filter(s => s.thrown).forEach((s) => {
+        const dx = s.body.position.x;
+        const dz = s.body.position.z - housePositionZ;
+        const x = cx + dx * scale;
+        const y = cy - dz * scale;
+        const dims = stoneDimsFor(s.team);
+        const rad = Math.max(4, dims.radius * scale * 0.6);
+        miniCtx.beginPath();
+        miniCtx.fillStyle = s.team === 'player' ? '#ff6b8b' : '#ffd84d';
+        miniCtx.strokeStyle = '#111';
+        miniCtx.lineWidth = 1;
+        miniCtx.arc(x, y, rad, 0, Math.PI * 2);
+        miniCtx.fill();
+        miniCtx.stroke();
+        if (scoring.scoring && scoring.scoring.includes(s)) {
+          miniCtx.beginPath();
+          miniCtx.strokeStyle = '#00ffae';
+          miniCtx.lineWidth = 2;
+          miniCtx.arc(x, y, rad + 2, 0, Math.PI * 2);
+          miniCtx.stroke();
+        }
+      });
+      miniCtx.fillStyle = '#9fb4cc';
+      miniCtx.font = '12px sans-serif';
+      miniCtx.fillText('House view', 8, 16);
+      if (miniMapTexture) miniMapTexture.needsUpdate = true;
+    }
+
+    function showEndOverlay(pScore, aScore) {
+      const isFinal = gameState.currentEnd >= gameState.totalEnds;
+      const winner = gameState.scores.player === gameState.scores.ai ? 'Tied' :
+        (gameState.scores.player > gameState.scores.ai ? 'Player leads' : 'AI leads');
+      endTitle.textContent = isFinal ? 'Game Complete' : `End ${gameState.currentEnd} Complete`;
+      endBody.textContent = `End score — Player: ${pScore}, AI: ${aScore}. Cumulative ${gameState.scores.player} - ${gameState.scores.ai} (${winner}).`;
+      endScores.innerHTML = renderEndScoresTable(isFinal);
+      nextEndBtn.style.display = isFinal ? 'none' : 'inline-block';
+      playAgainBtn.style.display = isFinal ? 'inline-block' : 'none';
+      quitBtn.style.display = isFinal ? 'inline-block' : 'none';
+      endOverlay.style.display = 'flex';
+      showVRPrompt(pScore, aScore);
+      const cheerStrength = Math.max(pScore, aScore) > 0 ? 0.4 + Math.max(pScore, aScore) * 0.3 : 0.2;
+      triggerCrowdCheer(cheerStrength);
+      gameState.gameOver = isFinal;
+    }
+
+    function renderEndScoresTable(includeFinal) {
+      const rows = gameState.endScores.map(es => `<div>End ${es.end}: P ${es.player} — AI ${es.ai}</div>`).join('');
+      const finalLine = includeFinal ? `<div style="margin-top:6px;"><strong>Final:</strong> P ${gameState.scores.player} — AI ${gameState.scores.ai}</div>` : '';
+      return rows + finalLine;
+    }
+
+    function handleNextEnd() {
+      if (gameState.currentEnd >= gameState.totalEnds) return;
+      gameState.currentEnd += 1;
+      endOverlay.style.display = 'none';
+      hideVRPrompt();
+      resetEnd();
+      gameState.waitingForNextEnd = false;
+      drawHudCanvas();
+    }
+
+    function resetGame() {
+      endOverlay.style.display = 'none';
+      hideVRPrompt();
+      gameState.scores.player = 0;
+      gameState.scores.ai = 0;
+      gameState.endScores = [];
+      gameState.currentEnd = 1;
+      gameState.gameOver = false;
+      gameState.waitingForNextEnd = false;
+      resetEnd();
+      drawHudCanvas();
+    }
+
+    function handleQuit() {
+      gameState.gameOver = true;
+      gameState.waitingForNextEnd = true;
+      endOverlay.style.display = 'none';
+      hideVRPrompt();
+      hud.status.textContent = 'Game ended.';
+    }
+
+    function updateStoneMeshes() {
+      syncStoneTransforms(stones);
+    }
+
+    function monitorStoneState() {
+      const active = gameState.activeStone;
+      if (!active || !active.thrown) return;
+      if (active.body.sleepState === CANNON.Body.SLEEPING ||
+        active.body.velocity.lengthSquared() < 0.0006) {
+        advanceTurn();
+      }
+    }
+
+    function advanceTurn() {
+      gameState.activeStone = null;
+      const total = gameState.thrown.player + gameState.thrown.ai;
+      if (total >= gameState.stonesPerTeam * 2) {
+        evaluateScore();
+        return;
+      }
+      const other = gameState.currentTeam === 'player' ? 'ai' : 'player';
+      let next = other;
+      if (gameState.thrown[next] >= gameState.stonesPerTeam) {
+        next = gameState.currentTeam;
+      }
+      gameState.currentTeam = next;
+      startTurn(next);
+    }
+
+    function startTurn(team) {
+      if (gameState.waitingForNextEnd || gameState.gameOver) return;
+      gameState.currentTeam = team;
+      spawnStone(team);
+      updateHud();
+      if (team === 'ai') {
+        hud.status.textContent = 'AI thinking...';
+        setTimeout(aiThrow, 800);
+      } else {
+        hud.status.textContent = 'Grip to grab, move, release to throw (trigger also works).';
+      }
+    }
+
+    function evaluateScore() {
+      const result = computeScoringData();
+      let pScore = 0, aScore = 0;
+      if (result.winner) {
+        if (result.winner === 'player') pScore = result.points;
+        else aScore = result.points;
+      }
+      gameState.scores.player += pScore;
+      gameState.scores.ai += aScore;
+      gameState.endScores.push({ end: gameState.currentEnd, player: pScore, ai: aScore });
+      gameState.waitingForNextEnd = true;
+      gameState.inEnd = false;
+      updateHud();
+      showEndOverlay(pScore, aScore);
+    }
+
+    function clearStones() {
+      stones.forEach(s => {
+        scene.remove(s.mesh);
+        world.removeBody(s.body);
+        if (s.debug) {
+          scene.remove(s.debug);
+          s.debug.geometry.dispose();
+          s.debug.material.dispose();
+        }
+        stopStoneAudio(s.body);
+      });
+      stones.length = 0;
+    }
+
+    function resetEnd() {
+      gameState.waitingForNextEnd = false;
+      gameState.gameOver = false;
+      clearStones();
+      gameState.thrown.player = 0;
+      gameState.thrown.ai = 0;
+      gameState.currentTeam = 'player';
+      gameState.activeStone = null;
+      gameState.inEnd = true;
+      startTurn('player');
+    }
+
+    function updateHud() {
+      hud.turn.textContent = `Turn: ${gameState.currentTeam === 'player' ? 'Player' : 'AI'}`;
+      hud.stones.textContent = `Stones used (P / AI): ${gameState.thrown.player} / ${gameState.thrown.ai} of ${gameState.stonesPerTeam}`;
+      hud.score.textContent = `End ${gameState.currentEnd}/${gameState.totalEnds} — Score (Player / AI): ${gameState.scores.player} - ${gameState.scores.ai}`;
+      drawHudCanvas();
+    }
+
+    function computeScoringData() {
+      const center = new THREE.Vector3(0, 0, housePositionZ);
+      const withinHouse = stones.filter(s => {
+        if (!s.thrown) return false;
+        const p = s.body.position;
+        const dist = Math.hypot(p.x - center.x, p.z - center.z);
+        return dist <= params.houseRadius * 1.05;
+      });
+      withinHouse.sort((a, b) => {
+        const da = Math.hypot(a.body.position.x - center.x, a.body.position.z - center.z);
+        const db = Math.hypot(b.body.position.x - center.x, b.body.position.z - center.z);
+        return da - db;
+      });
+      if (withinHouse.length === 0) return { winner: null, points: 0, scoring: [] };
+      const winner = withinHouse[0].team;
+      const opponent = winner === 'player' ? 'ai' : 'player';
+      const opponentBest = withinHouse.find(s => s.team === opponent);
+      const cutoff = opponentBest ?
+        Math.hypot(opponentBest.body.position.x - center.x, opponentBest.body.position.z - center.z) :
+        Infinity;
+      const scoring = withinHouse.filter(s => s.team === winner &&
+        Math.hypot(s.body.position.x - center.x, s.body.position.z - center.z) < cutoff);
+      return { winner, points: scoring.length, scoring, withinHouse };
+    }
+
+    function createAimArrow() {
+      const geo = new THREE.CylinderGeometry(0, 0.04, 0.3, 8, 1);
+      const mat = new THREE.MeshBasicMaterial({ color: '#ffdd55' });
+      const arrow = new THREE.Mesh(geo, mat);
+      arrow.rotation.x = Math.PI / 2;
+      arrow.position.set(0, 0.2, params.sheetLength / 2 - 2);
+      return arrow;
+    }
+
+    function updateAimIndicator() {
+      const active = gameState.activeStone;
+      if (!active || active.thrown) {
+        crosshair.style.display = 'none';
+        return;
+      }
+      crosshair.style.display = 'block';
+      // The yellow helper arrow is intentionally suppressed.
+      aimArrow.visible = false;
+    }
+
+    function pickRightController() {
+      const session = renderer.xr.getSession();
+      if (!session) return null;
+      for (let i = 0; i < session.inputSources.length; i++) {
+        const src = session.inputSources[i];
+        if (src.handedness === 'right') {
+          return src.targetRaySpace ? renderer.xr.getController(i) : null;
+        }
+      }
+      return null;
+    }
+
+    function applySpinCurve(list = stones) {
+      list.forEach((s) => {
+        if (!s.thrown || s.body.sleepState === CANNON.Body.SLEEPING) return;
+        const vel = s.body.velocity;
+        const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+        if (speed < 0.01 || Math.abs(s.spin) < 0.01) return;
+        const dir = new CANNON.Vec3(vel.x / speed, 0, vel.z / speed);
+        const sideways = new CANNON.Vec3(-dir.z, 0, dir.x).scale(s.spin * params.iceCurl);
+        s.body.applyForce(sideways, s.body.position);
+      });
+    }
+
+    function pollButtons() {
+      const session = renderer.xr.getSession();
+      if (!session) return;
+      session.inputSources.forEach((src) => {
+        if (src.handedness !== 'left' || !src.gamepad) return;
+        const btn = src.gamepad.buttons[3] || src.gamepad.buttons[1];
+        const pressed = !!(btn && btn.pressed);
+        if (pressed && !bButtonState) toggleUI();
+        bButtonState = pressed;
+      });
+    }
+
+    function toggleUI() {
+      uiVisible = !uiVisible;
+      uiPanel.style.display = uiVisible ? 'block' : 'none';
+      wrapHelpers.visible = uiVisible;
+      setStoneWrapVisible(false);
+    }
+
+    function setStoneWrapVisible(flag) {
+      stones.forEach((s) => {
+        if (s.debug) s.debug.visible = false;
+      });
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function buildControl(label, key, min, max, step) {
+      const wrap = document.createElement('div');
+      wrap.className = 'control';
+      const title = document.createElement('label');
+      const name = document.createElement('span');
+      name.textContent = label;
+      const value = document.createElement('span');
+      value.className = 'value';
+      value.textContent = params[key];
+      title.appendChild(name);
+      title.appendChild(value);
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.min = min;
+      input.max = max;
+      input.step = step;
+      input.value = params[key];
+      input.addEventListener('input', () => {
+        const val = parseFloat(input.value);
+        params[key] = val;
+        value.textContent = val;
+        applyParamChange(key);
+      });
+      wrap.appendChild(title);
+      wrap.appendChild(input);
+      return wrap;
+    }
+
+    function buildButton(label, onClick) {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      btn.style.width = '100%';
+      btn.style.padding = '8px';
+      btn.style.marginTop = '6px';
+      btn.style.background = '#13334c';
+      btn.style.color = '#e9f2ff';
+      btn.style.border = '1px solid rgba(255,255,255,0.2)';
+      btn.style.borderRadius = '8px';
+      btn.style.cursor = 'pointer';
+      btn.addEventListener('click', onClick);
+      btn.addEventListener('pointerdown', onClick);
+      return btn;
+    }
+
+    function initUI() {
+      const groups = [
+        {
+          title: 'Sheet',
+          controls: [
+            ['Length (m)', 'sheetLength', 36, 48, 0.25],
+            ['Width (m)', 'sheetWidth', 4, 6, 0.1],
+            ['House radius', 'houseRadius', 1.2, 2.5, 0.05]
+          ]
+        },
+        {
+          title: 'Stone',
+          controls: [
+            ['Radius', 'stoneRadius', 0.1, 2.5, 0.01],
+            ['Height', 'stoneHeight', 0.08, 1.6, 0.01],
+            ['Wrap scale', 'stoneScale', 0.01, 0.48, 0.01],
+            ['AI scale x', 'aiStoneScaleFactor', 0.5, 12, 0.1],
+            ['Mass', 'stoneMass', 12, 26, 0.5]
+          ]
+        },
+        {
+          title: 'Physics',
+          controls: [
+            // Center at 0.001 for finer low-range control
+            ['Friction', 'friction', 0.00001, 0.002, 0.00001],
+            ['Restitution', 'restitution', 0.01, 0.3, 0.005],
+            ['Ice drag', 'iceDrag', 0.00001, 0.002, 0.00001],
+            ['Ice curl', 'iceCurl', 0.01, 0.6, 0.01],
+            ['Spin curl', 'spinCurl', 0.05, 0.6, 0.01]
+          ]
+        },
+        {
+          title: 'Gameplay',
+          controls: [
+            ['Throw power (AI)', 'throwPower', 4, 36, 0.1],
+            ['AI accuracy', 'aiAccuracy', 0.1, 1, 0.05],
+            ['AI weight bias', 'aiWeightBias', 0.4, 1.6, 0.02]
+          ]
+        },
+        {
+          title: 'Push controls (all throws)',
+          controls: [
+            ['Push speed', 'pushSpeed', 0.5, 48, 0.1],
+            ['Direction deg', 'pushDirectionDeg', -180, 180, 1],
+            ['Spin (signed)', 'pushSpin', -2, 2, 0.05],
+            ['Motion power scale', 'motionPowerScale', 0.2, 3, 0.05],
+            ['Twist spin scale', 'twistSpinScale', 0, 3, 0.05]
+          ]
+        }
+      ];
+
+      groups.forEach(section => {
+        const box = document.createElement('div');
+        box.className = 'section';
+        const header = document.createElement('h3');
+        header.textContent = section.title;
+        box.appendChild(header);
+        section.controls.forEach(args => box.appendChild(buildControl(...args)));
+        uiContent.appendChild(box);
+      });
+
+      const aimToggle = document.createElement('div');
+      aimToggle.className = 'control';
+      const label = document.createElement('label');
+      label.textContent = 'Use controller/camera aim';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = params.useControllerAim;
+      checkbox.style.marginLeft = '8px';
+      checkbox.addEventListener('change', () => {
+        params.useControllerAim = checkbox.checked;
+      });
+      aimToggle.appendChild(label);
+      aimToggle.appendChild(checkbox);
+      uiPanel.appendChild(aimToggle);
+    }
+
+    function applyParamChange(key) {
+      switch (key) {
+        case 'sheetLength':
+        case 'sheetWidth':
+        case 'houseRadius':
+          initSheet();
+          buildEnvironment();
+          updateRigPosition();
+          repositionWaitingStone();
+          break;
+        case 'stoneScale':
+        case 'stoneRadius':
+        case 'stoneHeight':
+          stones.forEach((s) => retuneStonePhysics(s));
+          repositionWaitingStone();
+          break;
+        case 'aiStoneScaleFactor':
+          stones.forEach((s) => { if (s.team === 'ai') retuneStonePhysics(s); });
+          repositionWaitingStone();
+          break;
+        case 'stoneMass':
+          stones.forEach((s) => { s.body.mass = params.stoneMass; s.body.updateMassProperties(); });
+          break;
+        case 'friction':
+          contact.friction = params.friction;
+          break;
+        case 'restitution':
+          contact.restitution = params.restitution;
+          break;
+        case 'iceDrag':
+          stones.forEach((s) => { s.body.linearDamping = params.iceDrag; s.body.angularDamping = params.iceDrag; });
+          break;
+        default:
+          break;
+      }
+    }
+
+    function retuneStonePhysics(stone) {
+      const dims = stoneDimsFor(stone.team);
+      stone.mesh.scale.setScalar(params.visualStoneScale);
+      stone.body.shapes.length = 0;
+      stone.body.shapeOffsets.length = 0;
+      stone.body.shapeOrientations.length = 0;
+      const shape = new CANNON.Cylinder(dims.radius, dims.radius, dims.height, 20);
+      stone.body.addShape(shape);
+      stone.body.mass = params.stoneMass;
+      stone.body.updateMassProperties();
+      stone.body.aabbNeedsUpdate = true;
+      stone.body.angularFactor.set(0, 1, 0);
+      stone.body.linearFactor.set(1, 0, 1);
+      if (stone.debug) {
+        scene.remove(stone.debug);
+        stone.debug.geometry.dispose();
+        stone.debug.material.dispose();
+        stone.debug = createPhysicsDebugMesh(stone.team);
+        stone.debug.visible = false;
+        scene.add(stone.debug);
+      }
+      if (!stone.thrown) {
+        stone.body.position.y = dims.height / 2;
+      }
+    }
+
+    function createPhysicsDebugMesh(team) {
+      const dims = stoneDimsFor(team);
+      const geo = new THREE.CylinderGeometry(dims.radius, dims.radius, dims.height, 24);
+      const mat = new THREE.MeshBasicMaterial({
+        color: team === 'player' ? '#ff6b8b' : '#ffd84d',
+        wireframe: true,
+        transparent: true,
+        opacity: 0.85,
+        depthTest: false
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.renderOrder = 999;
+      mesh.visible = false;
+      return mesh;
+    }
+
+    function updateRigPosition() {
+      const spawnZ = getSpawnZ();
+      playerRig.position.set(0, 0, spawnZ);
+      if (controls) {
+        controls.target.set(0, 0.5, housePositionZ);
+        controls.update();
+      }
+    }
+
+    function buildEnvironment() {
+      envGroup.clear();
+      const floorSize = Math.max(params.sheetLength, params.sheetWidth) * 3;
+      const floorGeom = new THREE.PlaneGeometry(floorSize, floorSize);
+      const floorMat = new THREE.MeshStandardMaterial({ color: '#0a1014', roughness: 0.9, metalness: 0.05 });
+      const floor = new THREE.Mesh(floorGeom, floorMat);
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.y = -0.001;
+      floor.receiveShadow = true;
+      envGroup.add(floor);
+
+      const boardHeight = stoneDimsFor('player').height * 1.4;
+      const boardThickness = 0.15;
+      // Pull the visual boards in to hug the sheet wrap helper.
+      const boardLen = params.sheetLength + 0.8;
+      const boardWide = params.sheetWidth + 0.8;
+      const boardMat = new THREE.MeshStandardMaterial({ color: '#1a2638', emissive: '#0b101a', metalness: 0.2, roughness: 0.6 });
+      const makeBoard = (w, h, d, x, z, rotY = 0) => {
+        const geo = new THREE.BoxGeometry(w, h, d);
+        const mesh = new THREE.Mesh(geo, boardMat);
+        mesh.position.set(x, h / 2, z);
+        mesh.rotation.y = rotY;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        envGroup.add(mesh);
+      };
+      // Long boards
+      makeBoard(boardThickness, boardHeight, boardLen, boardWide / 2, 0);
+      makeBoard(boardThickness, boardHeight, boardLen, -boardWide / 2, 0);
+      // Back board
+      makeBoard(boardWide, boardHeight, boardThickness, 0, -boardLen / 2);
+
+      // Crowd wall behind back board
+      const crowdGeo = new THREE.PlaneGeometry(boardWide, boardHeight * 1.5);
+      const crowdMat = new THREE.MeshBasicMaterial({ color: '#112033', transparent: true, opacity: 0.6 });
+      const crowd = new THREE.Mesh(crowdGeo, crowdMat);
+      crowd.position.set(0, boardHeight * 0.75, -boardLen / 2 - 0.2);
+      envGroup.add(crowd);
+
+      buildVRPanels();
+      buildCrowd(boardWide, boardLen, boardHeight);
+    }
+
+    function buildVRPanels() {
+      panelGroup.clear();
+      const crowdSpread = params.sheetWidth * 1.6;
+      const baseZ = housePositionZ - 1.5;
+      const infoW = 13.2, infoH = 6.6;
+      const mapW = 6.6, mapH = 6.6;
+
+      // Info panel on left of crowd
+      const infoRoot = new THREE.Group();
+      infoRoot.position.set(-crowdSpread * 0.7 - infoW * 0.6, 2.0 + infoH * 0.02, baseZ);
+      infoRoot.lookAt(new THREE.Vector3(playerRig.position.x, 1.6, playerRig.position.z));
+      panelGroup.add(infoRoot);
+
+      hudTexture = new THREE.CanvasTexture(hudCanvas);
+      hudTexture.encoding = THREE.sRGBEncoding;
+      hudTexture.needsUpdate = true;
+      const hudMat = new THREE.MeshBasicMaterial({ map: hudTexture, transparent: true, side: THREE.DoubleSide });
+      hudMesh = new THREE.Mesh(new THREE.PlaneGeometry(infoW, infoH), hudMat);
+      hudMesh.position.set(0, infoH * 0.35, 0);
+      hudMesh.renderOrder = 5;
+      infoRoot.add(hudMesh);
+
+      // Minimap panel on right of crowd, shifted further right by 75% of its width
+      const mapRoot = new THREE.Group();
+      mapRoot.position.set(crowdSpread * 0.7 + mapW * 0.75, 2.0 + mapH * 0.02, baseZ);
+      mapRoot.lookAt(new THREE.Vector3(playerRig.position.x, 1.6, playerRig.position.z));
+      panelGroup.add(mapRoot);
+
+      miniMapTexture = new THREE.CanvasTexture(miniMap);
+      miniMapTexture.encoding = THREE.sRGBEncoding;
+      miniMapTexture.needsUpdate = true;
+      const mmMat = new THREE.MeshBasicMaterial({ map: miniMapTexture, transparent: true, side: THREE.DoubleSide });
+      miniMapMesh = new THREE.Mesh(new THREE.PlaneGeometry(mapW, mapH), mmMat);
+      miniMapMesh.position.set(0, mapH * 0.3, 0);
+      miniMapMesh.renderOrder = 5;
+      mapRoot.add(miniMapMesh);
+
+      drawHudCanvas();
+      setupPointerLines();
+    }
+
+    function drawHudCanvas() {
+      if (!hudCtx) return;
+      const w = hudCanvas.width, h = hudCanvas.height;
+      hudCtx.clearRect(0, 0, w, h);
+      hudCtx.fillStyle = 'rgba(8,12,20,0.7)';
+      hudCtx.fillRect(0, 0, w, h);
+      hudCtx.fillStyle = '#4de1ff';
+      hudCtx.font = '24px Segoe UI, sans-serif';
+      hudCtx.fillText('Curling HUD (VR)', 16, 32);
+      hudCtx.fillStyle = '#e9f2ff';
+      hudCtx.font = '18px Segoe UI, sans-serif';
+      hudCtx.fillText(`End ${gameState.currentEnd}/${gameState.totalEnds}`, 16, 64);
+      hudCtx.fillText(`Score P/AI: ${gameState.scores.player} - ${gameState.scores.ai}`, 16, 90);
+      hudCtx.fillText(`Turn: ${gameState.currentTeam === 'player' ? 'Player' : 'AI'}`, 16, 116);
+      hudCtx.fillText(`Stones used P/AI: ${gameState.thrown.player}/${gameState.thrown.ai} of ${gameState.stonesPerTeam}`, 16, 142);
+      const status = gameState.waitingForNextEnd ? 'End complete — use UI to advance' :
+        hud.status.textContent || '';
+      hudCtx.fillStyle = '#9fb4cc';
+      hudCtx.font = '16px Segoe UI, sans-serif';
+      hudCtx.fillText(status, 16, 172);
+      hudCtx.strokeStyle = '#234';
+      hudCtx.strokeRect(0.5, 0.5, w - 1, h - 1);
+      if (hudTexture) hudTexture.needsUpdate = true;
+    }
+
+    function buildCrowd(boardWide, boardLen, boardHeight) {
+      if (crowdData.mesh) {
+        envGroup.remove(crowdData.mesh);
+        crowdData.mesh.geometry.dispose();
+        crowdData.mesh.material.dispose();
+      }
+      if (crowdData.lights) {
+        crowdData.lights.forEach(l => { envGroup.remove(l); l.dispose?.(); });
+        crowdData.lights = [];
+      }
+      if (crowdData.targets) {
+        crowdData.targets.forEach(t => envGroup.remove(t));
+        crowdData.targets = [];
+      }
+      const rows = 6;
+      const perRow = 30;
+      const count = rows * perRow;
+      const headRadius = 0.21;
+      const geo = new THREE.SphereGeometry(headRadius, 12, 8);
+      const mat = new THREE.MeshPhongMaterial({
+        color: '#b0c8ff',
+        emissive: '#102033',
+        emissiveIntensity: 0.4,
+        flatShading: true
+      });
+      const mesh = new THREE.InstancedMesh(geo, mat, count);
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      const palette = ['#f25f5c', '#ffe066', '#247ba0', '#70c1b3', '#ffe8d6'];
+      const baseZ = housePositionZ - boardLen * 0.25 - 4.5;
+      const rowDepth = 0.9;
+      const rowRise = 0.5;
+      crowdData.jitter = [];
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < perRow; c++) {
+          const i = r * perRow + c;
+          const spread = boardWide * 1.4;
+          const x = -spread / 2 + (c / (perRow - 1)) * spread + (Math.random() - 0.5) * 0.2;
+          const z = baseZ - r * rowDepth + (Math.random() - 0.5) * 0.2;
+          const y = boardHeight * 1.0 + r * rowRise + (Math.random() - 0.5) * 0.1;
+          const m = new THREE.Matrix4();
+          m.makeRotationY(0);
+          m.setPosition(x, y, z);
+          mesh.setMatrixAt(i, m);
+          crowdData.jitter.push({
+            base: new THREE.Vector3(x, y, z),
+            phase: Math.random() * Math.PI * 2,
+            freq: THREE.MathUtils.lerp(0.5, 1.4, Math.random()),
+            amp: THREE.MathUtils.lerp(0.02, 0.05, Math.random())
+          });
+          const color = new THREE.Color();
+          // Common hair tones including grey
+          const hairPalette = [
+            '#2d1b0a', // dark brown
+            '#4a4a4a', // black
+            '#d4b483', // blond
+            '#8b5a2b', // medium brown
+            '#b56576', // auburn
+            '#c0c0c0', // grey
+            '#9a9a9a'  // darker grey
+          ];
+          color.set(hairPalette[Math.floor(Math.random() * hairPalette.length)]);
+          color.offsetHSL((Math.random() - 0.5) * 0.06, (Math.random() - 0.5) * 0.08, (Math.random() - 0.5) * 0.08);
+          mesh.setColorAt(i, color);
+        }
+      }
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      envGroup.add(mesh);
+      crowdData.mesh = mesh;
+      crowdData.material = mat;
+      crowdData.cheer = 0;
+
+      // Crowd lighting from above/front
+      const addLight = (xOffset) => {
+        const light = new THREE.SpotLight(0x9fcfff, 0.8, 40, Math.PI / 5, 0.4, 1.5);
+        light.position.set(xOffset, boardHeight * 2.2, housePositionZ - (params.sheetLength * 0.25) - 4);
+        light.target.position.set(xOffset, boardHeight, housePositionZ - (params.sheetLength * 0.25) - 4.5);
+        envGroup.add(light);
+        envGroup.add(light.target);
+        crowdData.lights.push(light);
+        crowdData.targets.push(light.target);
+      };
+      addLight(-5);
+      addLight(5);
+    }
+
+    function triggerCrowdCheer(strength = 1) {
+      crowdData.cheer = Math.min(1.5, crowdData.cheer + strength);
+    }
+
+
+    function setupPointerLines() {
+      [controller1, controller2].forEach((c, i) => {
+        if (pointerLines[i]) panelGroup.remove(pointerLines[i]);
+        const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -2)]);
+        const mat = new THREE.LineBasicMaterial({ color: 0x4de1ff });
+        const line = new THREE.Line(geo, mat);
+        line.visible = false;
+        c.add(line);
+        pointerLines[i] = line;
+      });
+    }
+
+    function updatePointers() {
+      const session = renderer.xr.getSession();
+      const promptActive = !!vrPrompt.group;
+      [controller1, controller2].forEach((c, i) => {
+        if (!c) return;
+        pointerLines[i].visible = promptActive;
+        if (!promptActive) return;
+        const rc = raycasters[i];
+        tempMatrix.identity().extractRotation(c.matrixWorld);
+        rc.ray.origin.setFromMatrixPosition(c.matrixWorld);
+        rc.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+        pointerLines[i].geometry.attributes.position.setXYZ(1, 0, 0, -2);
+        pointerLines[i].geometry.attributes.position.needsUpdate = true;
+      });
+    }
+
+    const tempMatrix = new THREE.Matrix4();
+
+    function tryPromptClick(controller) {
+      if (!vrPrompt.group) return;
+      const index = controller === controller1 ? 0 : 1;
+      const rc = raycasters[index];
+      if (!rc) return;
+      const hits = rc.intersectObjects(vrPrompt.buttons, false);
+      if (hits.length) {
+        const target = hits[0].object.userData.action;
+        if (target === 'next') handleNextEnd();
+        if (target === 'play') resetGame();
+        if (target === 'quit') handleQuit();
+      }
+    }
+
+    function updateCrowd(dt) {
+      if (!crowdData.material) return;
+      timeElapsed += dt;
+      if (crowdData.cheer > 0) {
+        crowdData.cheer = Math.max(0, crowdData.cheer - dt * 0.6);
+      }
+      const lively = 0.05 * Math.sin(timeElapsed * 2);
+      crowdData.material.emissiveIntensity = 0.4 + crowdData.cheer * 0.8 + lively;
+      if (crowdData.mesh && crowdData.jitter) {
+        const m = new THREE.Matrix4();
+        const q = new THREE.Quaternion();
+        const tmp = new THREE.Vector3();
+        crowdData.jitter.forEach((j, idx) => {
+          const sway = Math.sin(timeElapsed * j.freq + j.phase) * j.amp * (0.6 + crowdData.cheer);
+          const nod = Math.sin(timeElapsed * j.freq * 0.65 + j.phase * 1.3) * j.amp * 0.6;
+          tmp.set(j.base.x + nod * 0.25, j.base.y + sway, j.base.z + nod * 0.12);
+          q.setFromEuler(new THREE.Euler(0, nod * 0.8, 0));
+          m.makeRotationFromQuaternion(q);
+          m.setPosition(tmp);
+          crowdData.mesh.setMatrixAt(idx, m);
+        });
+        crowdData.mesh.instanceMatrix.needsUpdate = true;
+      }
+    }
+
+    function showVRPrompt(pScore, aScore) {
+      if (vrPrompt.group) {
+        panelGroup.remove(vrPrompt.group);
+        vrPrompt.group = null;
+        vrPrompt.buttons = [];
+      }
+      const group = new THREE.Group();
+      const camPos = new THREE.Vector3();
+      camera.getWorldPosition(camPos);
+      const forward = new THREE.Vector3();
+      camera.getWorldDirection(forward);
+      forward.y = 0;
+      forward.normalize();
+      const promptPos = camPos.clone().add(forward.multiplyScalar(1.5));
+      group.position.copy(promptPos);
+      group.lookAt(camPos.x, camPos.y, camPos.z);
+      const bg = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.7), new THREE.MeshBasicMaterial({ color: '#0c1827', opacity: 0.9, transparent: true }));
+      bg.position.set(0, 0, -0.1);
+      group.add(bg);
+      const title = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.2), new THREE.MeshBasicMaterial({ color: '#1f7fff' }));
+      title.position.set(0, 0.2, 0);
+      group.add(title);
+      const label = makeLabelMesh(gameState.currentEnd >= gameState.totalEnds ? 'Game Complete' : `End ${gameState.currentEnd} Complete`, 0.5);
+      label.position.set(0, 0.2, 0.01);
+      group.add(label);
+      const desc = makeLabelMesh(`End: P ${pScore} / AI ${aScore} | Total: ${gameState.scores.player}-${gameState.scores.ai}`, 0.22);
+      desc.position.set(0, -0.05, 0.01);
+      group.add(desc);
+
+      const btnData = gameState.currentEnd >= gameState.totalEnds ?
+        [
+          { text: 'Play Again', action: 'play' },
+          { text: 'Quit', action: 'quit' }
+        ] :
+        [{ text: 'Next End', action: 'next' }];
+      const btnY = -0.28;
+      btnData.forEach((btn, idx) => {
+        const bw = 0.35, bh = 0.12;
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(bw, bh), new THREE.MeshBasicMaterial({ color: '#13334c' }));
+        mesh.position.set((idx - (btnData.length - 1) / 2) * (bw + 0.08), btnY, 0.02);
+        mesh.userData.action = btn.action;
+        const txt = makeLabelMesh(btn.text, 0.13);
+        txt.position.set(0, 0, 0.005);
+        mesh.add(txt);
+        group.add(mesh);
+      });
+      vrPrompt.group = group;
+      vrPrompt.buttons = group.children.filter(c => c.userData && c.userData.action);
+      panelGroup.add(group);
+    }
+
+    function hideVRPrompt() {
+      if (vrPrompt.group) {
+        panelGroup.remove(vrPrompt.group);
+        vrPrompt.group = null;
+        vrPrompt.buttons = [];
+      }
+    }
+
+    function makeLabelMesh(text, size = 0.2) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(0,0,0,0)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#e9f2ff';
+      ctx.font = '48px Segoe UI';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+      const tex = new THREE.CanvasTexture(canvas);
+      const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
+      const aspect = canvas.width / canvas.height;
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size * aspect, size), mat);
+      return mesh;
+    }
+
+    function updateControllerState(controller, dt) {
+      if (!controller) return;
+      const pos = new THREE.Vector3();
+      controller.getWorldPosition(pos);
+      const quat = new THREE.Quaternion();
+      controller.getWorldQuaternion(quat);
+      const prev = controllerState.get(controller);
+      let vel = new THREE.Vector3();
+      let angVel = new THREE.Vector3();
+      if (prev) {
+        vel = pos.clone().sub(prev.pos).divideScalar(Math.max(dt, 0.0001));
+        const dq = prev.quat.clone().invert().multiply(quat);
+        const axis = new THREE.Vector3(dq.x, dq.y, dq.z);
+        const angle = 2 * Math.acos(THREE.MathUtils.clamp(dq.w, -1, 1));
+        const sinHalf = Math.sqrt(1 - dq.w * dq.w);
+        if (sinHalf > 0.0001) axis.multiplyScalar(1 / sinHalf);
+        const omega = angle / Math.max(dt, 0.0001);
+        angVel.copy(axis.multiplyScalar(omega));
+      }
+      controllerState.set(controller, { pos, vel, quat, angVel });
+    }
+
+    function updateGrabbedStone() {
+      if (!grabState.stone || !grabState.controller) return;
+      const pos = new THREE.Vector3();
+      grabState.controller.getWorldPosition(pos);
+      grabState.stone.body.position.set(pos.x, Math.max(pos.y, params.stoneHeight / 2), pos.z);
+      grabState.stone.mesh.position.copy(grabState.stone.body.position);
+      grabState.stone.body.velocity.set(0, 0, 0);
+      grabState.stone.body.angularVelocity.set(0, 0, 0);
+    }
+
+    function applyCurlDrag(delta) {
+      const applyList = (list) => {
+        list.forEach((s) => {
+          if (!s.thrown) return;
+          s.body.velocity.scale(Math.max(0, 1 - params.iceDrag * delta), s.body.velocity);
+          updateSlideSound(s.body, s.thrown);
+        });
+      };
+      applyList(stones);
+    }
+
+    function animate() {
+      renderer.setAnimationLoop(render);
+    }
+
+    const clock = new THREE.Clock();
+    let timeElapsed = 0;
+    function render() {
+      const dt = Math.min(clock.getDelta(), 0.05);
+      timeElapsed += dt;
+      updateControllerState(controller1, dt);
+      updateControllerState(controller2, dt);
+      updateGrabbedStone();
+      world.step(1 / 60, dt);
+      keepStonesUpright(stones);
+      applyCurlDrag(dt);
+      applySpinCurve(stones);
+      updateStoneMeshes();
+      updateMiniMap();
+      updateAimIndicator();
+      monitorStoneState();
+      pollButtons();
+      updateCrowd(dt);
+      updatePointers();
+      renderer.render(scene, camera);
+    }
+
+    animate();
+  </script>
+</body>
+</html>
