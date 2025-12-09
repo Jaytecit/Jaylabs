@@ -28,6 +28,11 @@
         "date": "2025-12-08",
         "title": "Curling VR WebXR",
         "summary": "Added Curling VR sports sim to the PCVR lab with AI ends, grip-to-throw stones, and tweakable ice friction/curl."
+    },
+    {
+        "date": "2025-12-09",
+        "title": "VR Harmonograph lab",
+        "summary": "Added VR Harmonograph card to the PCVR hub with performance-friendly painting, damping controls, and VR-friendly UI layout."
     }
     
 ]
