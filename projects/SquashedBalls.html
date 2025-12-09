@@ -1,813 +1,987 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>WebXR Paddle & Kinesis</title>
-    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-physics-system@v4.2.2/dist/aframe-physics-system.min.js"></script>
-    <script src="https://unpkg.com/aframe-environment-component@1.3.3/dist/aframe-environment-component.min.js"></script>
+<head>
+  <meta charset="utf-8">
+  <title>VR Physics Sandbox - UI Toggle</title>
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-physics-system@v4.2.2/dist/aframe-physics-system.min.js"></script>
+  
+  <script>
+    // --- 1. RANDOM TARGET MOVER ---
+    AFRAME.registerComponent('random-mover', {
+      init: function () {
+        this.direction = new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize();
+        this.speed = 1.5;
+        this.timeToSwitch = 0;
+      },
+      tick: function (time, timeDelta) {
+        const dt = timeDelta / 1000;
+        const pos = this.el.object3D.position;
+        if (pos.x > 3 || pos.x < -3) this.direction.x *= -1;
+        if (pos.y > 4 || pos.y < 0.5) this.direction.y *= -1;
+        if (pos.z > 3 || pos.z < -3) this.direction.z *= -1;
+        this.timeToSwitch -= dt;
+        if (this.timeToSwitch <= 0) {
+          this.direction.add(new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5)).normalize();
+          this.timeToSwitch = 2.0;
+        }
+        this.el.object3D.position.addScaledVector(this.direction, this.speed * dt);
+      }
+    });
+
+    // --- 9a. BAT FACE VISUAL DEBUG ---
+    AFRAME.registerComponent('bat-face-visual', {
+      init: function () {
+        this.batFace = document.getElementById('bat-face');
+        this.worldPos = new THREE.Vector3();
+        this.worldQuat = new THREE.Quaternion();
+        this.radius = 0.24;
+
+        this.helper = document.createElement('a-entity');
+
+        this.shell = document.createElement('a-entity');
+        this.shell.setAttribute('geometry', `primitive: cylinder; radius: ${this.radius}; height: 0.04; segmentsRadial: 48; openEnded: false`);
+        this.shell.setAttribute('material', 'color: #00eaff; wireframe: true; opacity: 0.5; transparent: true; side: double');
+
+        this.normalLine = document.createElement('a-entity');
+        this.normalLine.setAttribute('line', 'start: 0 0 0; end: 0 0.35 0; color: #ffef00');
+
+        this.helper.appendChild(this.shell);
+        this.helper.appendChild(this.normalLine);
+        this.el.sceneEl.appendChild(this.helper);
+      },
+
+      tick: function () {
+        if (!this.batFace) this.batFace = document.getElementById('bat-face');
+        if (!this.batFace) return;
+        const r = parseFloat(this.batFace.getAttribute('radius'));
+        if (!isNaN(r) && r !== this.radius) {
+          this.radius = r;
+          this.shell.setAttribute('geometry', `primitive: cylinder; radius: ${this.radius}; height: 0.04; segmentsRadial: 48; openEnded: false`);
+        }
+        this.batFace.object3D.getWorldPosition(this.worldPos);
+        this.batFace.object3D.getWorldQuaternion(this.worldQuat);
+        this.helper.object3D.position.copy(this.worldPos);
+        this.helper.object3D.setRotationFromQuaternion(this.worldQuat);
+      }
+    });
+
+    // --- 9b. BALL VISUAL DEBUG ---
+    AFRAME.registerComponent('ball-visual', {
+      init: function () {
+        this.ball = document.getElementById('ball');
+        this.worldPos = new THREE.Vector3();
+        this.worldQuat = new THREE.Quaternion();
+        this.radius = 0.2;
+
+        this.helper = document.createElement('a-entity');
+        this.shell = document.createElement('a-entity');
+        this.shell.setAttribute('geometry', `primitive: sphere; radius: ${this.radius}; segmentsWidth: 20; segmentsHeight: 12`);
+        this.shell.setAttribute('material', 'color: #ff00ff; wireframe: true; opacity: 0.5; transparent: true; side: double');
+        this.helper.appendChild(this.shell);
+        this.el.sceneEl.appendChild(this.helper);
+      },
+
+      tick: function () {
+        if (!this.ball) this.ball = document.getElementById('ball');
+        if (!this.ball) return;
+        const r = parseFloat(this.ball.getAttribute('radius'));
+        if (!isNaN(r) && r !== this.radius) {
+          this.radius = r;
+          this.shell.setAttribute('geometry', `primitive: sphere; radius: ${this.radius}; segmentsWidth: 20; segmentsHeight: 12`);
+        }
+        this.ball.object3D.getWorldPosition(this.worldPos);
+        this.ball.object3D.getWorldQuaternion(this.worldQuat);
+        this.helper.object3D.position.copy(this.worldPos);
+        this.helper.object3D.setRotationFromQuaternion(this.worldQuat);
+      }
+    });
+
+    // --- 9c. COLLISION TEST RUNNER ---
+    AFRAME.registerComponent('collision-tester', {
+      init: function () {
+        this.scene = this.el.sceneEl;
+        this.testBall = document.createElement('a-sphere');
+        this.testBall.id = 'collision-test-ball';
+        this.testBall.setAttribute('radius', 0.08);
+        this.testBall.setAttribute('color', '#ff00ff');
+        this.testBall.setAttribute('material', 'opacity: 0.7; transparent: true; metalness: 0; roughness: 0.6');
+        this.testBall.setAttribute('dynamic-body', 'mass: 0.5; linearDamping: 0.01; angularDamping: 0.01; shape: sphere');
+        this.scene.appendChild(this.testBall);
+
+        this.minDelay = 400;
+        this.maxDelay = 2200;
+        this.minSpeed = 3.5;
+        this.maxSpeed = 6.5;
+        this.launchTimer = null;
+        this.onBounceUpdated = () => this.applyTestBallBounce();
+
+        this.testBall.addEventListener('body-loaded', () => {
+          this.applyTestBallBounce();
+          this.resetBall(true);
+          this.scheduleLaunch();
+        });
+
+        this.testBall.addEventListener('collide', (e) => {
+          const other = e.detail?.body?.el;
+          console.log('[TEST] Collision with', other ? other.id || other.tagName : 'unknown');
+        });
+
+        this.tmpStart = new THREE.Vector3(0, 1.4, 0.2);
+        this.tmpDir = new THREE.Vector3();
+
+        this.scene.addEventListener('bounce-updated', this.onBounceUpdated);
+      },
+
+      remove: function () {
+        if (this.launchTimer) clearTimeout(this.launchTimer);
+        this.scene?.removeEventListener('bounce-updated', this.onBounceUpdated);
+      },
+
+      applyTestBallBounce: function () {
+        if (!this.testBall.body) return;
+        const worldRest = this.scene?.systems?.physics?.driver?.world?.defaultContactMaterial?.restitution;
+        const baseRest = typeof worldRest === 'number' ? worldRest : 0.9;
+        this.testBallBounce = Math.max(0, baseRest);
+        this.testBall.body.material = this.testBall.body.material || new CANNON.Material();
+        this.testBall.body.material.restitution = this.testBallBounce;
+        this.testBall.body.updateMassProperties?.();
+      },
+
+      resetBall: function (randomize=false) {
+        if (!this.testBall.body) return;
+        if (randomize) {
+          this.tmpStart.set(
+            THREE.MathUtils.randFloatSpread(1.5),
+            THREE.MathUtils.randFloat(1.0, 2.2),
+            THREE.MathUtils.randFloatSpread(1.5)
+          );
+        }
+        this.testBall.body.velocity.set(0,0,0);
+        this.testBall.body.angularVelocity.set(0,0,0);
+        this.testBall.body.position.set(this.tmpStart.x, this.tmpStart.y, this.tmpStart.z);
+        this.testBall.components['dynamic-body']?.syncToPhysics?.();
+      },
+
+      scheduleLaunch: function () {
+        const delay = THREE.MathUtils.randFloat(this.minDelay, this.maxDelay);
+        this.launchTimer = setTimeout(() => {
+          this.applyTestBallBounce();
+          this.resetBall(true);
+          this.launchRandom();
+          this.scheduleLaunch();
+        }, delay);
+      },
+
+      launchRandom: function () {
+        const dir = this.randomDirection();
+        const speed = THREE.MathUtils.randFloat(this.minSpeed, this.maxSpeed);
+        this.applyVelocity(dir, speed);
+      },
+
+      randomDirection: function () {
+        this.tmpDir.set(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5);
+        if (this.tmpDir.lengthSq() < 1e-4) this.tmpDir.set(0,1,0);
+        return this.tmpDir.normalize();
+      },
+
+      applyVelocity: function (dir, speed) {
+        if (!this.testBall.body) return;
+        this.testBall.body.velocity.set(dir.x * speed, dir.y * speed, dir.z * speed);
+      }
+    });
+
+    // --- 2. HIT LISTENER (REWARD) ---
+    AFRAME.registerComponent('hit-listener', {
+      init: function () {
+        this.el.addEventListener('collide', (e) => {
+          if (e.detail.body.el.id === 'ball') {
+            this.triggerReward();
+          }
+        });
+      },
+      triggerReward: function() {
+        const originalColor = this.el.getAttribute('material').color;
+        this.el.setAttribute('material', 'color', '#FFD700'); 
+        this.el.setAttribute('material', 'emissive', '#FFD700');
+        this.el.setAttribute('animation', 'property: scale; to: 1.5 1.5 1.5; dur: 100; dir: alternate; loop: 1');
+        setTimeout(() => {
+          this.el.setAttribute('material', 'color', originalColor);
+          this.el.setAttribute('material', 'emissive', '#000000');
+        }, 300);
+      }
+    });
+
+    // --- 3. BAT CONSTRUCTOR (UI LOGIC) ---
+    AFRAME.registerComponent('bat-constructor', {
+      init: function () {
+        this.handle = document.getElementById('bat-handle');
+        this.face = document.getElementById('bat-face');
+        this.handleAxes = document.getElementById('axes-handle');
+        this.faceAxes = document.getElementById('axes-face');
+        
+        this.uiTarget = document.getElementById('ui-target-label');
+        this.uiMode = document.getElementById('ui-mode-label');
+        this.valX = document.getElementById('val-x');
+        this.valY = document.getElementById('val-y');
+        this.valZ = document.getElementById('val-z');
+
+        // Defaults requested by user
+        this.transforms = {
+          handle: { pos: {x: 0,    y: 0.01, z: -0.04}, rot: {x: 90, y: 0, z: 0} },
+          face:   { pos: {x: 0, y: 0.01, z: -0.34}, rot: {x: 180, y: 0, z: 90} }
+        };
+
+        this.selection = 'face'; 
+        this.mode = 'pos';       
+
+        this.applyTransforms();
+        this.updateUI();
+
+        this.bindClick('btn-sel-handle', () => this.setSelection('handle'));
+        this.bindClick('btn-sel-face',   () => this.setSelection('face'));
+        this.bindClick('btn-mode-pos',   () => this.setMode('pos'));
+        this.bindClick('btn-mode-rot',   () => this.setMode('rot'));
+
+        this.bindClick('btn-x-up', () => this.adjust( 'x', 1));
+        this.bindClick('btn-x-dn', () => this.adjust( 'x', -1));
+        this.bindClick('btn-y-up', () => this.adjust( 'y', 1));
+        this.bindClick('btn-y-dn', () => this.adjust( 'y', -1));
+        this.bindClick('btn-z-up', () => this.adjust( 'z', 1));
+        this.bindClick('btn-z-dn', () => this.adjust( 'z', -1));
+      },
+
+      bindClick: function(id, fn) {
+        document.getElementById(id).addEventListener('click', fn);
+      },
+
+      setSelection: function(target) {
+        this.selection = target;
+        this.updateUI();
+      },
+
+      setMode: function(mode) {
+        this.mode = mode;
+        this.updateUI();
+      },
+
+      adjust: function(axis, dir) {
+        const targetObj = this.transforms[this.selection];
+        if (this.mode === 'pos') {
+          targetObj.pos[axis] += (0.01 * dir);
+          targetObj.pos[axis] = Math.round(targetObj.pos[axis] * 100) / 100;
+        } else {
+          targetObj.rot[axis] += (5 * dir);
+        }
+        this.applyTransforms();
+        this.updateUI();
+      },
+
+      applyTransforms: function() {
+        const h = this.transforms.handle;
+        this.handle.setAttribute('position', h.pos);
+        this.handle.setAttribute('rotation', h.rot);
+        const f = this.transforms.face;
+        this.face.setAttribute('position', f.pos);
+        this.face.setAttribute('rotation', f.rot);
+      },
+
+      updateUI: function() {
+        this.uiTarget.setAttribute('value', this.selection.toUpperCase());
+        this.uiTarget.setAttribute('color', this.selection === 'handle' ? '#FFAA00' : '#00AAFF');
+        this.uiMode.setAttribute('value', this.mode === 'pos' ? "POSITION (Move)" : "ROTATION (Turn)");
+        const data = this.transforms[this.selection][this.mode];
+        this.valX.setAttribute('value', data.x.toFixed(this.mode==='pos'?2:0));
+        this.valY.setAttribute('value', data.y.toFixed(this.mode==='pos'?2:0));
+        this.valZ.setAttribute('value', data.z.toFixed(this.mode==='pos'?2:0));
+        this.handleAxes.setAttribute('visible', this.selection === 'handle');
+        this.faceAxes.setAttribute('visible', this.selection === 'face');
+      }
+    });
+
+    // --- 4. BALL THROWER ---
+    AFRAME.registerComponent('ball-thrower', {
+      init: function () {
+        this.ball = document.getElementById('ball');
+        this.batFace = document.getElementById('bat-face');
+        this.uiPanel = document.getElementById('ui-panel');
+        this.isHolding = false;
+        
+        this.currentPos = new THREE.Vector3();
+        this.lastPos = new THREE.Vector3();
+        this.velocity = new THREE.Vector3();
+        this.worldPos = new THREE.Vector3();
+        this.worldQuat = new THREE.Quaternion();
+        this.faceNormal = new THREE.Vector3();
+        this.ballRadius = parseFloat(this.ball.getAttribute('radius')) || 0.2;
+        this.offsetMargin = 0.01;
+
+        this.ball.addEventListener('mousedown', () => this.startHold());
+        // Allow grabbing with the right-hand trigger directly
+        this.el.addEventListener('triggerdown', () => this.startHold());
+        this.el.addEventListener('triggerup', () => {
+          if (this.isHolding) this.releaseBall();
+        });
+
+        this.el.sceneEl.addEventListener('mouseup', () => {
+          if (this.isHolding) {
+            this.releaseBall();
+          }
+        });
+      },
+
+      tick: function (time, timeDelta) {
+        if (!this.isHolding || !this.ball.body) return;
+        const dt = timeDelta / 1000;
+        this.syncBallToFace(dt);
+      },
+
+      startHold: function () {
+        if (this.uiPanel && this.uiPanel.getAttribute('visible')) return; // allow UI clicking without grabbing
+        if (!this.ball.body) return;
+        this.isHolding = true;
+        this.syncBallToFace(0);
+        this.velocity.set(0,0,0);
+      },
+
+      releaseBall: function () {
+        if (!this.ball.body) return;
+        this.isHolding = false;
+        const throwPower = 1.5; 
+        this.ball.body.velocity.set(
+            this.velocity.x * throwPower, 
+            this.velocity.y * throwPower, 
+            this.velocity.z * throwPower
+        );
+      },
+
+      updateBallRadius: function () {
+        const r = parseFloat(this.ball.getAttribute('radius'));
+        if (!isNaN(r)) this.ballRadius = r;
+      },
+
+      syncBallToFace: function (dt) {
+        this.updateBallRadius();
+        this.batFace.object3D.getWorldPosition(this.worldPos);
+        this.batFace.object3D.getWorldQuaternion(this.worldQuat);
+        this.faceNormal.set(0,1,0).applyQuaternion(this.worldQuat).normalize();
+        const offset = this.ballRadius + this.offsetMargin;
+        this.currentPos.copy(this.worldPos).addScaledVector(this.faceNormal, offset);
+        this.ball.body.position.set(this.currentPos.x, this.currentPos.y, this.currentPos.z);
+        this.ball.body.velocity.set(0,0,0);
+        this.ball.body.angularVelocity.set(0,0,0);
+        if (dt > 0) {
+          this.velocity.copy(this.currentPos).sub(this.lastPos).multiplyScalar(1 / dt);
+        }
+        this.lastPos.copy(this.currentPos);
+      }
+    });
+
+    // --- 5. UI TOGGLER (A Button) ---
+    AFRAME.registerComponent('ui-toggler', {
+      init: function () {
+        this.ui = document.getElementById('ui-panel');
+        this.cursor = this.el.querySelector('[cursor]');
+        this.axesHandle = document.getElementById('axes-handle');
+        this.axesFace = document.getElementById('axes-face');
+        // 'abuttondown' is fired by oculus-touch-controls
+        this.el.addEventListener('abuttondown', () => {
+          const isVisible = this.ui.getAttribute('visible');
+          this.setUiVisible(!isVisible);
+        });
+      },
+
+      setUiVisible: function(visible) {
+        this.ui.setAttribute('visible', visible);
+        if (this.cursor) {
+          this.cursor.setAttribute('visible', visible);
+          this.cursor.setAttribute('raycaster', 'enabled', visible);
+        }
+        if (!visible) {
+          if (this.axesHandle) this.axesHandle.setAttribute('visible', false);
+          if (this.axesFace) this.axesFace.setAttribute('visible', false);
+        } else {
+          const batComponent = this.el.sceneEl.components['bat-constructor'];
+          if (batComponent?.updateUI) batComponent.updateUI();
+        }
+      }
+    });
+
+    // --- 6. RESET UTILITY ---
+    AFRAME.registerComponent('physics-manager', {
+      init: function () {
+        this.ball = document.getElementById('ball');
+        this.scene = this.el.sceneEl;
+
+        const physicsSettings = this.scene.getAttribute('physics') || {};
+        this.gravityValue = typeof physicsSettings.gravity === 'number' ? physicsSettings.gravity : parseFloat(physicsSettings.gravity) || -9.8;
+        this.bouncinessValue = physicsSettings.restitution != null ? parseFloat(physicsSettings.restitution) : 0.9;
+        this.radiusValue = parseFloat(this.ball.getAttribute('radius')) || 0.2;
+
+        this.labels = {
+          size: document.getElementById('val-size'),
+          bounce: document.getElementById('val-bounce'),
+          gravity: document.getElementById('val-gravity')
+        };
+
+        this.bindButton('btn-size-up', () => this.adjustSize(0.02));
+        this.bindButton('btn-size-dn', () => this.adjustSize(-0.02));
+        this.bindButton('btn-bounce-up', () => this.adjustBounce(0.05));
+        this.bindButton('btn-bounce-dn', () => this.adjustBounce(-0.05));
+        this.bindButton('btn-gravity-up', () => this.adjustGravity(0.5));
+        this.bindButton('btn-gravity-dn', () => this.adjustGravity(-0.5));
+
+        this.ball.addEventListener('body-loaded', () => {
+          if (this.ball.body) {
+            this.ball.body.collisionFilterGroup = 1; // dynamic
+            this.ball.body.collisionFilterMask = -1; // collide with all
+            this.ball.body.updateMassProperties();
+            this.ball.body.aabbNeedsUpdate = true;
+          }
+          this.applyBounciness();
+          this.applySize(true);
+          this.applyGravity();
+        });
+
+        document.getElementById('btn-reset').addEventListener('click', () => {
+          if (!this.ball.body) return;
+          this.ball.body.velocity.set(0,0,0);
+          this.ball.body.angularVelocity.set(0,0,0);
+          this.ball.body.position.set(0, 1.5, -1);
+          this.ball.components['dynamic-body']?.syncToPhysics?.();
+        });
+
+        this.applyGravity();
+        this.applyBounciness();
+        this.applySize(true);
+        this.updateLabels();
+      },
+
+      bindButton: function(id, handler) {
+        const btn = document.getElementById(id);
+        if (btn) btn.addEventListener('click', handler);
+      },
+
+      getPhysicsWorld: function() {
+        return this.scene.systems?.physics?.driver?.world;
+      },
+
+      updateLabels: function() {
+        if (this.labels.size) this.labels.size.setAttribute('value', this.radiusValue.toFixed(2));
+        if (this.labels.bounce) this.labels.bounce.setAttribute('value', this.bouncinessValue.toFixed(2));
+        if (this.labels.gravity) this.labels.gravity.setAttribute('value', this.gravityValue.toFixed(1));
+      },
+
+      adjustSize: function(delta) {
+        this.radiusValue = Math.min(0.6, Math.max(0.05, this.radiusValue + delta));
+        this.applySize();
+      },
+
+      applySize: function(forceSync=false) {
+        this.ball.setAttribute('radius', this.radiusValue);
+        const bodyData = this.ball.getAttribute('dynamic-body') || {};
+        const updated = Object.assign({}, bodyData, {shape: 'sphere', sphereRadius: this.radiusValue});
+        this.ball.setAttribute('dynamic-body', updated);
+        if (forceSync && this.ball.components['dynamic-body']?.syncToPhysics) {
+          this.ball.components['dynamic-body'].syncToPhysics();
+        }
+        this.updateLabels();
+      },
+
+      adjustBounce: function(delta) {
+        this.bouncinessValue = Math.min(2, Math.max(0, this.bouncinessValue + delta));
+        this.applyBounciness();
+      },
+
+      applyBounciness: function() {
+        const world = this.getPhysicsWorld();
+        if (world?.defaultContactMaterial) {
+          world.defaultContactMaterial.restitution = this.bouncinessValue;
+        }
+        if (this.ball.body) {
+          this.ball.body.material = this.ball.body.material || world?.defaultMaterial || this.ball.body.material;
+          if (this.ball.body.material) {
+            this.ball.body.material.restitution = this.bouncinessValue;
+          }
+        }
+        const physicsAttr = this.scene.getAttribute('physics') || {};
+        this.scene.setAttribute('physics', Object.assign({}, physicsAttr, {restitution: this.bouncinessValue}));
+        this.scene.emit('bounce-updated', { value: this.bouncinessValue });
+        this.updateLabels();
+      },
+
+      adjustGravity: function(delta) {
+        this.gravityValue = Math.min(20, Math.max(-30, this.gravityValue + delta));
+        this.applyGravity();
+      },
+
+      applyGravity: function() {
+        const world = this.getPhysicsWorld();
+        if (world?.gravity) {
+          world.gravity.set(0, this.gravityValue, 0);
+        }
+        const physicsAttr = this.scene.getAttribute('physics') || {};
+        this.scene.setAttribute('physics', Object.assign({}, physicsAttr, {gravity: this.gravityValue}));
+        this.updateLabels();
+      }
+    });
+
+    // --- 7. TARGET BEHAVIOR & RESPAWN ---
+    AFRAME.registerComponent('target-behavior', {
+      init: function () {
+        this.hit = false;
+        this.ball = document.getElementById('ball');
+        this.testBall = document.getElementById('collision-test-ball');
+        this.el.addEventListener('collide', (e) => {
+          const other = e.detail?.body?.el;
+          if (this.hit) return;
+          const isMainBall = other === this.ball || other?.id === 'ball';
+          const isTestBall = other === this.testBall || other?.id === 'collision-test-ball';
+          if (!isMainBall && !isTestBall) return;
+          this.hit = true;
+          const pos = this.el.object3D.getWorldPosition(new THREE.Vector3());
+          this.el.sceneEl.emit('target-hit', { target: this.el, position: {x: pos.x, y: pos.y, z: pos.z} });
+        });
+      }
+    });
+
+    AFRAME.registerComponent('target-motion', {
+      schema: {
+        style: {type: 'string', default: 'orbit'},
+        speed: {type: 'number', default: 1},
+        radius: {type: 'number', default: 2},
+        height: {type: 'number', default: 2}
+      },
+      init: function () {
+        this.origin = this.el.object3D.position.clone();
+        this.t = Math.random() * Math.PI * 2;
+      },
+      tick: function (time, timeDelta) {
+        const t = (time / 1000) * this.data.speed;
+        const pos = this.el.object3D.position;
+        switch (this.data.style) {
+          case 'figure8':
+            pos.x = this.origin.x + Math.sin(t) * this.data.radius;
+            pos.y = this.origin.y + 0.3 + Math.sin(t * 2) * 0.6;
+            pos.z = this.origin.z + Math.sin(t * 2) * this.data.radius * 0.5;
+            break;
+          case 'bounce':
+            pos.x += Math.sin(t + this.t) * 0.004 * timeDelta;
+            pos.z += Math.cos(t * 0.8 + this.t) * 0.004 * timeDelta;
+            pos.y += Math.sin(t * 1.2 + this.t) * 0.003 * timeDelta;
+            pos.x = Math.max(-3.2, Math.min(3.2, pos.x));
+            pos.y = Math.max(0.6, Math.min(3.2, pos.y));
+            pos.z = Math.max(-3.2, Math.min(3.2, pos.z));
+            break;
+          case 'sway':
+            pos.x = this.origin.x + Math.sin(t) * this.data.radius * 0.6;
+            pos.y = this.origin.y + Math.sin(t * 0.7 + 1) * 0.4;
+            pos.z = this.origin.z + Math.cos(t * 1.2) * this.data.radius * 0.6;
+            break;
+          default: // orbit
+            pos.x = this.origin.x + Math.cos(t) * this.data.radius;
+            pos.z = this.origin.z + Math.sin(t) * this.data.radius;
+            pos.y = this.origin.y + Math.sin(t * 1.7) * 0.4;
+            break;
+        }
+      }
+    });
+
+    AFRAME.registerComponent('target-spawner', {
+      init: function () {
+        this.scene = this.el.sceneEl;
+        this.shapes = ['box','sphere','cone','cylinder','tetrahedron','octahedron','dodecahedron'];
+        this.styles = ['orbit','figure8','bounce','sway'];
+        this.sharedColor = '#ff00ff';
+        this.sharedMaterial = 'opacity: 0.7; transparent: true; metalness: 0; roughness: 0.6';
+        this.currentBounce = this.getTestBallRestitution();
+        this.onTargetHit = (e) => {
+          const tgt = e.detail?.target;
+          if (!tgt || !tgt.parentEl) return;
+          this.spawnSparks(e.detail.position || tgt.object3D.position);
+          tgt.parentEl.removeChild(tgt);
+          setTimeout(() => this.spawnTarget(), 300);
+        };
+        this.onBounceUpdated = (e) => {
+          this.currentBounce = typeof e?.detail?.value === 'number' ? e.detail.value : this.getTestBallRestitution();
+          this.updateExistingTargets();
+        };
+        this.scene.addEventListener('target-hit', this.onTargetHit);
+        this.scene.addEventListener('bounce-updated', this.onBounceUpdated);
+        this.spawnTarget();
+      },
+
+      remove: function () {
+        this.scene?.removeEventListener('target-hit', this.onTargetHit);
+        this.scene?.removeEventListener('bounce-updated', this.onBounceUpdated);
+      },
+
+      randomBetween: function(min, max) {
+        return Math.random() * (max - min) + min;
+      },
+
+      getTestBallRestitution: function () {
+        const physicsRest = this.scene.getAttribute('physics')?.restitution;
+        const base = typeof physicsRest === 'number' ? physicsRest : parseFloat(physicsRest);
+        const fallback = isNaN(base) ? 0.9 : base;
+        return Math.max(0, fallback);
+      },
+
+      updateExistingTargets: function () {
+        const targets = this.el.querySelectorAll('[target-behavior]');
+        targets.forEach((tgt) => this.updateTargetRestitution(tgt));
+      },
+
+      updateTargetRestitution: function (target) {
+        if (!target?.body) return;
+        target.body.material = target.body.material || new CANNON.Material();
+        target.body.material.restitution = this.currentBounce;
+        target.body.updateMassProperties();
+        target.body.aabbNeedsUpdate = true;
+      },
+
+      spawnTarget: function () {
+        const target = document.createElement('a-entity');
+        const shape = this.shapes[Math.floor(Math.random() * this.shapes.length)];
+        const style = this.styles[Math.floor(Math.random() * this.styles.length)];
+        const scaleVal = this.randomBetween(0.5, 0.9);
+        const color = this.sharedColor;
+        const startPos = {
+          x: this.randomBetween(-2.5, 2.5),
+          y: this.randomBetween(1.0, 3.0),
+          z: this.randomBetween(-3.0, -1.0)
+        };
+
+        target.setAttribute('geometry', {primitive: shape, radius: 0.4, height: 0.6, width: 0.6, depth: 0.6});
+        target.setAttribute('scale', `${scaleVal} ${scaleVal} ${scaleVal}`);
+        target.setAttribute('position', startPos);
+        target.setAttribute('color', color);
+        target.setAttribute('material', `${this.sharedMaterial}`);
+        target.setAttribute('kinematic-body', 'shape: hull');
+        target.setAttribute('target-motion', {style: style, speed: this.randomBetween(0.5, 1.2), radius: this.randomBetween(1.2, 2.4)});
+        target.setAttribute('target-behavior', '');
+        target.setAttribute('animation__spin', 'property: rotation; to: 0 360 0; loop: true; dur: 5000; easing: linear');
+        target.addEventListener('body-loaded', () => {
+          if (target.body) {
+            target.body.collisionFilterGroup = 1; // match dynamic group for test ball parity
+            target.body.collisionFilterMask = -1; // collide with all
+            target.body.material = target.body.material || new CANNON.Material();
+            target.body.material.restitution = this.currentBounce;
+            target.body.linearDamping = 0.01;
+            target.body.angularDamping = 0.01;
+            target.body.updateMassProperties();
+            target.body.aabbNeedsUpdate = true;
+          }
+        });
+        this.el.appendChild(target);
+      },
+
+      spawnSparks: function (pos) {
+        for (let i = 0; i < 16; i++) {
+          const spark = document.createElement('a-entity');
+          spark.setAttribute('geometry', 'primitive: sphere; radius: 0.03');
+          spark.setAttribute('material', 'color: #FFD54F; emissive: #FF9100; emissiveIntensity: 0.9; metalness:0');
+          spark.setAttribute('position', `${pos.x} ${pos.y} ${pos.z}`);
+          const dir = new THREE.Vector3(Math.random()-0.5, Math.random(), Math.random()-0.5).normalize().multiplyScalar(0.8 + Math.random()*0.6);
+          spark.setAttribute('animation__move', `property: position; to: ${pos.x + dir.x} ${pos.y + dir.y} ${pos.z + dir.z}; dur: 450; easing: ease-out`);
+          spark.setAttribute('animation__fade', 'property: scale; to: 0 0 0; dur: 450; easing: ease-in');
+          this.el.appendChild(spark);
+          setTimeout(() => spark.parentEl && spark.parentEl.removeChild(spark), 500);
+        }
+      }
+    });
+
+    // --- 8. BAT KINEMATIC SYNC (keeps physics body on controller) ---
+    AFRAME.registerComponent('bat-sync-kinematic', {
+      init: function () {
+        this.worldPos = new THREE.Vector3();
+        this.lastPos = new THREE.Vector3();
+        this.worldQuat = new THREE.Quaternion();
+        this.lastQuat = new THREE.Quaternion();
+        this.velocity = new THREE.Vector3();
+        this.angularVelocity = new THREE.Vector3();
+        this.deltaQuat = new THREE.Quaternion();
+        this.axis = new THREE.Vector3();
+        this.initialized = false;
+        this.el.addEventListener('body-loaded', () => this.setupBody());
+      },
+
+      setupBody: function() {
+        this.body = this.el.body;
+        if (!this.body) return;
+        this.body.type = CANNON.Body.KINEMATIC;
+        this.body.mass = 0;
+        this.body.allowSleep = false;
+        this.body.collisionResponse = true;
+        this.body.collisionFilterGroup = 2;  // kinematic group
+        this.body.collisionFilterMask = -1;  // collide with all
+        this.body.updateMassProperties();
+        this.body.aabbNeedsUpdate = true;
+        this.body.wakeUp();
+      },
+
+      tick: function (time, timeDelta) {
+        if (!this.body) this.body = this.el.body;
+        if (!this.body) return;
+        const dt = timeDelta / 1000 || 0;
+        this.el.object3D.getWorldPosition(this.worldPos);
+        this.el.object3D.getWorldQuaternion(this.worldQuat);
+        if (!this.initialized) {
+          this.lastPos.copy(this.worldPos);
+          this.lastQuat.copy(this.worldQuat);
+          this.velocity.set(0,0,0);
+          this.angularVelocity.set(0,0,0);
+          this.initialized = true;
+        } else if (dt > 0) {
+          this.velocity.copy(this.worldPos).sub(this.lastPos).multiplyScalar(1 / dt);
+          this.deltaQuat.copy(this.lastQuat).invert().multiply(this.worldQuat).normalize();
+          const angle = 2 * Math.acos(Math.min(1, Math.max(-1, this.deltaQuat.w)));
+          const s = Math.sqrt(Math.max(1e-8, 1 - this.deltaQuat.w * this.deltaQuat.w));
+          if (angle > 1e-4 && s > 1e-4) {
+            this.axis.set(this.deltaQuat.x / s, this.deltaQuat.y / s, this.deltaQuat.z / s);
+            this.angularVelocity.copy(this.axis).multiplyScalar(angle / dt);
+          } else {
+            this.angularVelocity.set(0,0,0);
+          }
+        } else {
+          this.angularVelocity.set(0,0,0);
+        }
+        this.body.position.set(this.worldPos.x, this.worldPos.y, this.worldPos.z);
+        this.body.quaternion.set(this.worldQuat.x, this.worldQuat.y, this.worldQuat.z, this.worldQuat.w);
+        this.body.velocity.set(this.velocity.x, this.velocity.y, this.velocity.z);
+        this.body.angularVelocity.set(this.angularVelocity.x, this.angularVelocity.y, this.angularVelocity.z);
+        this.body.wakeUp();
+        this.body.aabbNeedsUpdate = true;
+        this.lastPos.copy(this.worldPos);
+        this.lastQuat.copy(this.worldQuat);
+      },
+
+      getVelocity: function(out) {
+        if (out) out.copy(this.velocity);
+        return this.velocity;
+      },
+
+      getAngularVelocity: function(out) {
+        if (out) out.copy(this.angularVelocity);
+        return this.angularVelocity;
+      }
+    });
+
+    // --- 9. BALL SPIN CALCULATION ---
+    AFRAME.registerComponent('ball-spin', {
+      init: function () {
+        this.bat = document.getElementById('bat-face');
+        this.batSync = null;
+        this.ballRadius = parseFloat(this.el.getAttribute('radius')) || 0.2;
+        this.tmp = new THREE.Vector3();
+        this.tmp2 = new THREE.Vector3();
+        this.tmp3 = new THREE.Vector3();
+        this.normal = new THREE.Vector3();
+        this.cross = new THREE.Vector3();
+        this.ballPos = new THREE.Vector3();
+        this.batPos = new THREE.Vector3();
+        this.surfaceVel = new THREE.Vector3();
+        this.contactOffset = new THREE.Vector3();
+        this.el.addEventListener('collide', this.onCollide.bind(this));
+      },
+
+      updateRadius: function() {
+        this.ballRadius = parseFloat(this.el.getAttribute('radius')) || 0.2;
+      },
+
+      onCollide: function(e) {
+        const body = this.el.body;
+        if (!body) return;
+        this.updateRadius();
+
+        const other = e.detail.body?.el;
+        const contact = e.detail.contact;
+        const ballVel = new THREE.Vector3(body.velocity.x, body.velocity.y, body.velocity.z);
+
+        if (other && other === this.bat) {
+          if (!this.batSync && this.bat) this.batSync = this.bat.components['bat-sync-kinematic'];
+          const batVel = this.batSync ? this.batSync.getVelocity(this.tmp2) : this.tmp2.set(0,0,0);
+          const batAngVel = this.batSync ? this.batSync.getAngularVelocity(this.tmp3) : this.tmp3.set(0,0,0);
+          this.bat.object3D.getWorldPosition(this.batPos);
+          this.el.object3D.getWorldPosition(this.ballPos);
+          this.contactOffset.copy(this.ballPos).sub(this.batPos);
+          this.surfaceVel.copy(batAngVel).cross(this.contactOffset).add(batVel);
+          this.normal.copy(this.ballPos).sub(this.batPos).normalize();
+          const relative = ballVel.sub(this.surfaceVel);
+          const tangent = this.tmp.copy(relative).sub(this.normal.clone().multiplyScalar(relative.dot(this.normal)));
+          const spinAxis = this.cross.copy(tangent).cross(this.normal);
+          const spinStrength = tangent.length() / Math.max(0.05, this.ballRadius) * 0.4;
+          body.angularVelocity.vadd(new CANNON.Vec3(
+            spinAxis.x * spinStrength,
+            spinAxis.y * spinStrength,
+            spinAxis.z * spinStrength
+          ), body.angularVelocity);
+        } else {
+          if (contact?.ni) {
+            this.normal.set(contact.ni.x, contact.ni.y, contact.ni.z);
+            if (this.normal.dot(ballVel) > 0) this.normal.multiplyScalar(-1);
+          } else {
+            this.normal.set(0, 1, 0);
+          }
+          const tangent = this.tmp.copy(ballVel).sub(this.normal.clone().multiplyScalar(ballVel.dot(this.normal)));
+          const spinAxis = this.cross.copy(tangent).cross(this.normal);
+          const spinStrength = 0.25 * tangent.length() / Math.max(0.05, this.ballRadius);
+          body.angularVelocity.vadd(new CANNON.Vec3(
+            spinAxis.x * spinStrength,
+            spinAxis.y * spinStrength,
+            spinAxis.z * spinStrength
+          ), body.angularVelocity);
+        }
+      }
+    });
+  </script>
+</head>
+<body>
+
+  <a-scene physics="debug: false; gravity: -9.8; restitution: 0.9" bat-constructor physics-manager background="color: #111">
     
-    <script>
-      const SquashLab = {
-        settings: {
-          throwMultiplier: 1.8,
-          spinMode: 'none',
-          dragEnabled: true,
-          ballSize: 0.15,
-          ballMass: 1,
-          bounciness: 0.5,
-          environment: 'tron'
-        }
-      };
+    <a-assets>
+      <img id="grid" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAIklEQVQIW2NkQAKrVq36zwjjgzj//v37zaivry+NwkJ1QAQAptQTvF6WUzsAAAAASUVORK5CYII=">
+      <img id="ball-tex" crossorigin="anonymous" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='60' viewBox='0 0 120 60'><rect width='120' height='60' fill='%23ffffff'/><rect width='60' height='60' fill='%23000000'/><circle cx='30' cy='30' r='12' fill='%23ff4020'/><circle cx='90' cy='30' r='12' fill='%2300aaff'/></svg>">
+      <a-mixin id="axis-line" line="opacity: 1"></a-mixin>
+    </a-assets>
 
-      AFRAME.registerComponent('slider-control', {
-        schema: {
-          min: { type: 'number', default: 0 },
-          max: { type: 'number', default: 1 },
-          value: { type: 'number', default: 0.5 },
-          step: { type: 'number', default: 0.05 },
-          width: { type: 'number', default: 1 }
-        },
-        init: function() {
-          this.handle = this.el.querySelector('.slider-handle');
-          this.fill = this.el.querySelector('.slider-fill');
-          this.label = this.el.querySelector('.slider-label');
-          this.value = this.data.value;
-          this.onClick = this.onClick.bind(this);
-          this.el.addEventListener('click', this.onClick);
-          this.updateVisual();
-        },
-        onClick: function(evt) {
-          const hit = evt.detail && evt.detail.intersection && evt.detail.intersection.point;
-          if (!hit) return;
-          const local = this.el.object3D.worldToLocal(hit.clone());
-          const half = this.data.width / 2;
-          const clampedX = THREE.MathUtils.clamp(local.x, -half, half);
-          const t = (clampedX + half) / this.data.width;
-          const raw = this.data.min + t * (this.data.max - this.data.min);
-          const stepped = Math.round(raw / this.data.step) * this.data.step;
-          this.setValue(stepped);
-        },
-        setValue: function(v) {
-          this.value = THREE.MathUtils.clamp(v, this.data.min, this.data.max);
-          this.updateVisual();
-          this.el.emit('slider-change', { value: this.value });
-        },
-        updateVisual: function() {
-          const t = (this.value - this.data.min) / (this.data.max - this.data.min);
-          const half = this.data.width / 2;
-          const x = (t * this.data.width) - half;
-          if (this.handle) this.handle.setAttribute('position', { x, y: 0, z: 0.02 });
-          if (this.fill) {
-            this.fill.setAttribute('scale', { x: t, y: 1, z: 1 });
-            this.fill.setAttribute('position', { x: (t / 2 - 0.5) * this.data.width, y: 0, z: 0.01 });
-          }
-          if (this.label) this.label.setAttribute('value', this.value.toFixed(2));
-        }
-      });
-
-      AFRAME.registerComponent('paddle-follow', {
-        schema: { boost: {type: 'number', default: 1.1} },
-        init: function() {
-          this.ready = false;
-          this.currentPos = new THREE.Vector3();
-          this.lastPos = new THREE.Vector3();
-          this.worldQuat = new THREE.Quaternion();
-          this.vel = new THREE.Vector3();
-
-          this.el.addEventListener('body-loaded', () => {
-            const body = this.el.body;
-            body.type = CANNON.Body.KINEMATIC;
-            body.mass = 0;
-            body.updateMassProperties();
-            body.allowSleep = false;
-            body.collisionResponse = true;
-            body.linearDamping = 0;
-            body.angularDamping = 0.01;
-            this.ready = true;
-          });
-        },
-        tick: function(time, delta) {
-          if (!this.ready || !delta) return;
-          this.el.object3D.getWorldPosition(this.currentPos);
-          this.el.object3D.getWorldQuaternion(this.worldQuat);
-
-          const dt = delta / 1000;
-          if (dt > 0 && this.lastPos.lengthSq() > 0) {
-            this.vel.copy(this.currentPos).sub(this.lastPos).divideScalar(dt);
-            this.el.body.velocity.set(this.vel.x * this.data.boost, this.vel.y * this.data.boost, this.vel.z * this.data.boost);
-          } else {
-            this.el.body.velocity.set(0, 0, 0);
-          }
-
-          this.el.body.position.set(this.currentPos.x, this.currentPos.y, this.currentPos.z);
-          this.el.body.quaternion.set(this.worldQuat.x, this.worldQuat.y, this.worldQuat.z, this.worldQuat.w);
-          this.el.body.aabbNeedsUpdate = true;
-          this.el.body.wakeUp();
-          this.lastPos.copy(this.currentPos);
-        }
-      });
-
-      // ==========================================
-      // COMPONENT: Kinesis / Grab Throw Logic
-      // ==========================================
-      AFRAME.registerComponent('kinesis-controller', {
-        init: function () {
-          this.heldObject = null;
-          this.raycaster = this.el.components.raycaster;
-          this.marker = document.querySelector('#aim-marker');
-          this.gameManager = null;
-          
-          this.lastPos = new THREE.Vector3();
-          this.currentPos = new THREE.Vector3();
-          this.velocity = new THREE.Vector3();
-
-          this.onGripDown = this.onGripDown.bind(this);
-          this.onGripUp = this.onGripUp.bind(this);
-          
-          this.el.addEventListener('gripdown', this.onGripDown);
-          this.el.addEventListener('gripup', this.onGripUp);
-        },
-
-        getGameManager: function() {
-          if (!this.gameManager) {
-            this.gameManager = this.el.sceneEl.components['game-manager'];
-          }
-          return this.gameManager;
-        },
-
-        tick: function (time, timeDelta) {
-          // Calculate throw velocity
-          this.el.object3D.getWorldPosition(this.currentPos);
-          if (timeDelta > 0) {
-            const frameVel = new THREE.Vector3().copy(this.currentPos).sub(this.lastPos).multiplyScalar(1000 / timeDelta);
-            this.velocity.lerp(frameVel, 0.5); 
-          }
-          this.lastPos.copy(this.currentPos);
-
-          if (!this.heldObject) {
-            // Raycast Scanning
-            const intersection = this.raycaster.getIntersection(document.querySelector('#the-ball'));
-            if (intersection) {
-              this.marker.setAttribute('visible', true);
-              this.marker.setAttribute('position', intersection.point);
-            } else {
-              this.marker.setAttribute('visible', false);
-            }
-          } else {
-            // Holding Logic
-            this.marker.setAttribute('visible', false);
-            const body = this.heldObject.body;
-            const worldPos = new THREE.Vector3();
-            const worldQuat = new THREE.Quaternion();
-            
-            this.el.object3D.getWorldPosition(worldPos);
-            this.el.object3D.getWorldQuaternion(worldQuat);
-            
-            // Offset: Place ball slightly above and forward of the paddle tip
-            // so it doesn't clip into the new vertical blade
-            const offset = new THREE.Vector3(0, 0.2, -0.6); 
-            offset.applyQuaternion(worldQuat);
-            worldPos.add(offset);
-
-            // Lock Physics
-            body.position.set(worldPos.x, worldPos.y, worldPos.z);
-            body.velocity.set(0, 0, 0);
-            body.angularVelocity.set(0, 0, 0);
-          }
-        },
-
-        onGripDown: function () {
-          const intersection = this.raycaster.getIntersection(document.querySelector('#the-ball'));
-          if (intersection) {
-            this.heldObject = intersection.object.el;
-            this.heldObject.setAttribute('material', 'emissive', '#FF0000');
-            this.heldObject.setAttribute('material', 'emissiveIntensity', '0.5');
-          }
-        },
-
-        onGripUp: function () {
-          if (this.heldObject) {
-            const body = this.heldObject.body;
-            const gm = this.getGameManager();
-            const throwMult = gm ? gm.settings.throwMultiplier : SquashLab.settings.throwMultiplier;
-            const throwVec = new THREE.Vector3().copy(this.velocity).multiplyScalar(throwMult);
-            body.velocity.set(throwVec.x, throwVec.y, throwVec.z);
-            
-            if (gm) {
-              gm.applySpin(body, throwVec.clone());
-            } else {
-              body.angularVelocity.set(0, 0, 0);
-            }
-            
-            this.heldObject.setAttribute('material', 'emissive', '#000000');
-            this.heldObject.setAttribute('material', 'emissiveIntensity', '0');
-            this.heldObject = null;
-          }
-        }
-      });
-
-      // ==========================================
-      // COMPONENT: Breakable Glass
-      // ==========================================
-      AFRAME.registerComponent('breakable', {
-        schema: { threshold: { type: 'number', default: 3 } }, 
-        init: function() {
-          this.el.addEventListener('collide', (e) => {
-            const relativeVelocity = e.detail.contact.getImpactVelocityAlongNormal();
-            if(Math.abs(relativeVelocity) > this.data.threshold) {
-              this.shatter();
-            }
-          });
-        },
-        shatter: function() {
-          const sound = document.querySelector('#glass-sound');
-          if(sound.components.sound) sound.components.sound.playSound();
-
-          const parent = this.el.parentNode;
-          const worldPos = new THREE.Vector3();
-          this.el.object3D.getWorldPosition(worldPos);
-
-          for(let i=0; i<6; i++) {
-            const shard = document.createElement('a-entity');
-            shard.setAttribute('geometry', { primitive: 'box', width: 1.5, height: 1.5, depth: 0.1 });
-            shard.setAttribute('material', { color: 'cyan', opacity: 0.5, transparent: true });
-            shard.setAttribute('position', {
-              x: worldPos.x + (Math.random() - 0.5),
-              y: worldPos.y + (Math.random() - 0.5),
-              z: worldPos.z
-            });
-            shard.setAttribute('dynamic-body', {mass: 2});
-            setTimeout(() => { if(shard.parentNode) shard.parentNode.removeChild(shard); }, 4000);
-            parent.appendChild(shard);
-          }
-
-          this.el.setAttribute('visible', false);
-          this.el.removeAttribute('static-body');
-          this.el.setAttribute('position', '0 -50 0');
-
-          this.el.sceneEl.emit('score-add', { points: 5, reason: 'Glass break' });
-        }
-      });
-
-      // ==========================================
-      // COMPONENT: Target goal
-      // ==========================================
-      AFRAME.registerComponent('target-goal', {
-        schema: { points: { type: 'number', default: 25 } },
-        init: function() {
-          this.visual = this.el.querySelector('.target-core');
-          this.cooling = false;
-          this.el.addEventListener('collide', (e) => {
-            if (this.cooling) return;
-            const ball = document.querySelector('#the-ball');
-            if (!ball || e.detail.body !== ball.body) return;
-            this.cooling = true;
-            this.hit();
-            setTimeout(() => this.cooling = false, 200);
-          });
-        },
-        hit: function() {
-          this.el.sceneEl.emit('score-add', { points: this.data.points, reason: 'Target hit' });
-          this.flash();
-          this.teleport();
-        },
-        flash: function() {
-          if (!this.visual) return;
-          this.visual.setAttribute('material', 'emissive', '#00e5ff');
-          setTimeout(() => {
-            if (this.visual) this.visual.setAttribute('material', 'emissive', '#111');
-          }, 150);
-        },
-        teleport: function() {
-          const pos = {
-            x: (Math.random() * 6) - 3,
-            y: 1.2 + Math.random() * 2.3,
-            z: -1.5 - Math.random() * 4
-          };
-          this.el.setAttribute('position', pos);
-        }
-      });
-
-      // ==========================================
-      // COMPONENT: Game Manager / Settings
-      // ==========================================
-      AFRAME.registerComponent('game-manager', {
-        init: function () {
-          this.settings = SquashLab.settings;
-          this.ball = document.querySelector('#the-ball');
-          this.walls = Array.from(document.querySelectorAll('.wall'));
-          this.target = document.querySelector('#goal-target');
-          this.uiStatus = document.querySelector('#ui-status');
-          this.hudScore = document.querySelector('#hud-score');
-          this.hudTimer = document.querySelector('#hud-timer');
-          this.elapsedMs = 0;
-          this.score = 0;
-          this.combo = 0;
-
-          if (this.ball) {
-            this.ball.addEventListener('body-loaded', () => this.setupBall());
-          }
-          this.setupBall();
-          this.randomizeTarget();
-          this.attachEvents();
-        },
-
-        attachEvents: function() {
-          this.el.addEventListener('score-add', (e) => {
-            this.addScore(e.detail.points || 0, e.detail.reason || '');
-          });
-        },
-
-        tick: function(time, delta) {
-          if (!delta) return;
-          this.elapsedMs += delta;
-          if (this.hudTimer) {
-            const seconds = (this.elapsedMs / 1000).toFixed(1);
-            this.hudTimer.setAttribute('value', `Time ${seconds}s`);
-          }
-        },
-
-        setupBall: function() {
-          if (!this.ball || !this.ball.body) return;
-          const body = this.ball.body;
-          body.material.restitution = this.settings.bounciness;
-          body.linearDamping = 0.01;
-          body.angularDamping = 0.01;
-          this.setBallRadius(this.settings.ballSize);
-        },
-
-        addScore: function(points, reason) {
-          this.score += points;
-          this.combo = Math.min(this.combo + 1, 5);
-          if (this.hudScore) {
-            this.hudScore.setAttribute('value', `Score ${this.score} | Combo x${this.combo}`);
-          }
-          if (reason) this.flashStatus(`${reason} (+${points})`);
-        },
-
-        resetCombo: function() {
-          this.combo = 0;
-        },
-
-        flashStatus: function(text) {
-          if (this.uiStatus) this.uiStatus.setAttribute('value', text);
-        },
-
-        applySpin: function(body, throwVec) {
-          if (!body) return;
-          const spinMode = this.settings.spinMode;
-          const spin = 8 * (this.settings.throwMultiplier / 1.5);
-          if (spinMode === 'top') {
-            body.angularVelocity.set(spin, 0, 0);
-          } else if (spinMode === 'back') {
-            body.angularVelocity.set(-spin, 0, 0);
-          } else if (spinMode === 'curve') {
-            body.angularVelocity.set(0, spin, 0);
-          } else {
-            body.angularVelocity.set(0, 0, 0);
-          }
-        },
-
-        setBounciness: function(val, label) {
-          if (!this.ball || !this.ball.body) return;
-          this.settings.bounciness = val;
-          this.ball.body.material.restitution = val;
-          this.flashStatus(`Bounciness: ${label}`);
-        },
-
-        setMass: function(mass, label, color) {
-          if (!this.ball || !this.ball.body) return;
-          this.settings.ballMass = mass;
-          this.ball.body.mass = mass;
-          this.ball.body.updateMassProperties();
-          if (color) this.ball.setAttribute('color', color);
-          this.flashStatus(`Ball: ${label}`);
-        },
-
-        setBallRadius: function(radius) {
-          if (!this.ball || !this.ball.body) return;
-          this.settings.ballSize = radius;
-          this.ball.setAttribute('radius', radius);
-          this.ball.body.shapes.forEach(shape => {
-            if (shape.radius !== undefined) shape.radius = radius;
-          });
-          this.ball.body.updateBoundingRadius();
-          this.flashStatus(`Radius: ${radius.toFixed(2)}`);
-        },
-
-        setGravity: function(val, label) {
-          const physicsWorld = this.el.systems.physics.driver.world;
-          physicsWorld.gravity.set(0, -val, 0);
-          this.flashStatus(`Gravity: ${label}`);
-        },
-
-        setGravityValue: function(val) {
-          const physicsWorld = this.el.systems.physics.driver.world;
-          physicsWorld.gravity.set(0, -val, 0);
-          this.flashStatus(`Gravity: ${val.toFixed(1)}`);
-        },
-
-        setThrowStrength: function(level) {
-          const lookup = { soft: 1.1, medium: 1.6, hard: 2.2 };
-          this.settings.throwMultiplier = lookup[level] || 1.6;
-          this.flashStatus(`Throw: ${level.toUpperCase()}`);
-        },
-
-        setThrowStrengthValue: function(val) {
-          this.settings.throwMultiplier = val;
-          this.flashStatus(`Throw: ${val.toFixed(2)}x`);
-        },
-
-        setSpinMode: function(mode) {
-          this.settings.spinMode = mode;
-          const label = mode === 'none' ? 'Spin Off' : `Spin: ${mode}`;
-          this.flashStatus(label);
-        },
-
-        setDragValue: function(val) {
-          if (!this.ball || !this.ball.body) return;
-          this.settings.dragEnabled = val > 0;
-          this.ball.body.linearDamping = val;
-          this.ball.body.angularDamping = val * 0.7;
-          this.flashStatus(`Air drag: ${val.toFixed(2)}`);
-        },
-
-        setEnvironment: function(preset) {
-          const env = document.querySelector('#lab-environment');
-          if (!env) return;
-          this.settings.environment = preset;
-          env.setAttribute('environment', `preset: ${preset}; grid: none; lighting: point`);
-          this.flashStatus(`Env: ${preset}`);
-        },
-
-        spawnTarget: function() {
-          if (!this.target) return;
-          this.target.setAttribute('visible', true);
-          this.randomizeTarget();
-          this.flashStatus('Target armed');
-        },
-
-        randomizeTarget: function() {
-          if (!this.target) return;
-          const pos = {
-            x: (Math.random() * 6) - 3,
-            y: 1.1 + Math.random() * 2.2,
-            z: -1.2 - Math.random() * 4.3
-          };
-          this.target.setAttribute('position', pos);
-        },
-
-        resetWorld: function() {
-          if (!this.ball || !this.ball.body) return;
-          this.ball.body.position.set(0, 1.5, -2);
-          this.ball.body.velocity.set(0, 0, 0);
-          this.ball.body.angularVelocity.set(0, 0, 0);
-          this.setBallRadius(0.15);
-          this.setBounciness(0.5, 'Neutral');
-          this.setMass(1, 'Balanced', this.ball.getAttribute('color'));
-          this.setDragValue(0.01);
-          this.setGravity(9.8, 'Earth');
-          this.elapsedMs = 0;
-          this.score = 0;
-          this.combo = 0;
-          if (this.hudScore) this.hudScore.setAttribute('value', 'Score 0 | Combo x0');
-
-          this.walls.forEach(wall => {
-            const orig = AFRAME.utils.coordinates.parse(wall.getAttribute('data-orig-pos'));
-            wall.setAttribute('position', orig);
-            wall.setAttribute('visible', true);
-            if(!wall.components['static-body']) wall.setAttribute('static-body', '');
-          });
-
-          this.randomizeTarget();
-          this.flashStatus('System reset');
-        }
-      });
-
-      // ==========================================
-      // COMPONENT: HUD Manager
-      // ==========================================
-      AFRAME.registerComponent('hud-manager', {
-        init: function () {
-          this.hud = this.el.querySelector('#hud');
-          this.visible = false;
-          if (this.hud) this.hud.setAttribute('visible', this.visible);
-          const hint = document.querySelector('#hud-instruction');
-          if (hint) setTimeout(() => hint.setAttribute('visible', false), 6000);
-          this.onToggle = (e) => {
-            const desired = e && e.detail && e.detail.on;
-            if (typeof desired === 'boolean') {
-              this.visible = desired;
-            } else {
-              this.visible = !this.visible;
-            }
-            this.apply();
-          };
-          this.el.sceneEl.addEventListener('hud-toggle', this.onToggle);
-        },
-        apply: function() {
-          if (this.hud) this.hud.setAttribute('visible', this.visible);
-        },
-        show: function() { this.visible = true; this.apply(); },
-        hide: function() { this.visible = false; this.apply(); }
-      });
-
-      // ==========================================
-      // COMPONENT: UI Manager
-      // ==========================================
-      AFRAME.registerComponent('ui-manager', {
-        init: function () {
-          this.uiPanel = document.querySelector('#ui-panel');
-          this.uiVisible = false;
-          
-          const toggleUI = () => {
-            this.uiVisible = !this.uiVisible;
-            this.uiPanel.setAttribute('visible', this.uiVisible);
-            const hint = document.querySelector('#hud-instruction');
-            if (hint && this.uiVisible) hint.setAttribute('visible', false);
-            
-            if(this.uiVisible) {
-                const cam = document.querySelector('a-camera');
-                const pos = cam.object3D.position.clone();
-                const rot = cam.object3D.rotation.clone();
-                const offset = new THREE.Vector3(0, 0, -1.4);
-                offset.applyEuler(rot);
-                pos.add(offset);
-                this.uiPanel.setAttribute('position', pos);
-                this.uiPanel.setAttribute('rotation', {x: 0, y: (rot.y * 180 / Math.PI), z: 0});
-            }
-          };
-
-          this.el.addEventListener('xbuttondown', toggleUI);
-          this.el.addEventListener('abuttondown', toggleUI);
-          this.waitForGM();
-        },
-
-        waitForGM: function() {
-          const scene = document.querySelector('a-scene');
-          const poll = () => {
-            const gm = scene.components['game-manager'];
-            if (gm) {
-              this.setupButtons(gm);
-            } else {
-              setTimeout(poll, 50);
-            }
-          };
-          poll();
-        },
-
-        setupButtons: function(gm) {
-          const statusText = document.querySelector('#ui-status');
-          const setStatus = (txt) => statusText.setAttribute('value', txt);
-          const bind = (id, fn) => { const el = document.querySelector(id); if (el) el.addEventListener('click', fn); };
-          const hookSlider = (id, fn) => {
-            const el = document.querySelector(id);
-            if (el) el.addEventListener('slider-change', (e) => fn(e.detail.value));
-          };
-          const setSlider = (id, val) => {
-            const el = document.querySelector(id);
-            if (el && el.components['slider-control']) el.components['slider-control'].setValue(val);
-          };
-          const syncSliders = () => {
-            setSlider('#slider-bounce', gm.settings.bounciness);
-            setSlider('#slider-mass', gm.ball && gm.ball.body ? gm.ball.body.mass : gm.settings.ballMass);
-            setSlider('#slider-radius', gm.settings.ballSize);
-            setSlider('#slider-throw', gm.settings.throwMultiplier);
-            const physicsWorld = gm.el.systems.physics.driver.world;
-            setSlider('#slider-gravity', Math.abs(physicsWorld.gravity.y));
-            setSlider('#slider-drag', gm.ball && gm.ball.body ? gm.ball.body.linearDamping : 0.01);
-          };
-
-          bind('#btn-spin-off', () => { gm.setSpinMode('none'); setStatus("Spin: OFF"); });
-          bind('#btn-spin-top', () => { gm.setSpinMode('top'); setStatus("Spin: TOPSPIN"); });
-          bind('#btn-spin-back', () => { gm.setSpinMode('back'); setStatus("Spin: BACKSPIN"); });
-
-          hookSlider('#slider-bounce', (v) => { gm.setBounciness(v, 'Custom'); setStatus(`Bounciness ${v.toFixed(2)}`); });
-          hookSlider('#slider-mass', (v) => { gm.setMass(v, `Mass ${v.toFixed(1)}`, gm.ball.getAttribute('color')); setStatus(`Mass ${v.toFixed(1)}`); });
-          hookSlider('#slider-radius', (v) => { gm.setBallRadius(v); setStatus(`Radius ${v.toFixed(2)}`); });
-          hookSlider('#slider-throw', (v) => { gm.setThrowStrengthValue(v); setStatus(`Throw ${v.toFixed(2)}x`); });
-          hookSlider('#slider-gravity', (v) => { gm.setGravityValue(v); setStatus(`Gravity ${v.toFixed(1)}`); });
-          hookSlider('#slider-drag', (v) => { gm.setDragValue(v); setStatus(`Drag ${v.toFixed(2)}`); });
-
-          bind('#btn-env-tron', () => { gm.setEnvironment('tron'); setStatus("Env: Tron Grid"); });
-          bind('#btn-env-dust', () => { gm.setEnvironment('yavapai'); setStatus("Env: Desert"); });
-
-          bind('#btn-spawn-target', () => { gm.spawnTarget(); setStatus("Target repositioned"); });
-          bind('#btn-start', () => { gm.resetWorld(); syncSliders(); setStatus("Session started"); const cam = document.querySelector('a-camera'); const hud = cam && cam.components['hud-manager']; if (hud) hud.hide(); const hint = document.querySelector('#hud-instruction'); if (hint) hint.setAttribute('visible', false); this.uiPanel.setAttribute('visible', false); this.uiVisible = false; });
-          bind('#btn-hud-toggle', () => { const cam = document.querySelector('a-camera'); const hud = cam && cam.components['hud-manager']; if (hud) { hud.el.sceneEl.emit('hud-toggle', { on: undefined }); setStatus("Toggled HUD"); } });
-
-          bind('#btn-reset', () => { gm.resetWorld(); syncSliders(); setStatus("SYSTEM RESET"); });
-          syncSliders();
-        }
-      });
-    </script>
-  </head>
-  <body>
-    <a-scene physics="gravity: -9.8; restitution: 0.5; iterations: 12" game-manager>
+    <!-- PLAYER RIG -->
+    <a-entity id="rig" position="0 0 0">
+      <a-camera position="0 1.6 0" look-controls="pointerLockEnabled: false"></a-camera>
+      <a-entity hand-controls="hand: left"></a-entity>
       
-      <a-assets>
-         <audio id="glass-sound" src="https://cdn.freesound.org/previews/336/336898_4939227-lq.mp3" crossorigin="anonymous"></audio>
-         <a-mixin id="btn" geometry="primitive: box; width: 0.275; height: 0.07; depth: 0.01" material="color: #1f2a36; opacity: 0.92; metalness: 0.1; roughness: 0.6"></a-mixin>
-         <a-mixin id="btn-wide" geometry="primitive: box; width: 0.6; height: 0.08; depth: 0.01" material="color: #233449; opacity: 0.95"></a-mixin>
-         <a-mixin id="btn-hover" animation__enter="property: scale; to: 1.05 1.05 1; startEvents: mouseenter; dur: 120"
-                                  animation__leave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 120"></a-mixin>
-         <a-mixin id="btn-text" text="align: center; width: 1.6; color: #e5f7ff"></a-mixin>
-         <a-mixin id="slider-track" geometry="primitive: plane; width: 0.7; height: 0.04" material="color: #1c2735; opacity: 0.9"></a-mixin>
-         <a-mixin id="slider-fill" geometry="primitive: plane; width: 0.7; height: 0.04" material="color: #1de5c5; opacity: 0.85"></a-mixin>
-         <a-mixin id="slider-handle" geometry="primitive: circle; radius: 0.025" material="color: #00d5ff; emissive: #00d5ff; emissiveIntensity: 0.6"></a-mixin>
-      </a-assets>
+      <!-- RIGHT HAND -->
+      <!-- Added oculus-touch-controls to ensure A-button events work properly -->
+      <a-entity id="rhand" 
+                hand-controls="hand: right"
+                oculus-touch-controls="hand: right"
+                ball-thrower
+                ui-toggler>
+        
+        <!-- UI Pointer / Raycaster -->
+        <a-entity cursor 
+                  raycaster="objects: .clickable; showLine: true; far: 10" 
+                  position="0 0 0" 
+                  line="color: cyan; opacity: 0.5"></a-entity>
 
-      <a-entity id="lab-environment" environment="preset: tron; grid: none; lighting: point; dressing: none"></a-entity>
+        <!-- BAT PARTS -->
+        <a-cylinder id="bat-handle" height="0.15" radius="0.015" color="#555">
+           <a-entity id="axes-handle" visible="false">
+             <a-entity line="start: 0 0 0; end: 0.2 0 0; color: red"></a-entity>   
+             <a-entity line="start: 0 0 0; end: 0 0.2 0; color: green"></a-entity> 
+             <a-entity line="start: 0 0 0; end: 0 0 0.2; color: blue"></a-entity>  
+           </a-entity>
+        </a-cylinder>
 
-      <!-- The Physics Ball -->
-      <a-sphere id="the-ball" position="0 1.5 -2" radius="0.15" color="orange"
-                dynamic-body="mass: 1; linearDamping: 0.01; angularDamping: 0.01" shadow></a-sphere>
+        <a-cylinder id="bat-face" height="0.04" radius="0.24" color="#AA2222" dynamic-body="type: kinematic; mass: 0; shape: sphere; sphereRadius: 0.24; linearDamping: 0; angularDamping: 0" bat-sync-kinematic>
+            <a-box width="0.01" height="0.021" depth="0.1" color="white"></a-box>
+            <a-entity id="axes-face" visible="false">
+              <a-entity line="start: 0 0 0; end: 0.2 0 0; color: red"></a-entity>   
+              <a-entity line="start: 0 0 0; end: 0 0.2 0; color: green"></a-entity> 
+              <a-entity line="start: 0 0 0; end: 0 0 0.2; color: blue"></a-entity>  
+            </a-entity>
+        </a-cylinder>
 
-      <!-- Aim Marker -->
-      <a-sphere id="aim-marker" radius="0.05" color="#00ff00" visible="false" opacity="0.6" material="shader: flat"></a-sphere>
-
-      <!-- Moving Target -->
-      <a-entity id="goal-target" geometry="primitive: box; width: 0.6; height: 0.6; depth: 0.08"
-                material="color: #00ffff; opacity: 0.05; transparent: true"
-                static-body
-                target-goal
-                position="2 1.5 -3">
-        <a-torus class="target-core" radius="0.35" radius-tubular="0.035" color="#1dded4" rotation="0 0 90"
-                 animation__spin="property: rotation; to: 0 360 90; loop: true; dur: 4000; easing: linear"></a-torus>
-        <a-box class="target-core" width="0.18" height="0.18" depth="0.08" color="#f3ffbd"
-               material="emissive: #0ff; emissiveIntensity: 0.2"></a-box>
       </a-entity>
+    </a-entity>
 
-      <!-- Breakable Glass Room -->
-      <a-entity id="room">
-        <a-box class="wall" breakable position="0 3 -5" width="10" height="6" depth="0.2" color="cyan" opacity="0.3" transparent="true" static-body data-orig-pos="0 3 -5"></a-box>
-        <a-box class="wall" breakable position="0 3 5" width="10" height="6" depth="0.2" color="cyan" opacity="0.3" transparent="true" static-body data-orig-pos="0 3 5"></a-box>
-        <a-box class="wall" breakable position="-5 3 0" width="0.2" height="6" depth="10" color="cyan" opacity="0.3" transparent="true" static-body data-orig-pos="-5 3 0"></a-box>
-        <a-box class="wall" breakable position="5 3 0" width="0.2" height="6" depth="10" color="cyan" opacity="0.3" transparent="true" static-body data-orig-pos="5 3 0"></a-box>
-        <a-box class="wall" breakable position="0 6 0" width="10" height="0.2" depth="10" color="cyan" opacity="0.2" transparent="true" static-body data-orig-pos="0 6 0"></a-box>
-      </a-entity>
-      <a-plane static-body rotation="-90 0 0" width="100" height="100" visible="false"></a-plane>
+    <!-- COLLISION TEST BALL (auto fires at walls, bat, ball, target) -->
+    <a-entity collision-tester></a-entity>
 
-      <!-- Player Rig -->
-      <a-entity id="rig" ui-manager>
-        <a-camera position="0 1.6 0" look-controls="pointerLockEnabled: false" hud-manager>
-            <a-text id="hud-instruction" value="Press X or A to Toggle Menu" position="0 -0.25 -0.8" align="center" width="0.9" color="#FFF" opacity="0.5"></a-text>
-            <a-entity id="hud" position="0 0 -0.95" visible="false">
-              <a-plane width="0.7" height="0.18" color="#0f1924" material="opacity: 0.85" position="0 0 0.01"></a-plane>
-              <a-text id="hud-score" value="Score 0 | Combo x0" align="left" position="-0.32 0.04 0.02" width="1.2" color="#e6f1ff"></a-text>
-              <a-text id="hud-timer" value="Time 0.0s" align="right" position="0.32 0.04 0.02" width="1.2" color="#8ad4ff"></a-text>
-              <a-text id="hud-hint" value="Hit the target for points" align="center" position="0 -0.04 0.02" width="1.2" color="#9bd5b0"></a-text>
-            </a-entity>
-        </a-camera>
+    <!-- GLASS BOX -->
+    <a-entity position="0 2 0">
+      <a-mixin id="glass-mat" material="color: #88ccff; opacity: 0.2; transparent: true; side: double"></a-mixin>
+      <a-box width="8" depth="8" height="0.1" position="0 -2.05 0" static-body visible="false"></a-box>
+      <a-plane rotation="-90 0 0" width="8" height="8" position="0 -2 0" src="#grid" repeat="20 20" color="#444"></a-plane>
+      <a-box width="8" depth="8" height="0.1" position="0 3 0" static-body mixin="glass-mat"></a-box>
+      <a-box width="8" height="6" depth="0.1" position="0 0 -4" static-body mixin="glass-mat"></a-box>
+      <a-box width="8" height="6" depth="0.1" position="0 0 4" static-body mixin="glass-mat"></a-box>
+      <a-box width="0.1" height="6" depth="8" position="-4 0 0" static-body mixin="glass-mat"></a-box>
+      <a-box width="0.1" height="6" depth="8" position="4 0 0" static-body mixin="glass-mat"></a-box>
+    </a-entity>
 
-        <!-- LEFT HAND: UI Interaction Only -->
-        <a-entity id="left-hand" laser-controls="hand: left" raycaster="objects: .clickable; far: 2"></a-entity>
+    <!-- BALL -->
+    <a-sphere id="ball" class="clickable" position="0 1.5 -1" radius="0.2" color="#FFF" 
+              material="src: #ball-tex; repeat: 2 1; metalness: 0.05; roughness: 0.6; color: #FFF"
+              dynamic-body="mass: 1; linearDamping: 0.01; angularDamping: 0.01; shape: hull" ball-spin shadow></a-sphere>
 
-        <!-- RIGHT HAND: Kinesis Controller + Vertical Paddle -->
-        <a-entity id="right-hand" laser-controls="hand: right"
-                  raycaster="objects: #the-ball; far: 20"
-                  line="color: blue; opacity: 0.5"
-                  kinesis-controller>
-            
-            <a-entity id="paddle-visual">
-              <a-cylinder radius="0.022" height="0.18" color="#252b37"
-                          material="metalness: 0.6; roughness: 0.25"
-                          rotation="90 0 0" position="0 0 -0.06"></a-cylinder>
-              <a-box width="0.05" height="0.26" depth="0.45" color="#ff5f6d"
-                     material="metalness: 0.15; roughness: 0.35; emissive: #1d1a28; emissiveIntensity: 0.3"
-                     position="0 0 -0.32"
-                     shadow></a-box>
-              <a-box width="0.05" height="0.26" depth="0.45" color="#6ef9ff"
-                     material="opacity: 0.12; transparent: true; emissive: #6ef9ff; emissiveIntensity: 0.6"
-                     position="0 0 -0.32"></a-box>
-              <a-cylinder radius="0.012" height="0.12" color="#00e5ff"
-                          material="emissive: #00d5ff; emissiveIntensity: 0.5"
-                          position="0 0.11 -0.05" rotation="90 0 0"></a-cylinder>
-            </a-entity>
+    <!-- TARGET MANAGER -->
+    <a-entity id="target-manager" target-spawner position="0 0 0"></a-entity>
 
-            <a-box id="paddle-collider" width="0.05" height="0.26" depth="0.45"
-                   position="0 0 -0.32"
-                   visible="false"
-                   dynamic-body="shape: box; mass: 0.001; linearDamping: 0; angularDamping: 0; collisionResponse: true"
-                   paddle-follow></a-box>
-        </a-entity>
-      </a-entity>
+    <!-- UI PANEL (With ID for toggling) -->
+    <a-entity id="ui-panel" position="-1.2 1.6 -0.8" rotation="0 45 0">
+      <a-plane width="1.4" height="2.8" color="#222" material="opacity: 0.95"></a-plane>
+      <a-text value="BAT CONSTRUCTOR" align="center" position="0 0.85 0.01" width="1.5"></a-text>
 
-      <!-- UI PANEL (Hidden by default) -->
-      <a-entity id="ui-panel" visible="false" position="0 1.5 -1.5">
-         <a-plane width="1.05" height="1.9" color="#0c111b" material="opacity: 0.96" shadow>
-            <a-plane width="1.05" height="0.16" color="#152031" position="0 0.62 0.01"></a-plane>
-            <a-text value="SQUASH LAB" align="center" position="0 0.68 0.02" width="2.6" color="#dff3ff"></a-text>
-            <a-text id="ui-status" value="Ready" align="center" position="0 0.6 0.02" width="2" color="#4CC3D9"></a-text>
-            <a-plane width="0.9" height="0.005" color="#233449" position="0 0.52 0.01"></a-plane>
+      <!-- SELECTION -->
+      <a-text value="SELECT PART:" position="-0.6 0.65 0.01" width="1.5" color="#AAA"></a-text>
+      <a-plane id="btn-sel-handle" class="clickable" position="-0.3 0.55 0.02" width="0.5" height="0.15" color="#444">
+        <a-text value="HANDLE" align="center" width="2" color="#FFAA00"></a-text>
+      </a-plane>
+      <a-plane id="btn-sel-face" class="clickable" position="0.3 0.55 0.02" width="0.5" height="0.15" color="#444">
+        <a-text value="FACE" align="center" width="2" color="#00AAFF"></a-text>
+      </a-plane>
 
-            <a-entity position="0 0.46 0">
-                <a-text value="Bounciness" align="center" position="0 0.06 0.02" width="1.6" color="#A7BFD6"></a-text>
-                <a-entity id="slider-bounce" class="clickable" slider-control="min:0; max:1; value:0.5; step:0.02; width:0.7">
-                    <a-plane mixin="slider-track"></a-plane>
-                    <a-plane class="slider-fill" mixin="slider-fill"></a-plane>
-                    <a-circle class="slider-handle" mixin="slider-handle"></a-circle>
-                    <a-text class="slider-label" align="center" position="0 -0.08 0.02" width="1.2" color="#9bd5b0"></a-text>
-                </a-entity>
-            </a-entity>
+      <!-- STATUS -->
+      <a-text value="EDITING:" align="center" position="0 0.35 0.01" width="1.5" color="#AAA"></a-text>
+      <a-text id="ui-target-label" value="FACE" align="center" position="0 0.25 0.01" width="4" color="#00AAFF"></a-text>
 
-            <a-entity position="0 0.25 0">
-                <a-text value="Ball Mass" align="center" position="0 0.06 0.02" width="1.6" color="#A7BFD6"></a-text>
-                <a-entity id="slider-mass" class="clickable" slider-control="min:0.5; max:80; value:1; step:0.5; width:0.7">
-                    <a-plane mixin="slider-track"></a-plane>
-                    <a-plane class="slider-fill" mixin="slider-fill"></a-plane>
-                    <a-circle class="slider-handle" mixin="slider-handle"></a-circle>
-                    <a-text class="slider-label" align="center" position="0 -0.08 0.02" width="1.2" color="#9bd5b0"></a-text>
-                </a-entity>
-            </a-entity>
+      <!-- MODE -->
+      <a-plane width="1.2" height="0.005" color="#555" position="0 0.15 0.01"></a-plane>
+      <a-text id="ui-mode-label" value="POSITION (Move)" align="center" position="0 0.05 0.01" width="2"></a-text>
+      <a-plane id="btn-mode-pos" class="clickable" position="-0.3 -0.1 0.02" width="0.5" height="0.15" color="#334455">
+        <a-text value="MOVE" align="center" width="2"></a-text>
+      </a-plane>
+      <a-plane id="btn-mode-rot" class="clickable" position="0.3 -0.1 0.02" width="0.5" height="0.15" color="#334455">
+        <a-text value="ROTATE" align="center" width="2"></a-text>
+      </a-plane>
 
-            <a-entity position="0 0.04 0">
-                <a-text value="Ball Radius" align="center" position="0 0.06 0.02" width="1.6" color="#A7BFD6"></a-text>
-                <a-entity id="slider-radius" class="clickable" slider-control="min:0.1; max:0.25; value:0.15; step:0.01; width:0.7">
-                    <a-plane mixin="slider-track"></a-plane>
-                    <a-plane class="slider-fill" mixin="slider-fill"></a-plane>
-                    <a-circle class="slider-handle" mixin="slider-handle"></a-circle>
-                    <a-text class="slider-label" align="center" position="0 -0.08 0.02" width="1.2" color="#9bd5b0"></a-text>
-                </a-entity>
-            </a-entity>
+      <!-- AXES -->
+      <a-text value="Red X:" position="-0.6 -0.3 0.01" width="2" color="#FF5555"></a-text>
+      <a-text id="val-x" value="0.00" position="-0.2 -0.3 0.01" width="2" align="center"></a-text>
+      <a-plane id="btn-x-up" class="clickable" position="0.2 -0.3 0.02" width="0.15" height="0.1" color="#444"><a-text value="+" align="center" width="2"></a-text></a-plane>
+      <a-plane id="btn-x-dn" class="clickable" position="0.4 -0.3 0.02" width="0.15" height="0.1" color="#444"><a-text value="-" align="center" width="2"></a-text></a-plane>
 
-            <a-entity position="0 -0.17 0">
-                <a-text value="Throw Strength" align="center" position="0 0.06 0.02" width="1.6" color="#A7BFD6"></a-text>
-                <a-entity id="slider-throw" class="clickable" slider-control="min:0.8; max:2.5; value:1.8; step:0.05; width:0.7">
-                    <a-plane mixin="slider-track"></a-plane>
-                    <a-plane class="slider-fill" mixin="slider-fill"></a-plane>
-                    <a-circle class="slider-handle" mixin="slider-handle"></a-circle>
-                    <a-text class="slider-label" align="center" position="0 -0.08 0.02" width="1.2" color="#9bd5b0"></a-text>
-                </a-entity>
-            </a-entity>
+      <a-text value="Grn Y:" position="-0.6 -0.45 0.01" width="2" color="#55FF55"></a-text>
+      <a-text id="val-y" value="0.00" position="-0.2 -0.45 0.01" width="2" align="center"></a-text>
+      <a-plane id="btn-y-up" class="clickable" position="0.2 -0.45 0.02" width="0.15" height="0.1" color="#444"><a-text value="+" align="center" width="2"></a-text></a-plane>
+      <a-plane id="btn-y-dn" class="clickable" position="0.4 -0.45 0.02" width="0.15" height="0.1" color="#444"><a-text value="-" align="center" width="2"></a-text></a-plane>
 
-            <a-entity position="0 -0.38 0">
-                <a-text value="Gravity" align="center" position="0 0.06 0.02" width="1.6" color="#A7BFD6"></a-text>
-                <a-entity id="slider-gravity" class="clickable" slider-control="min:0; max:15; value:9.8; step:0.1; width:0.7">
-                    <a-plane mixin="slider-track"></a-plane>
-                    <a-plane class="slider-fill" mixin="slider-fill"></a-plane>
-                    <a-circle class="slider-handle" mixin="slider-handle"></a-circle>
-                    <a-text class="slider-label" align="center" position="0 -0.08 0.02" width="1.2" color="#9bd5b0"></a-text>
-                </a-entity>
-            </a-entity>
+      <a-text value="Blu Z:" position="-0.6 -0.6 0.01" width="2" color="#5555FF"></a-text>
+      <a-text id="val-z" value="0.00" position="-0.2 -0.6 0.01" width="2" align="center"></a-text>
+      <a-plane id="btn-z-up" class="clickable" position="0.2 -0.6 0.02" width="0.15" height="0.1" color="#444"><a-text value="+" align="center" width="2"></a-text></a-plane>
+      <a-plane id="btn-z-dn" class="clickable" position="0.4 -0.6 0.02" width="0.15" height="0.1" color="#444"><a-text value="-" align="center" width="2"></a-text></a-plane>
 
-            <a-entity position="0 -0.59 0">
-                <a-text value="Air Drag" align="center" position="0 0.06 0.02" width="1.6" color="#A7BFD6"></a-text>
-                <a-entity id="slider-drag" class="clickable" slider-control="min:0; max:0.2; value:0.01; step:0.01; width:0.7">
-                    <a-plane mixin="slider-track"></a-plane>
-                    <a-plane class="slider-fill" mixin="slider-fill"></a-plane>
-                    <a-circle class="slider-handle" mixin="slider-handle"></a-circle>
-                    <a-text class="slider-label" align="center" position="0 -0.08 0.02" width="1.2" color="#9bd5b0"></a-text>
-                </a-entity>
-            </a-entity>
+      <!-- PHYSICS -->
+      <a-plane width="1.2" height="0.005" color="#555" position="0 -0.72 0.01"></a-plane>
+      <a-text value="PHYSICS" align="center" position="0 -0.64 0.01" width="1.5" color="#AAA"></a-text>
 
-            <a-entity position="0 -0.8 0">
-                <a-text value="Spin Mode" align="center" position="0 0.06 0.02" width="1.6" color="#A7BFD6"></a-text>
-                <a-entity id="btn-spin-off" class="clickable" mixin="btn btn-hover" position="-0.33 0 0.02">
-                    <a-text value="Off" mixin="btn-text" z-offset="0.01"></a-text>
-                </a-entity>
-                <a-entity id="btn-spin-top" class="clickable" mixin="btn btn-hover" position="0 0 0.02">
-                    <a-text value="Top" mixin="btn-text" z-offset="0.01"></a-text>
-                </a-entity>
-                <a-entity id="btn-spin-back" class="clickable" mixin="btn btn-hover" position="0.33 0 0.02">
-                    <a-text value="Back" mixin="btn-text" z-offset="0.01"></a-text>
-                </a-entity>
-            </a-entity>
+      <a-text value="Ball Size:" position="-0.6 -0.82 0.01" width="2" color="#DDD"></a-text>
+      <a-text id="val-size" value="0.20" position="-0.2 -0.82 0.01" width="2" align="center"></a-text>
+      <a-plane id="btn-size-up" class="clickable" position="0.2 -0.82 0.02" width="0.15" height="0.1" color="#444"><a-text value="+" align="center" width="2"></a-text></a-plane>
+      <a-plane id="btn-size-dn" class="clickable" position="0.4 -0.82 0.02" width="0.15" height="0.1" color="#444"><a-text value="-" align="center" width="2"></a-text></a-plane>
 
-            <a-plane width="0.9" height="0.005" color="#233449" position="0 -0.95 0.01"></a-plane>
+      <a-text value="Bounciness:" position="-0.6 -0.97 0.01" width="2" color="#DDD"></a-text>
+      <a-text id="val-bounce" value="0.90" position="-0.2 -0.97 0.01" width="2" align="center"></a-text>
+      <a-plane id="btn-bounce-up" class="clickable" position="0.2 -0.97 0.02" width="0.15" height="0.1" color="#444"><a-text value="+" align="center" width="2"></a-text></a-plane>
+      <a-plane id="btn-bounce-dn" class="clickable" position="0.4 -0.97 0.02" width="0.15" height="0.1" color="#444"><a-text value="-" align="center" width="2"></a-text></a-plane>
 
-            <a-entity position="-0.28 -1.08 0">
-                <a-text value="Env" align="center" position="0 0.06 0.02" width="1.2" color="#A7BFD6"></a-text>
-                <a-entity id="btn-env-tron" class="clickable" mixin="btn btn-hover" position="-0.18 0 0.02">
-                    <a-text value="Tron" mixin="btn-text" z-offset="0.01"></a-text>
-                </a-entity>
-                <a-entity id="btn-env-dust" class="clickable" mixin="btn btn-hover" position="0.18 0 0.02">
-                    <a-text value="Desert" mixin="btn-text" z-offset="0.01"></a-text>
-                </a-entity>
-            </a-entity>
+      <a-text value="Gravity:" position="-0.6 -1.12 0.01" width="2" color="#DDD"></a-text>
+      <a-text id="val-gravity" value="-9.8" position="-0.2 -1.12 0.01" width="2" align="center"></a-text>
+      <a-plane id="btn-gravity-up" class="clickable" position="0.2 -1.12 0.02" width="0.15" height="0.1" color="#444"><a-text value="+" align="center" width="2"></a-text></a-plane>
+      <a-plane id="btn-gravity-dn" class="clickable" position="0.4 -1.12 0.02" width="0.15" height="0.1" color="#444"><a-text value="-" align="center" width="2"></a-text></a-plane>
 
-            <a-entity position="0.28 -1.08 0">
-                <a-text value="HUD" align="center" position="0 0.06 0.02" width="1.2" color="#A7BFD6"></a-text>
-                <a-entity id="btn-start" class="clickable" mixin="btn btn-hover" position="-0.18 0 0.02">
-                    <a-text value="Start" mixin="btn-text" z-offset="0.01"></a-text>
-                </a-entity>
-                <a-entity id="btn-hud-toggle" class="clickable" mixin="btn btn-hover" position="0.18 0 0.02">
-                    <a-text value="Toggle" mixin="btn-text" z-offset="0.01"></a-text>
-                </a-entity>
-            </a-entity>
+      <!-- RESET -->
+      <a-plane id="btn-reset" class="clickable" position="0 -1.35 0.02" width="0.8" height="0.15" color="#AA3333">
+        <a-text value="RESET BALL" align="center" width="1.5"></a-text>
+      </a-plane>
 
-            <a-entity position="0 -1.3 0">
-                <a-entity id="btn-spawn-target" class="clickable" mixin="btn-wide btn-hover" position="0 0.06 0.02">
-                    <a-text value="Spawn / Move Target" mixin="btn-text" z-offset="0.01" width="1.8"></a-text>
-                </a-entity>
-                <a-entity id="btn-reset" class="clickable" mixin="btn-wide btn-hover" position="0 -0.08 0.02"
-                          material="color: #c0392b">
-                    <a-text value="Reset Simulation" mixin="btn-text" z-offset="0.01" width="1.8"></a-text>
-                </a-entity>
-            </a-entity>
-         </a-plane>
-      </a-entity>
+    </a-entity>
 
-    </a-scene>
-  </body>
+    <a-entity light="type: ambient; color: #BBB"></a-entity>
+    <a-entity light="type: directional; color: #FFF; intensity: 0.6" position="-0.5 1 1"></a-entity>
+
+  </a-scene>
+</body>
 </html>
