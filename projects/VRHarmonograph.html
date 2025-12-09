@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Harmonograph XL</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #111; font-family: sans-serif; }
+        #info { position: absolute; top: 10px; width: 100%; text-align: center; color: #888; pointer-events: none; z-index: 999; }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "cannon-es": "https://unpkg.com/cannon-es@0.20.0/dist/cannon-es.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="info">WebXR Harmonograph XL<br/>Enter VR to Paint</div>
+    
+    <script type="module">
+        import * as THREE from 'three';
+        import { VRButton } from 'three/addons/webxr/VRButton.js';
+        import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+        import * as CANNON from 'cannon-es';
+
+        // --- CONFIGURATION ---
+        const TABLE_SIZE = 2.4; // 3x larger (0.8 * 3)
+        const UI_POSITION = new THREE.Vector3(0.7, 1.3, -0.3);
+        const UI_ROTATION = new THREE.Euler(0, -Math.PI / 4, 0);
+
+        // --- GLOBAL VARIABLES ---
+        let scene, camera, renderer, world;
+        let controllers = [], raycaster;
+        let tempMatrix = new THREE.Matrix4();
+        
+        // Objects
+        let tableBody, tableMesh, potBody, potMesh, nozzlePoint;
+        let paintCanvas, paintCtx, paintTexture;
+        let uiTexture, uiContext, uiMesh;
+        
+        // State
+        let lastPaintUV = null;
+        let isFlowing = true;
+        
+        // App State
+        const state = {
+            r: 0, g: 0, b: 0, // 0-255
+            size: 4, // 1-20
+            flowing: true
+        };
+
+        // UI System
+        const uiElements = [];
+        let activeSlider = null;
+
+        init();
+        animate();
+
+        function init() {
+            // 1. Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111111);
+            
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 1.6, 2);
+
+            const light = new THREE.DirectionalLight(0xffffff, 1.5);
+            light.position.set(2, 4, 2);
+            light.castShadow = true;
+            light.shadow.mapSize.width = 2048;
+            light.shadow.mapSize.height = 2048;
+            scene.add(light);
+            scene.add(new THREE.AmbientLight(0x404040));
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.xr.enabled = true;
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+            document.body.appendChild(VRButton.createButton(renderer));
+
+            // 2. Physics
+            world = new CANNON.World();
+            world.gravity.set(0, -9.82, 0);
+            world.solver.iterations = 10;
+            
+            const mat = new CANNON.Material();
+            world.addContactMaterial(new CANNON.ContactMaterial(mat, mat, { friction: 0.1, restitution: 0.2 }));
+
+            // Floor
+            const floor = new THREE.Mesh(
+                new THREE.PlaneGeometry(15, 15), 
+                new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 })
+            );
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // 3. The XL Table
+            createTable(mat);
+            
+            // 4. The Pot
+            createPot(mat);
+
+            // 5. The Comprehensive UI
+            createUI();
+
+            // 6. Controllers
+            setupControllers();
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function createTable(mat) {
+            // Painting Texture
+            paintCanvas = document.createElement('canvas');
+            paintCanvas.width = 2048; // Higher res for larger table
+            paintCanvas.height = 2048;
+            paintCtx = paintCanvas.getContext('2d');
+            paintCtx.fillStyle = '#ffffff';
+            paintCtx.fillRect(0,0,2048,2048);
+            paintTexture = new THREE.CanvasTexture(paintCanvas);
+
+            // Mesh
+            const geo = new THREE.BoxGeometry(TABLE_SIZE, 0.05, TABLE_SIZE);
+            const meshMat = new THREE.MeshStandardMaterial({ map: paintTexture, roughness: 0.8 });
+            tableMesh = new THREE.Mesh(geo, meshMat);
+            tableMesh.castShadow = true;
+            tableMesh.receiveShadow = true;
+            scene.add(tableMesh);
+
+            // Physics
+            const shape = new CANNON.Box(new CANNON.Vec3(TABLE_SIZE/2, 0.025, TABLE_SIZE/2));
+            tableBody = new CANNON.Body({ mass: 10, material: mat }); // Heavier mass for size
+            tableBody.addShape(shape);
+            tableBody.position.set(0, 1.0, -0.5);
+            tableBody.linearDamping = 0.05; 
+            tableBody.angularDamping = 0.1;
+            world.addBody(tableBody);
+
+            // Suspension (Ceiling Anchor)
+            // Raised ceiling to 4.5m to accommodate larger swing radius
+            const ceilingPos = new CANNON.Vec3(0, 4.5, -0.5);
+            const ceilingBody = new CANNON.Body({ mass: 0, position: ceilingPos });
+            world.addBody(ceilingBody);
+
+            const constraint = new CANNON.PointToPointConstraint(
+                tableBody, new CANNON.Vec3(0, 3.5, 0), // Pivot 3.5m above table
+                ceilingBody, new CANNON.Vec3(0, 0, 0)
+            );
+            world.addConstraint(constraint);
+
+            // Visual String
+            addStringVisual(tableMesh, tableBody, ceilingPos);
+        }
+
+        function createPot(mat) {
+            const geo = new THREE.SphereGeometry(0.15, 32, 32);
+            const m = new THREE.MeshStandardMaterial({ color: 0x000000 });
+            potMesh = new THREE.Mesh(geo, m);
+            potMesh.castShadow = true;
+            scene.add(potMesh);
+
+            nozzlePoint = new THREE.Object3D();
+            nozzlePoint.position.set(0, -0.15, 0);
+            potMesh.add(nozzlePoint);
+
+            const shape = new CANNON.Sphere(0.15);
+            potBody = new CANNON.Body({ mass: 2, material: mat });
+            potBody.addShape(shape);
+            potBody.position.set(0, 1.4, -0.5);
+            potBody.linearDamping = 0.02;
+            world.addBody(potBody);
+
+            // Suspension
+            const ceilingPos = new CANNON.Vec3(0, 4.5, -0.5);
+            // Re-use ceiling body concept (static world point)
+            const cBody = new CANNON.Body({ mass: 0, position: ceilingPos });
+            world.addBody(cBody);
+
+            const constraint = new CANNON.PointToPointConstraint(
+                potBody, new CANNON.Vec3(0, 3.1, 0), // Rope length diff
+                cBody, new CANNON.Vec3(0, 0, 0)
+            );
+            world.addConstraint(constraint);
+
+            addStringVisual(potMesh, potBody, ceilingPos);
+        }
+
+        function addStringVisual(mesh, body, anchorVec) {
+            const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+            const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xaaaaaa }));
+            line.userData = { anchor: anchorVec };
+            mesh.userData.string = line;
+            scene.add(line);
+        }
+
+        // --- UI SYSTEM ---
+
+        function createUI() {
+            // High Res Canvas for crisp text
+            const width = 512;
+            const height = 1024;
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            uiContext = canvas.getContext('2d');
+            
+            uiTexture = new THREE.CanvasTexture(canvas);
+            
+            // Create Mesh
+            // Physical size: 0.3m x 0.6m (Half original size roughly, but better aspect)
+            const geometry = new THREE.PlaneGeometry(0.35, 0.7);
+            const material = new THREE.MeshBasicMaterial({ map: uiTexture, transparent: true });
+            uiMesh = new THREE.Mesh(geometry, material);
+            
+            uiMesh.position.copy(UI_POSITION);
+            uiMesh.rotation.copy(UI_ROTATION);
+            scene.add(uiMesh);
+
+            // Define UI Layout
+            const pad = 30;
+            const rowH = 80;
+            let y = 40;
+
+            // Title
+            addLabel(width/2, y, "HARMONOGRAPH", 50, "center"); y += 80;
+
+            // Color Section
+            addLabel(pad, y, "Paint Color (RGB)", 30, "left"); y += 50;
+            addSlider(pad, y, width - pad*2, 40, "r", "Red", '#ff0000'); y += 70;
+            addSlider(pad, y, width - pad*2, 40, "g", "Green", '#00ff00'); y += 70;
+            addSlider(pad, y, width - pad*2, 40, "b", "Blue", '#0000ff'); y += 90;
+
+            // Brush Section
+            addLabel(pad, y, "Brush Size", 30, "left"); y += 50;
+            addSlider(pad, y, width - pad*2, 40, "size", "Size", '#ffffff'); y += 90;
+
+            // Controls
+            addButton(pad, y, width - pad*2, 80, "Toggle Flow", () => {
+                state.flowing = !state.flowing;
+                return state.flowing ? "Flow: ON" : "Flow: OFF";
+            }); y += 100;
+
+            addButton(pad, y, width - pad*2, 80, "Clear Canvas", () => {
+                paintCtx.fillStyle = '#ffffff';
+                paintCtx.fillRect(0,0,2048,2048);
+                paintTexture.needsUpdate = true;
+                return "Canvas Cleared";
+            }); y += 100;
+
+            addButton(pad, y, width - pad*2, 80, "Reset Physics", () => {
+                // Stop momentum
+                tableBody.velocity.set(0,0,0);
+                tableBody.angularVelocity.set(0,0,0);
+                tableBody.position.set(0, 1.0, -0.5);
+                tableBody.quaternion.set(0,0,0,1);
+                
+                potBody.velocity.set(0,0,0);
+                potBody.angularVelocity.set(0,0,0);
+                potBody.position.set(0, 1.4, -0.5);
+                return "Physics Reset";
+            }); y += 100;
+            
+            addButton(pad, y, width - pad*2, 80, "Save Image", () => {
+                const link = document.createElement('a');
+                link.download = `art_${Date.now()}.png`;
+                link.href = paintCanvas.toDataURL();
+                link.click();
+                return "Image Saved";
+            });
+
+            drawUI();
+        }
+
+        function addLabel(x, y, text, size, align) {
+            uiElements.push({ type: 'label', x, y, text, size, align });
+        }
+
+        function addSlider(x, y, w, h, prop, label, color) {
+            uiElements.push({ 
+                type: 'slider', x, y, w, h, prop, label, color,
+                min: prop === 'size' ? 1 : 0,
+                max: prop === 'size' ? 30 : 255
+            });
+        }
+
+        function addButton(x, y, w, h, text, action) {
+            uiElements.push({ type: 'button', x, y, w, h, text, action, stateText: text });
+        }
+
+        function drawUI() {
+            const ctx = uiContext;
+            const w = ctx.canvas.width;
+            const h = ctx.canvas.height;
+
+            // Background
+            ctx.fillStyle = '#222222';
+            ctx.fillRect(0, 0, w, h);
+            ctx.strokeStyle = '#444';
+            ctx.lineWidth = 5;
+            ctx.strokeRect(0, 0, w, h);
+
+            uiElements.forEach(el => {
+                if(el.type === 'label') {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = `bold ${el.size}px sans-serif`;
+                    ctx.textAlign = el.align;
+                    ctx.fillText(el.text, el.x, el.y);
+                }
+                else if(el.type === 'slider') {
+                    // Track
+                    ctx.fillStyle = '#444';
+                    ctx.fillRect(el.x, el.y, el.w, el.h);
+                    
+                    // Value calculation
+                    const val = state[el.prop];
+                    const pct = (val - el.min) / (el.max - el.min);
+                    
+                    // Fill
+                    ctx.fillStyle = el.color;
+                    ctx.fillRect(el.x, el.y, el.w * pct, el.h);
+                    
+                    // Text
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '30px sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(`${el.label}: ${Math.floor(val)}`, el.x, el.y - 10);
+                }
+                else if(el.type === 'button') {
+                    ctx.fillStyle = '#555';
+                    ctx.fillRect(el.x, el.y, el.w, el.h);
+                    
+                    // Hover/Active effect logic could go here
+                    
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 35px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(el.stateText || el.text, el.x + el.w/2, el.y + el.h/2);
+                }
+            });
+
+            // Preview Swatch
+            const swatchY = 130;
+            const swatchX = 350;
+            ctx.fillStyle = `rgb(${state.r}, ${state.g}, ${state.b})`;
+            ctx.fillRect(swatchX, swatchY, 100, 100);
+            ctx.strokeStyle = '#fff';
+            ctx.strokeRect(swatchX, swatchY, 100, 100);
+
+            uiTexture.needsUpdate = true;
+            updatePaintSettings();
+        }
+
+        function updatePaintSettings() {
+            potMesh.material.color.setRGB(state.r/255, state.g/255, state.b/255);
+        }
+
+        // --- CONTROLLER LOGIC ---
+
+        function setupControllers() {
+            const controllerModelFactory = new XRControllerModelFactory();
+            raycaster = new THREE.Raycaster();
+
+            for (let i = 0; i < 2; i++) {
+                const controller = renderer.xr.getController(i);
+                
+                controller.addEventListener('selectstart', onUISelectStart);
+                controller.addEventListener('selectend', onUISelectEnd);
+                controller.addEventListener('squeezestart', onGripStart);
+                controller.addEventListener('squeezeend', onGripEnd);
+
+                controller.userData.id = i;
+                scene.add(controller);
+                controllers.push(controller);
+
+                const grip = renderer.xr.getControllerGrip(i);
+                grip.add(controllerModelFactory.createControllerModel(grip));
+                scene.add(grip);
+                
+                // Physics Hand
+                const cBody = new CANNON.Body({ mass: 0, type: CANNON.Body.KINEMATIC });
+                cBody.collisionFilterGroup = 2; 
+                cBody.addShape(new CANNON.Sphere(0.06));
+                world.addBody(cBody);
+                controller.userData.physicsBody = cBody;
+
+                // Ray Visual
+                const line = new THREE.Line(
+                    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-1)]),
+                    new THREE.LineBasicMaterial({color: 0xffffff})
+                );
+                line.scale.z = 2;
+                controller.add(line);
+                controller.userData.line = line;
+            }
+        }
+
+        function onUISelectStart(event) {
+            const controller = event.target;
+            
+            // Check UI Intersection
+            tempMatrix.identity().extractRotation(controller.matrixWorld);
+            raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+            raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+            const intersects = raycaster.intersectObject(uiMesh);
+
+            if (intersects.length > 0) {
+                const uv = intersects[0].uv;
+                const x = uv.x * 512;
+                const y = (1 - uv.y) * 1024; // Flip Y
+
+                // Check Elements
+                for(let el of uiElements) {
+                    if(x >= el.x && x <= el.x + el.w && y >= el.y && y <= el.y + el.h) {
+                        if(el.type === 'button') {
+                            const res = el.action();
+                            if(res) {
+                                el.stateText = res;
+                                drawUI();
+                                setTimeout(() => { el.stateText = el.text; drawUI(); }, 1000);
+                            }
+                        } else if (el.type === 'slider') {
+                            activeSlider = { el, controller };
+                            updateSlider(el, x);
+                        }
+                    }
+                }
+            }
+        }
+
+        function onUISelectEnd(event) {
+            activeSlider = null;
+        }
+
+        function updateSlider(el, touchX) {
+            let pct = (touchX - el.x) / el.w;
+            pct = Math.max(0, Math.min(1, pct));
+            state[el.prop] = el.min + pct * (el.max - el.min);
+            drawUI();
+        }
+
+        function processActiveSlider() {
+            if(!activeSlider) return;
+            
+            const controller = activeSlider.controller;
+            tempMatrix.identity().extractRotation(controller.matrixWorld);
+            raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+            raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+            const intersects = raycaster.intersectObject(uiMesh);
+            if(intersects.length > 0) {
+                const uv = intersects[0].uv;
+                const x = uv.x * 512;
+                updateSlider(activeSlider.el, x);
+            }
+        }
+
+        // Grabbing Physics
+        function onGripStart(event) {
+            const controller = event.target;
+            const cPos = new CANNON.Vec3(controller.position.x, controller.position.y, controller.position.z);
+            
+            let target = null;
+            if (cPos.distanceTo(potBody.position) < 0.4) target = potBody;
+            else if (cPos.distanceTo(tableBody.position) < TABLE_SIZE/2 + 0.2) target = tableBody;
+
+            if (target) {
+                const constraint = new CANNON.PointToPointConstraint(
+                    controller.userData.physicsBody, new CANNON.Vec3(0,0,0),
+                    target, target.pointToLocalFrame(cPos)
+                );
+                world.addConstraint(constraint);
+                controller.userData.constraint = constraint;
+            }
+        }
+
+        function onGripEnd(event) {
+            const c = event.target;
+            if (c.userData.constraint) {
+                world.removeConstraint(c.userData.constraint);
+                c.userData.constraint = null;
+            }
+        }
+
+        // --- PAINTING ---
+
+        function updatePainting() {
+            if (!state.flowing) { lastPaintUV = null; return; }
+
+            const nozzlePos = new THREE.Vector3();
+            nozzlePoint.getWorldPosition(nozzlePos);
+            
+            raycaster.set(nozzlePos, new THREE.Vector3(0, -1, 0));
+            const hits = raycaster.intersectObject(tableMesh);
+
+            if (hits.length > 0) {
+                const uv = hits[0].uv;
+                const x = uv.x * 2048;
+                const y = (1 - uv.y) * 2048;
+
+                if (lastPaintUV) {
+                    const ctx = paintCtx;
+                    ctx.beginPath();
+                    ctx.strokeStyle = `rgb(${state.r},${state.g},${state.b})`;
+                    ctx.lineWidth = state.size;
+                    ctx.lineCap = 'round';
+                    ctx.moveTo(lastPaintUV.x, lastPaintUV.y);
+                    ctx.lineTo(x, y);
+                    ctx.stroke();
+                    paintTexture.needsUpdate = true;
+                }
+                lastPaintUV = { x, y };
+            } else {
+                lastPaintUV = null;
+            }
+        }
+
+        function updateStrings(mesh) {
+            if(mesh.userData.string) {
+                const line = mesh.userData.string;
+                const pos = line.geometry.attributes.position.array;
+                pos[0] = mesh.position.x; pos[1] = mesh.position.y; pos[2] = mesh.position.z;
+                const anchor = line.userData.anchor;
+                pos[3] = anchor.x; pos[4] = anchor.y; pos[5] = anchor.z;
+                line.geometry.attributes.position.needsUpdate = true;
+            }
+        }
+
+        // --- LOOP ---
+
+        function animate() {
+            renderer.setAnimationLoop(render);
+        }
+
+        function render() {
+            world.step(1/60);
+
+            // Sync Objects
+            tableMesh.position.copy(tableBody.position);
+            tableMesh.quaternion.copy(tableBody.quaternion);
+            potMesh.position.copy(potBody.position);
+            potMesh.quaternion.copy(potBody.quaternion);
+
+            updateStrings(tableMesh);
+            updateStrings(potMesh);
+
+            // Sync Controllers
+            controllers.forEach(c => {
+                const b = c.userData.physicsBody;
+                if(b) {
+                    b.position.set(c.position.x, c.position.y, c.position.z);
+                    b.quaternion.set(c.quaternion.x, c.quaternion.y, c.quaternion.z, c.quaternion.w);
+                }
+            });
+
+            processActiveSlider(); // Dragging logic
+            updatePainting();
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>

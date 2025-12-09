@@ -7,6 +7,106 @@
     <script src="https://unpkg.com/aframe-environment-component@1.3.3/dist/aframe-environment-component.min.js"></script>
     
     <script>
+      const SquashLab = {
+        settings: {
+          throwMultiplier: 1.8,
+          spinMode: 'none',
+          dragEnabled: true,
+          ballSize: 0.15,
+          ballMass: 1,
+          bounciness: 0.5,
+          environment: 'tron'
+        }
+      };
+
+      AFRAME.registerComponent('slider-control', {
+        schema: {
+          min: { type: 'number', default: 0 },
+          max: { type: 'number', default: 1 },
+          value: { type: 'number', default: 0.5 },
+          step: { type: 'number', default: 0.05 },
+          width: { type: 'number', default: 1 }
+        },
+        init: function() {
+          this.handle = this.el.querySelector('.slider-handle');
+          this.fill = this.el.querySelector('.slider-fill');
+          this.label = this.el.querySelector('.slider-label');
+          this.value = this.data.value;
+          this.onClick = this.onClick.bind(this);
+          this.el.addEventListener('click', this.onClick);
+          this.updateVisual();
+        },
+        onClick: function(evt) {
+          const hit = evt.detail && evt.detail.intersection && evt.detail.intersection.point;
+          if (!hit) return;
+          const local = this.el.object3D.worldToLocal(hit.clone());
+          const half = this.data.width / 2;
+          const clampedX = THREE.MathUtils.clamp(local.x, -half, half);
+          const t = (clampedX + half) / this.data.width;
+          const raw = this.data.min + t * (this.data.max - this.data.min);
+          const stepped = Math.round(raw / this.data.step) * this.data.step;
+          this.setValue(stepped);
+        },
+        setValue: function(v) {
+          this.value = THREE.MathUtils.clamp(v, this.data.min, this.data.max);
+          this.updateVisual();
+          this.el.emit('slider-change', { value: this.value });
+        },
+        updateVisual: function() {
+          const t = (this.value - this.data.min) / (this.data.max - this.data.min);
+          const half = this.data.width / 2;
+          const x = (t * this.data.width) - half;
+          if (this.handle) this.handle.setAttribute('position', { x, y: 0, z: 0.02 });
+          if (this.fill) {
+            this.fill.setAttribute('scale', { x: t, y: 1, z: 1 });
+            this.fill.setAttribute('position', { x: (t / 2 - 0.5) * this.data.width, y: 0, z: 0.01 });
+          }
+          if (this.label) this.label.setAttribute('value', this.value.toFixed(2));
+        }
+      });
+
+      AFRAME.registerComponent('paddle-follow', {
+        schema: { boost: {type: 'number', default: 1.1} },
+        init: function() {
+          this.ready = false;
+          this.currentPos = new THREE.Vector3();
+          this.lastPos = new THREE.Vector3();
+          this.worldQuat = new THREE.Quaternion();
+          this.vel = new THREE.Vector3();
+
+          this.el.addEventListener('body-loaded', () => {
+            const body = this.el.body;
+            body.type = CANNON.Body.KINEMATIC;
+            body.mass = 0;
+            body.updateMassProperties();
+            body.allowSleep = false;
+            body.collisionResponse = true;
+            body.linearDamping = 0;
+            body.angularDamping = 0.01;
+            this.ready = true;
+          });
+        },
+        tick: function(time, delta) {
+          if (!this.ready || !delta) return;
+          this.el.object3D.getWorldPosition(this.currentPos);
+          this.el.object3D.getWorldQuaternion(this.worldQuat);
+
+          const dt = delta / 1000;
+          if (dt > 0 && this.lastPos.lengthSq() > 0) {
+            this.vel.copy(this.currentPos).sub(this.lastPos).divideScalar(dt);
+            this.el.body.velocity.set(this.vel.x * this.data.boost, this.vel.y * this.data.boost, this.vel.z * this.data.boost);
+          } else {
+            this.el.body.velocity.set(0, 0, 0);
+          }
+
+          this.el.body.position.set(this.currentPos.x, this.currentPos.y, this.currentPos.z);
+          this.el.body.quaternion.set(this.worldQuat.x, this.worldQuat.y, this.worldQuat.z, this.worldQuat.w);
+          this.el.body.aabbNeedsUpdate = true;
+          this.el.body.wakeUp();
+          this.lastPos.copy(this.currentPos);
+        }
+      });
+
       // ==========================================
       // COMPONENT: Kinesis / Grab Throw Logic
       // ==========================================
@@ -15,6 +115,7 @@
           this.heldObject = null;
           this.raycaster = this.el.components.raycaster;
           this.marker = document.querySelector('#aim-marker');
+          this.gameManager = null;
           
           this.lastPos = new THREE.Vector3();
           this.currentPos = new THREE.Vector3();
@@ -25,6 +126,13 @@
           
           this.el.addEventListener('gripdown', this.onGripDown);
           this.el.addEventListener('gripup', this.onGripUp);
+        },
+
+        getGameManager: function() {
+          if (!this.gameManager) {
+            this.gameManager = this.el.sceneEl.components['game-manager'];
+          }
+          return this.gameManager;
         },
 
         tick: function (time, timeDelta) {
@@ -80,9 +188,16 @@
         onGripUp: function () {
           if (this.heldObject) {
             const body = this.heldObject.body;
-            // Throw Force
-            const throwVec = new THREE.Vector3().copy(this.velocity).multiplyScalar(1.5);
+            const gm = this.getGameManager();
+            const throwMult = gm ? gm.settings.throwMultiplier : SquashLab.settings.throwMultiplier;
+            const throwVec = new THREE.Vector3().copy(this.velocity).multiplyScalar(throwMult);
             body.velocity.set(throwVec.x, throwVec.y, throwVec.z);
+            
+            if (gm) {
+              gm.applySpin(body, throwVec.clone());
+            } else {
+              body.angularVelocity.set(0, 0, 0);
+            }
             
             this.heldObject.setAttribute('material', 'emissive', '#000000');
             this.heldObject.setAttribute('material', 'emissiveIntensity', '0');
@@ -129,7 +244,272 @@
           this.el.setAttribute('visible', false);
           this.el.removeAttribute('static-body');
           this.el.setAttribute('position', '0 -50 0');
+
+          this.el.sceneEl.emit('score-add', { points: 5, reason: 'Glass break' });
         }
+      });
+
+      // ==========================================
+      // COMPONENT: Target goal
+      // ==========================================
+      AFRAME.registerComponent('target-goal', {
+        schema: { points: { type: 'number', default: 25 } },
+        init: function() {
+          this.visual = this.el.querySelector('.target-core');
+          this.cooling = false;
+          this.el.addEventListener('collide', (e) => {
+            if (this.cooling) return;
+            const ball = document.querySelector('#the-ball');
+            if (!ball || e.detail.body !== ball.body) return;
+            this.cooling = true;
+            this.hit();
+            setTimeout(() => this.cooling = false, 200);
+          });
+        },
+        hit: function() {
+          this.el.sceneEl.emit('score-add', { points: this.data.points, reason: 'Target hit' });
+          this.flash();
+          this.teleport();
+        },
+        flash: function() {
+          if (!this.visual) return;
+          this.visual.setAttribute('material', 'emissive', '#00e5ff');
+          setTimeout(() => {
+            if (this.visual) this.visual.setAttribute('material', 'emissive', '#111');
+          }, 150);
+        },
+        teleport: function() {
+          const pos = {
+            x: (Math.random() * 6) - 3,
+            y: 1.2 + Math.random() * 2.3,
+            z: -1.5 - Math.random() * 4
+          };
+          this.el.setAttribute('position', pos);
+        }
+      });
+
+      // ==========================================
+      // COMPONENT: Game Manager / Settings
+      // ==========================================
+      AFRAME.registerComponent('game-manager', {
+        init: function () {
+          this.settings = SquashLab.settings;
+          this.ball = document.querySelector('#the-ball');
+          this.walls = Array.from(document.querySelectorAll('.wall'));
+          this.target = document.querySelector('#goal-target');
+          this.uiStatus = document.querySelector('#ui-status');
+          this.hudScore = document.querySelector('#hud-score');
+          this.hudTimer = document.querySelector('#hud-timer');
+          this.elapsedMs = 0;
+          this.score = 0;
+          this.combo = 0;
+
+          if (this.ball) {
+            this.ball.addEventListener('body-loaded', () => this.setupBall());
+          }
+          this.setupBall();
+          this.randomizeTarget();
+          this.attachEvents();
+        },
+
+        attachEvents: function() {
+          this.el.addEventListener('score-add', (e) => {
+            this.addScore(e.detail.points || 0, e.detail.reason || '');
+          });
+        },
+
+        tick: function(time, delta) {
+          if (!delta) return;
+          this.elapsedMs += delta;
+          if (this.hudTimer) {
+            const seconds = (this.elapsedMs / 1000).toFixed(1);
+            this.hudTimer.setAttribute('value', `Time ${seconds}s`);
+          }
+        },
+
+        setupBall: function() {
+          if (!this.ball || !this.ball.body) return;
+          const body = this.ball.body;
+          body.material.restitution = this.settings.bounciness;
+          body.linearDamping = 0.01;
+          body.angularDamping = 0.01;
+          this.setBallRadius(this.settings.ballSize);
+        },
+
+        addScore: function(points, reason) {
+          this.score += points;
+          this.combo = Math.min(this.combo + 1, 5);
+          if (this.hudScore) {
+            this.hudScore.setAttribute('value', `Score ${this.score} | Combo x${this.combo}`);
+          }
+          if (reason) this.flashStatus(`${reason} (+${points})`);
+        },
+
+        resetCombo: function() {
+          this.combo = 0;
+        },
+
+        flashStatus: function(text) {
+          if (this.uiStatus) this.uiStatus.setAttribute('value', text);
+        },
+
+        applySpin: function(body, throwVec) {
+          if (!body) return;
+          const spinMode = this.settings.spinMode;
+          const spin = 8 * (this.settings.throwMultiplier / 1.5);
+          if (spinMode === 'top') {
+            body.angularVelocity.set(spin, 0, 0);
+          } else if (spinMode === 'back') {
+            body.angularVelocity.set(-spin, 0, 0);
+          } else if (spinMode === 'curve') {
+            body.angularVelocity.set(0, spin, 0);
+          } else {
+            body.angularVelocity.set(0, 0, 0);
+          }
+        },
+
+        setBounciness: function(val, label) {
+          if (!this.ball || !this.ball.body) return;
+          this.settings.bounciness = val;
+          this.ball.body.material.restitution = val;
+          this.flashStatus(`Bounciness: ${label}`);
+        },
+
+        setMass: function(mass, label, color) {
+          if (!this.ball || !this.ball.body) return;
+          this.settings.ballMass = mass;
+          this.ball.body.mass = mass;
+          this.ball.body.updateMassProperties();
+          if (color) this.ball.setAttribute('color', color);
+          this.flashStatus(`Ball: ${label}`);
+        },
+
+        setBallRadius: function(radius) {
+          if (!this.ball || !this.ball.body) return;
+          this.settings.ballSize = radius;
+          this.ball.setAttribute('radius', radius);
+          this.ball.body.shapes.forEach(shape => {
+            if (shape.radius !== undefined) shape.radius = radius;
+          });
+          this.ball.body.updateBoundingRadius();
+          this.flashStatus(`Radius: ${radius.toFixed(2)}`);
+        },
+
+        setGravity: function(val, label) {
+          const physicsWorld = this.el.systems.physics.driver.world;
+          physicsWorld.gravity.set(0, -val, 0);
+          this.flashStatus(`Gravity: ${label}`);
+        },
+
+        setGravityValue: function(val) {
+          const physicsWorld = this.el.systems.physics.driver.world;
+          physicsWorld.gravity.set(0, -val, 0);
+          this.flashStatus(`Gravity: ${val.toFixed(1)}`);
+        },
+
+        setThrowStrength: function(level) {
+          const lookup = { soft: 1.1, medium: 1.6, hard: 2.2 };
+          this.settings.throwMultiplier = lookup[level] || 1.6;
+          this.flashStatus(`Throw: ${level.toUpperCase()}`);
+        },
+
+        setThrowStrengthValue: function(val) {
+          this.settings.throwMultiplier = val;
+          this.flashStatus(`Throw: ${val.toFixed(2)}x`);
+        },
+
+        setSpinMode: function(mode) {
+          this.settings.spinMode = mode;
+          const label = mode === 'none' ? 'Spin Off' : `Spin: ${mode}`;
+          this.flashStatus(label);
+        },
+
+        setDragValue: function(val) {
+          if (!this.ball || !this.ball.body) return;
+          this.settings.dragEnabled = val > 0;
+          this.ball.body.linearDamping = val;
+          this.ball.body.angularDamping = val * 0.7;
+          this.flashStatus(`Air drag: ${val.toFixed(2)}`);
+        },
+
+        setEnvironment: function(preset) {
+          const env = document.querySelector('#lab-environment');
+          if (!env) return;
+          this.settings.environment = preset;
+          env.setAttribute('environment', `preset: ${preset}; grid: none; lighting: point`);
+          this.flashStatus(`Env: ${preset}`);
+        },
+
+        spawnTarget: function() {
+          if (!this.target) return;
+          this.target.setAttribute('visible', true);
+          this.randomizeTarget();
+          this.flashStatus('Target armed');
+        },
+
+        randomizeTarget: function() {
+          if (!this.target) return;
+          const pos = {
+            x: (Math.random() * 6) - 3,
+            y: 1.1 + Math.random() * 2.2,
+            z: -1.2 - Math.random() * 4.3
+          };
+          this.target.setAttribute('position', pos);
+        },
+
+        resetWorld: function() {
+          if (!this.ball || !this.ball.body) return;
+          this.ball.body.position.set(0, 1.5, -2);
+          this.ball.body.velocity.set(0, 0, 0);
+          this.ball.body.angularVelocity.set(0, 0, 0);
+          this.setBallRadius(0.15);
+          this.setBounciness(0.5, 'Neutral');
+          this.setMass(1, 'Balanced', this.ball.getAttribute('color'));
+          this.setDragValue(0.01);
+          this.setGravity(9.8, 'Earth');
+          this.elapsedMs = 0;
+          this.score = 0;
+          this.combo = 0;
+          if (this.hudScore) this.hudScore.setAttribute('value', 'Score 0 | Combo x0');
+
+          this.walls.forEach(wall => {
+            const orig = AFRAME.utils.coordinates.parse(wall.getAttribute('data-orig-pos'));
+            wall.setAttribute('position', orig);
+            wall.setAttribute('visible', true);
+            if(!wall.components['static-body']) wall.setAttribute('static-body', '');
+          });
+
+          this.randomizeTarget();
+          this.flashStatus('System reset');
+        }
+      });
+
+      // ==========================================
+      // COMPONENT: HUD Manager
+      // ==========================================
+      AFRAME.registerComponent('hud-manager', {
+        init: function () {
+          this.hud = this.el.querySelector('#hud');
+          this.visible = false;
+          if (this.hud) this.hud.setAttribute('visible', this.visible);
+          const hint = document.querySelector('#hud-instruction');
+          if (hint) setTimeout(() => hint.setAttribute('visible', false), 6000);
+          this.onToggle = (e) => {
+            const desired = e && e.detail && e.detail.on;
+            if (typeof desired === 'boolean') {
+              this.visible = desired;
+            } else {
+              this.visible = !this.visible;
+            }
+            this.apply();
+          };
+          this.el.sceneEl.addEventListener('hud-toggle', this.onToggle);
+        },
+        apply: function() {
+          if (this.hud) this.hud.setAttribute('visible', this.visible);
+        },
+        show: function() { this.visible = true; this.apply(); },
+        hide: function() { this.visible = false; this.apply(); }
       });
 
       // ==========================================
@@ -143,12 +523,14 @@
           const toggleUI = () => {
             this.uiVisible = !this.uiVisible;
             this.uiPanel.setAttribute('visible', this.uiVisible);
+            const hint = document.querySelector('#hud-instruction');
+            if (hint && this.uiVisible) hint.setAttribute('visible', false);
             
             if(this.uiVisible) {
                 const cam = document.querySelector('a-camera');
                 const pos = cam.object3D.position.clone();
                 const rot = cam.object3D.rotation.clone();
-                const offset = new THREE.Vector3(0, 0, -1.5);
+                const offset = new THREE.Vector3(0, 0, -1.4);
                 offset.applyEuler(rot);
                 pos.add(offset);
                 this.uiPanel.setAttribute('position', pos);
@@ -158,57 +540,103 @@
 
           this.el.addEventListener('xbuttondown', toggleUI);
           this.el.addEventListener('abuttondown', toggleUI);
-          this.setupButtons();
+          this.waitForGM();
         },
 
-        setupButtons: function() {
-          const ball = document.querySelector('#the-ball');
-          const walls = document.querySelectorAll('.wall');
+        waitForGM: function() {
           const scene = document.querySelector('a-scene');
+          const poll = () => {
+            const gm = scene.components['game-manager'];
+            if (gm) {
+              this.setupButtons(gm);
+            } else {
+              setTimeout(poll, 50);
+            }
+          };
+          poll();
+        },
+
+        setupButtons: function(gm) {
           const statusText = document.querySelector('#ui-status');
           const setStatus = (txt) => statusText.setAttribute('value', txt);
-          const bind = (id, fn) => { document.querySelector(id).addEventListener('click', fn); };
+          const bind = (id, fn) => { const el = document.querySelector(id); if (el) el.addEventListener('click', fn); };
+          const hookSlider = (id, fn) => {
+            const el = document.querySelector(id);
+            if (el) el.addEventListener('slider-change', (e) => fn(e.detail.value));
+          };
+          const setSlider = (id, val) => {
+            const el = document.querySelector(id);
+            if (el && el.components['slider-control']) el.components['slider-control'].setValue(val);
+          };
+          const syncSliders = () => {
+            setSlider('#slider-bounce', gm.settings.bounciness);
+            setSlider('#slider-mass', gm.ball && gm.ball.body ? gm.ball.body.mass : gm.settings.ballMass);
+            setSlider('#slider-radius', gm.settings.ballSize);
+            setSlider('#slider-throw', gm.settings.throwMultiplier);
+            const physicsWorld = gm.el.systems.physics.driver.world;
+            setSlider('#slider-gravity', Math.abs(physicsWorld.gravity.y));
+            setSlider('#slider-drag', gm.ball && gm.ball.body ? gm.ball.body.linearDamping : 0.01);
+          };
 
-          bind('#btn-bounce-high', () => { ball.body.material.restitution = 0.95; setStatus("Bounciness: SUPER"); });
-          bind('#btn-bounce-low', () => { ball.body.material.restitution = 0.1; setStatus("Bounciness: DULL"); });
-          bind('#btn-mass-heavy', () => { ball.body.mass = 50; ball.body.updateMassProperties(); ball.setAttribute('color', '#333'); setStatus("Ball: HEAVY IRON"); });
-          bind('#btn-mass-light', () => { ball.body.mass = 1; ball.body.updateMassProperties(); ball.setAttribute('color', 'orange'); setStatus("Ball: TENNIS"); });
-          bind('#btn-grav-moon', () => { scene.systems.physics.driver.world.gravity.set(0, -1.6, 0); setStatus("Gravity: MOON"); });
-          bind('#btn-grav-earth', () => { scene.systems.physics.driver.world.gravity.set(0, -9.8, 0); setStatus("Gravity: EARTH"); });
-          bind('#btn-reset', () => {
-             ball.body.position.set(0, 1.5, -2);
-             ball.body.velocity.set(0,0,0);
-             ball.body.angularVelocity.set(0,0,0);
-             walls.forEach(wall => {
-                const orig = AFRAME.utils.coordinates.parse(wall.getAttribute('data-orig-pos'));
-                wall.setAttribute('position', orig);
-                wall.setAttribute('visible', true);
-                if(!wall.components['static-body']) wall.setAttribute('static-body', '');
-             });
-             setStatus("SYSTEM RESET");
-          });
+          bind('#btn-spin-off', () => { gm.setSpinMode('none'); setStatus("Spin: OFF"); });
+          bind('#btn-spin-top', () => { gm.setSpinMode('top'); setStatus("Spin: TOPSPIN"); });
+          bind('#btn-spin-back', () => { gm.setSpinMode('back'); setStatus("Spin: BACKSPIN"); });
+
+          hookSlider('#slider-bounce', (v) => { gm.setBounciness(v, 'Custom'); setStatus(`Bounciness ${v.toFixed(2)}`); });
+          hookSlider('#slider-mass', (v) => { gm.setMass(v, `Mass ${v.toFixed(1)}`, gm.ball.getAttribute('color')); setStatus(`Mass ${v.toFixed(1)}`); });
+          hookSlider('#slider-radius', (v) => { gm.setBallRadius(v); setStatus(`Radius ${v.toFixed(2)}`); });
+          hookSlider('#slider-throw', (v) => { gm.setThrowStrengthValue(v); setStatus(`Throw ${v.toFixed(2)}x`); });
+          hookSlider('#slider-gravity', (v) => { gm.setGravityValue(v); setStatus(`Gravity ${v.toFixed(1)}`); });
+          hookSlider('#slider-drag', (v) => { gm.setDragValue(v); setStatus(`Drag ${v.toFixed(2)}`); });
+
+          bind('#btn-env-tron', () => { gm.setEnvironment('tron'); setStatus("Env: Tron Grid"); });
+          bind('#btn-env-dust', () => { gm.setEnvironment('yavapai'); setStatus("Env: Desert"); });
+
+          bind('#btn-spawn-target', () => { gm.spawnTarget(); setStatus("Target repositioned"); });
+          bind('#btn-start', () => { gm.resetWorld(); syncSliders(); setStatus("Session started"); const cam = document.querySelector('a-camera'); const hud = cam && cam.components['hud-manager']; if (hud) hud.hide(); const hint = document.querySelector('#hud-instruction'); if (hint) hint.setAttribute('visible', false); this.uiPanel.setAttribute('visible', false); this.uiVisible = false; });
+          bind('#btn-hud-toggle', () => { const cam = document.querySelector('a-camera'); const hud = cam && cam.components['hud-manager']; if (hud) { hud.el.sceneEl.emit('hud-toggle', { on: undefined }); setStatus("Toggled HUD"); } });
+
+          bind('#btn-reset', () => { gm.resetWorld(); syncSliders(); setStatus("SYSTEM RESET"); });
+          syncSliders();
         }
       });
     </script>
   </head>
   <body>
-    <a-scene physics="gravity: -9.8; restitution: 0.5">
+    <a-scene physics="gravity: -9.8; restitution: 0.5; iterations: 12" game-manager>
       
       <a-assets>
          <audio id="glass-sound" src="https://cdn.freesound.org/previews/336/336898_4939227-lq.mp3" crossorigin="anonymous"></audio>
-         <a-mixin id="btn-bg" geometry="primitive: box; width: 0.6; height: 0.15; depth: 0.02" material="color: #444"></a-mixin>
-         <a-mixin id="btn-hover" animation__enter="property: material.color; to: #666; startEvents: mouseenter; dur: 200"
-                                  animation__leave="property: material.color; to: #444; startEvents: mouseleave; dur: 200"></a-mixin>
+         <a-mixin id="btn" geometry="primitive: box; width: 0.275; height: 0.07; depth: 0.01" material="color: #1f2a36; opacity: 0.92; metalness: 0.1; roughness: 0.6"></a-mixin>
+         <a-mixin id="btn-wide" geometry="primitive: box; width: 0.6; height: 0.08; depth: 0.01" material="color: #233449; opacity: 0.95"></a-mixin>
+         <a-mixin id="btn-hover" animation__enter="property: scale; to: 1.05 1.05 1; startEvents: mouseenter; dur: 120"
+                                  animation__leave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 120"></a-mixin>
+         <a-mixin id="btn-text" text="align: center; width: 1.6; color: #e5f7ff"></a-mixin>
+         <a-mixin id="slider-track" geometry="primitive: plane; width: 0.7; height: 0.04" material="color: #1c2735; opacity: 0.9"></a-mixin>
+         <a-mixin id="slider-fill" geometry="primitive: plane; width: 0.7; height: 0.04" material="color: #1de5c5; opacity: 0.85"></a-mixin>
+         <a-mixin id="slider-handle" geometry="primitive: circle; radius: 0.025" material="color: #00d5ff; emissive: #00d5ff; emissiveIntensity: 0.6"></a-mixin>
       </a-assets>
 
-      <a-entity environment="preset: tron; grid: none; lighting: point"></a-entity>
+      <a-entity id="lab-environment" environment="preset: tron; grid: none; lighting: point; dressing: none"></a-entity>
 
       <!-- The Physics Ball -->
       <a-sphere id="the-ball" position="0 1.5 -2" radius="0.15" color="orange"
-                dynamic-body="mass: 1; linearDamping: 0.01" shadow></a-sphere>
+                dynamic-body="mass: 1; linearDamping: 0.01; angularDamping: 0.01" shadow></a-sphere>
 
       <!-- Aim Marker -->
       <a-sphere id="aim-marker" radius="0.05" color="#00ff00" visible="false" opacity="0.6" material="shader: flat"></a-sphere>
+
+      <!-- Moving Target -->
+      <a-entity id="goal-target" geometry="primitive: box; width: 0.6; height: 0.6; depth: 0.08"
+                material="color: #00ffff; opacity: 0.05; transparent: true"
+                static-body
+                target-goal
+                position="2 1.5 -3">
+        <a-torus class="target-core" radius="0.35" radius-tubular="0.035" color="#1dded4" rotation="0 0 90"
+                 animation__spin="property: rotation; to: 0 360 90; loop: true; dur: 4000; easing: linear"></a-torus>
+        <a-box class="target-core" width="0.18" height="0.18" depth="0.08" color="#f3ffbd"
+               material="emissive: #0ff; emissiveIntensity: 0.2"></a-box>
+      </a-entity>
 
       <!-- Breakable Glass Room -->
       <a-entity id="room">
@@ -222,8 +650,14 @@
 
       <!-- Player Rig -->
       <a-entity id="rig" ui-manager>
-        <a-camera position="0 1.6 0" look-controls="pointerLockEnabled: false">
-            <a-text value="Press X or A to Toggle Menu" position="0 -0.5 -1" align="center" width="1.5" color="#FFF" opacity="0.7"></a-text>
+        <a-camera position="0 1.6 0" look-controls="pointerLockEnabled: false" hud-manager>
+            <a-text id="hud-instruction" value="Press X or A to Toggle Menu" position="0 -0.25 -0.8" align="center" width="0.9" color="#FFF" opacity="0.5"></a-text>
+            <a-entity id="hud" position="0 0 -0.95" visible="false">
+              <a-plane width="0.7" height="0.18" color="#0f1924" material="opacity: 0.85" position="0 0 0.01"></a-plane>
+              <a-text id="hud-score" value="Score 0 | Combo x0" align="left" position="-0.32 0.04 0.02" width="1.2" color="#e6f1ff"></a-text>
+              <a-text id="hud-timer" value="Time 0.0s" align="right" position="0.32 0.04 0.02" width="1.2" color="#8ad4ff"></a-text>
+              <a-text id="hud-hint" value="Hit the target for points" align="center" position="0 -0.04 0.02" width="1.2" color="#9bd5b0"></a-text>
+            </a-entity>
         </a-camera>
 
         <!-- LEFT HAND: UI Interaction Only -->
@@ -235,73 +669,141 @@
                   line="color: blue; opacity: 0.5"
                   kinesis-controller>
             
-            <!-- Handle: Cylinder along Z (Forward) -->
-            <a-cylinder radius="0.02" height="0.15" color="#333" 
-                        rotation="90 0 0" position="0 0 -0.05"></a-cylinder>
+            <a-entity id="paddle-visual">
+              <a-cylinder radius="0.022" height="0.18" color="#252b37"
+                          material="metalness: 0.6; roughness: 0.25"
+                          rotation="90 0 0" position="0 0 -0.06"></a-cylinder>
+              <a-box width="0.05" height="0.26" depth="0.45" color="#ff5f6d"
+                     material="metalness: 0.15; roughness: 0.35; emissive: #1d1a28; emissiveIntensity: 0.3"
+                     position="0 0 -0.32"
+                     shadow></a-box>
+              <a-box width="0.05" height="0.26" depth="0.45" color="#6ef9ff"
+                     material="opacity: 0.12; transparent: true; emissive: #6ef9ff; emissiveIntensity: 0.6"
+                     position="0 0 -0.32"></a-box>
+              <a-cylinder radius="0.012" height="0.12" color="#00e5ff"
+                          material="emissive: #00d5ff; emissiveIntensity: 0.5"
+                          position="0 0.11 -0.05" rotation="90 0 0"></a-cylinder>
+            </a-entity>
 
-            <!-- Paddle Blade: Vertical Box (Cricket Bat style) -->
-            <!-- Width=0.02 (Thin edge), Height=0.25 (Vertical face), Depth=0.35 (Length along handle) -->
-            <a-box width="0.02" height="0.25" depth="0.35" color="#d33"
-                   position="0 0 -0.3"
-                   shadow></a-box>
-
-            <!-- Paddle Physics Collider (Invisible) -->
-            <a-box width="0.02" height="0.25" depth="0.35"
-                   position="0 0 -0.3"
+            <a-box id="paddle-collider" width="0.05" height="0.26" depth="0.45"
+                   position="0 0 -0.32"
                    visible="false"
-                   static-body></a-box>
+                   dynamic-body="shape: box; mass: 0.001; linearDamping: 0; angularDamping: 0; collisionResponse: true"
+                   paddle-follow></a-box>
         </a-entity>
       </a-entity>
 
       <!-- UI PANEL (Hidden by default) -->
       <a-entity id="ui-panel" visible="false" position="0 1.5 -1.5">
-         <a-plane width="1.8" height="2.2" color="#111" material="opacity: 0.95" shadow>
-            <a-text value="LAB SETTINGS" align="center" position="0 0.9 0.01" width="5" color="#FFF"></a-text>
-            <a-text id="ui-status" value="Ready" align="center" position="0 0.8 0.01" width="4" color="#4CC3D9"></a-text>
-            <a-plane width="1.6" height="0.01" color="#555" position="0 0.7 0.01"></a-plane>
+         <a-plane width="1.05" height="1.9" color="#0c111b" material="opacity: 0.96" shadow>
+            <a-plane width="1.05" height="0.16" color="#152031" position="0 0.62 0.01"></a-plane>
+            <a-text value="SQUASH LAB" align="center" position="0 0.68 0.02" width="2.6" color="#dff3ff"></a-text>
+            <a-text id="ui-status" value="Ready" align="center" position="0 0.6 0.02" width="2" color="#4CC3D9"></a-text>
+            <a-plane width="0.9" height="0.005" color="#233449" position="0 0.52 0.01"></a-plane>
 
-            <!-- BOUNCINESS -->
-            <a-entity position="0 0.5 0">
-                <a-text value="BOUNCINESS" align="center" position="0 0.12 0.01" width="3" color="#AAA"></a-text>
-                <a-entity id="btn-bounce-low" class="clickable" mixin="btn-bg btn-hover" position="-0.4 0 0.02">
-                    <a-text value="Low" align="center" z-offset="0.01" width="3"></a-text>
-                </a-entity>
-                <a-entity id="btn-bounce-high" class="clickable" mixin="btn-bg btn-hover" position="0.4 0 0.02">
-                    <a-text value="High" align="center" z-offset="0.01" width="3"></a-text>
+            <a-entity position="0 0.46 0">
+                <a-text value="Bounciness" align="center" position="0 0.06 0.02" width="1.6" color="#A7BFD6"></a-text>
+                <a-entity id="slider-bounce" class="clickable" slider-control="min:0; max:1; value:0.5; step:0.02; width:0.7">
+                    <a-plane mixin="slider-track"></a-plane>
+                    <a-plane class="slider-fill" mixin="slider-fill"></a-plane>
+                    <a-circle class="slider-handle" mixin="slider-handle"></a-circle>
+                    <a-text class="slider-label" align="center" position="0 -0.08 0.02" width="1.2" color="#9bd5b0"></a-text>
                 </a-entity>
             </a-entity>
 
-            <!-- MASS -->
-            <a-entity position="0 0.1 0">
-                <a-text value="BALL MASS" align="center" position="0 0.12 0.01" width="3" color="#AAA"></a-text>
-                <a-entity id="btn-mass-light" class="clickable" mixin="btn-bg btn-hover" position="-0.4 0 0.02">
-                    <a-text value="Light" align="center" z-offset="0.01" width="3"></a-text>
-                </a-entity>
-                <a-entity id="btn-mass-heavy" class="clickable" mixin="btn-bg btn-hover" position="0.4 0 0.02">
-                    <a-text value="Heavy" align="center" z-offset="0.01" width="3"></a-text>
-                </a-entity>
-            </a-entity>
-
-            <!-- GRAVITY -->
-            <a-entity position="0 -0.3 0">
-                <a-text value="GRAVITY" align="center" position="0 0.12 0.01" width="3" color="#AAA"></a-text>
-                <a-entity id="btn-grav-earth" class="clickable" mixin="btn-bg btn-hover" position="-0.4 0 0.02">
-                    <a-text value="Earth" align="center" z-offset="0.01" width="3"></a-text>
-                </a-entity>
-                <a-entity id="btn-grav-moon" class="clickable" mixin="btn-bg btn-hover" position="0.4 0 0.02">
-                    <a-text value="Moon" align="center" z-offset="0.01" width="3"></a-text>
+            <a-entity position="0 0.25 0">
+                <a-text value="Ball Mass" align="center" position="0 0.06 0.02" width="1.6" color="#A7BFD6"></a-text>
+                <a-entity id="slider-mass" class="clickable" slider-control="min:0.5; max:80; value:1; step:0.5; width:0.7">
+                    <a-plane mixin="slider-track"></a-plane>
+                    <a-plane class="slider-fill" mixin="slider-fill"></a-plane>
+                    <a-circle class="slider-handle" mixin="slider-handle"></a-circle>
+                    <a-text class="slider-label" align="center" position="0 -0.08 0.02" width="1.2" color="#9bd5b0"></a-text>
                 </a-entity>
             </a-entity>
 
-            <a-plane width="1.6" height="0.01" color="#555" position="0 -0.55 0.01"></a-plane>
+            <a-entity position="0 0.04 0">
+                <a-text value="Ball Radius" align="center" position="0 0.06 0.02" width="1.6" color="#A7BFD6"></a-text>
+                <a-entity id="slider-radius" class="clickable" slider-control="min:0.1; max:0.25; value:0.15; step:0.01; width:0.7">
+                    <a-plane mixin="slider-track"></a-plane>
+                    <a-plane class="slider-fill" mixin="slider-fill"></a-plane>
+                    <a-circle class="slider-handle" mixin="slider-handle"></a-circle>
+                    <a-text class="slider-label" align="center" position="0 -0.08 0.02" width="1.2" color="#9bd5b0"></a-text>
+                </a-entity>
+            </a-entity>
 
-            <!-- RESET -->
-            <a-entity id="btn-reset" class="clickable" position="0 -0.75 0.02" 
-                      geometry="primitive: box; width: 1.4; height: 0.25; depth: 0.02" 
-                      material="color: #c00"
-                      animation__enter="property: scale; to: 1.05 1.05 1; startEvents: mouseenter; dur: 150"
-                      animation__leave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 150">
-                <a-text value="RESET SIMULATION" align="center" width="4" z-offset="0.02" color="white" font="exo2bold"></a-text>
+            <a-entity position="0 -0.17 0">
+                <a-text value="Throw Strength" align="center" position="0 0.06 0.02" width="1.6" color="#A7BFD6"></a-text>
+                <a-entity id="slider-throw" class="clickable" slider-control="min:0.8; max:2.5; value:1.8; step:0.05; width:0.7">
+                    <a-plane mixin="slider-track"></a-plane>
+                    <a-plane class="slider-fill" mixin="slider-fill"></a-plane>
+                    <a-circle class="slider-handle" mixin="slider-handle"></a-circle>
+                    <a-text class="slider-label" align="center" position="0 -0.08 0.02" width="1.2" color="#9bd5b0"></a-text>
+                </a-entity>
+            </a-entity>
+
+            <a-entity position="0 -0.38 0">
+                <a-text value="Gravity" align="center" position="0 0.06 0.02" width="1.6" color="#A7BFD6"></a-text>
+                <a-entity id="slider-gravity" class="clickable" slider-control="min:0; max:15; value:9.8; step:0.1; width:0.7">
+                    <a-plane mixin="slider-track"></a-plane>
+                    <a-plane class="slider-fill" mixin="slider-fill"></a-plane>
+                    <a-circle class="slider-handle" mixin="slider-handle"></a-circle>
+                    <a-text class="slider-label" align="center" position="0 -0.08 0.02" width="1.2" color="#9bd5b0"></a-text>
+                </a-entity>
+            </a-entity>
+
+            <a-entity position="0 -0.59 0">
+                <a-text value="Air Drag" align="center" position="0 0.06 0.02" width="1.6" color="#A7BFD6"></a-text>
+                <a-entity id="slider-drag" class="clickable" slider-control="min:0; max:0.2; value:0.01; step:0.01; width:0.7">
+                    <a-plane mixin="slider-track"></a-plane>
+                    <a-plane class="slider-fill" mixin="slider-fill"></a-plane>
+                    <a-circle class="slider-handle" mixin="slider-handle"></a-circle>
+                    <a-text class="slider-label" align="center" position="0 -0.08 0.02" width="1.2" color="#9bd5b0"></a-text>
+                </a-entity>
+            </a-entity>
+
+            <a-entity position="0 -0.8 0">
+                <a-text value="Spin Mode" align="center" position="0 0.06 0.02" width="1.6" color="#A7BFD6"></a-text>
+                <a-entity id="btn-spin-off" class="clickable" mixin="btn btn-hover" position="-0.33 0 0.02">
+                    <a-text value="Off" mixin="btn-text" z-offset="0.01"></a-text>
+                </a-entity>
+                <a-entity id="btn-spin-top" class="clickable" mixin="btn btn-hover" position="0 0 0.02">
+                    <a-text value="Top" mixin="btn-text" z-offset="0.01"></a-text>
+                </a-entity>
+                <a-entity id="btn-spin-back" class="clickable" mixin="btn btn-hover" position="0.33 0 0.02">
+                    <a-text value="Back" mixin="btn-text" z-offset="0.01"></a-text>
+                </a-entity>
+            </a-entity>
+
+            <a-plane width="0.9" height="0.005" color="#233449" position="0 -0.95 0.01"></a-plane>
+
+            <a-entity position="-0.28 -1.08 0">
+                <a-text value="Env" align="center" position="0 0.06 0.02" width="1.2" color="#A7BFD6"></a-text>
+                <a-entity id="btn-env-tron" class="clickable" mixin="btn btn-hover" position="-0.18 0 0.02">
+                    <a-text value="Tron" mixin="btn-text" z-offset="0.01"></a-text>
+                </a-entity>
+                <a-entity id="btn-env-dust" class="clickable" mixin="btn btn-hover" position="0.18 0 0.02">
+                    <a-text value="Desert" mixin="btn-text" z-offset="0.01"></a-text>
+                </a-entity>
+            </a-entity>
+
+            <a-entity position="0.28 -1.08 0">
+                <a-text value="HUD" align="center" position="0 0.06 0.02" width="1.2" color="#A7BFD6"></a-text>
+                <a-entity id="btn-start" class="clickable" mixin="btn btn-hover" position="-0.18 0 0.02">
+                    <a-text value="Start" mixin="btn-text" z-offset="0.01"></a-text>
+                </a-entity>
+                <a-entity id="btn-hud-toggle" class="clickable" mixin="btn btn-hover" position="0.18 0 0.02">
+                    <a-text value="Toggle" mixin="btn-text" z-offset="0.01"></a-text>
+                </a-entity>
+            </a-entity>
+
+            <a-entity position="0 -1.3 0">
+                <a-entity id="btn-spawn-target" class="clickable" mixin="btn-wide btn-hover" position="0 0.06 0.02">
+                    <a-text value="Spawn / Move Target" mixin="btn-text" z-offset="0.01" width="1.8"></a-text>
+                </a-entity>
+                <a-entity id="btn-reset" class="clickable" mixin="btn-wide btn-hover" position="0 -0.08 0.02"
+                          material="color: #c0392b">
+                    <a-text value="Reset Simulation" mixin="btn-text" z-offset="0.01" width="1.8"></a-text>
+                </a-entity>
             </a-entity>
          </a-plane>
       </a-entity>

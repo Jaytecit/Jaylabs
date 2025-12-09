@@ -6,34 +6,159 @@
   <title>WebXR Curling</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b192d'/%3E%3Ccircle cx='16' cy='16' r='11' fill='%234de1ff'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23040912'/%3E%3C/svg%3E">
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@500;600&display=swap');
     :root {
       --panel-bg: rgba(6, 10, 18, 0.9);
       --accent: #4de1ff;
       --danger: #ff6584;
       --text: #e9f2ff;
       --muted: #9fb4cc;
-      --shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
-      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      --surface: rgba(255, 255, 255, 0.04);
+      --shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+      --player: #ff6b8b;
+      --ai: #ffd84d;
+      font-family: "Barlow Condensed", "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
     }
     * { box-sizing: border-box; }
     body { margin: 0; overflow: hidden; background: #040912; color: var(--text); }
+    .muted { color: var(--muted); }
     #hud {
       position: absolute;
-      top: 12px;
-      left: 12px;
-      background: var(--panel-bg);
-      padding: 12px 14px;
-      border-radius: 10px;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, rgba(6,12,22,0.95), rgba(12,26,44,0.92));
+      padding: 14px 16px 12px;
+      border-radius: 14px;
       box-shadow: var(--shadow);
-      border: 1px solid rgba(255,255,255,0.08);
-      min-width: 240px;
+      border: 1px solid rgba(255,255,255,0.12);
+      min-width: min(92vw, 940px);
       z-index: 10;
       pointer-events: none;
       line-height: 1.4;
+      backdrop-filter: blur(8px);
+      color: var(--text);
     }
-    #hud strong { color: var(--accent); }
-    #hud .title { font-size: 18px; margin-bottom: 6px; font-weight: 700; }
-    #hud .muted { color: var(--muted); font-size: 12px; }
+    #hud .hud-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    #hud .title { font-size: 24px; margin: 0; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+    #hud .subtitle { color: var(--muted); font-size: 13px; letter-spacing: 0.04em; margin-top: 2px; }
+    #hud .hud-right { display: flex; align-items: center; gap: 8px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      text-transform: uppercase;
+    }
+    .pill.live { background: rgba(77,225,255,0.15); border-color: rgba(77,225,255,0.45); color: var(--accent); }
+    .pill.accent { background: rgba(255,107,139,0.2); border-color: rgba(255,107,139,0.5); color: var(--text); }
+    .hud-scoreboard {
+      margin-top: 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      background: var(--surface);
+      overflow: hidden;
+      --end-count: 8;
+    }
+    .hud-row {
+      display: grid;
+      grid-template-columns: 150px minmax(0,1fr) 68px 160px;
+      align-items: center;
+      padding: 8px 12px;
+      gap: 10px;
+    }
+    .hud-row-head {
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .hud-row.team { position: relative; }
+    .hud-row.team.active {
+      background: linear-gradient(90deg, rgba(77,225,255,0.09), rgba(255,255,255,0));
+      box-shadow: inset 0 0 0 1px rgba(77,225,255,0.08);
+    }
+    .team-name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 16px;
+      letter-spacing: 0.04em;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .team-name .tag {
+      width: 26px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(255,255,255,0.08);
+    }
+    .team-name .tag.player { background: rgba(255,107,139,0.22); color: #ffe6ee; }
+    .team-name .tag.ai { background: rgba(255,216,77,0.24); color: #1a1202; }
+    .team-name .next { font-size: 11px; color: var(--muted); letter-spacing: 0.08em; }
+    .ends-grid {
+      display: grid;
+      grid-template-columns: repeat(var(--end-count, 8), minmax(0, 1fr));
+      gap: 4px;
+      align-items: center;
+    }
+    .end-cell {
+      text-align: center;
+      padding: 6px 4px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .end-cell.head { font-weight: 600; color: var(--muted); background: rgba(255,255,255,0.02); }
+    .end-cell.active { border-color: rgba(77,225,255,0.6); color: var(--text); box-shadow: 0 0 0 1px rgba(77,225,255,0.15) inset; }
+    .total-box {
+      text-align: center;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+    }
+    .stone-track {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-start;
+      flex-wrap: wrap;
+    }
+    .pip {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.09);
+      border: 1px solid rgba(255,255,255,0.15);
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.35);
+    }
+    .pip.used { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); opacity: 0.45; }
+    .pip.active { box-shadow: 0 0 0 2px rgba(77,225,255,0.35), 0 0 8px rgba(77,225,255,0.6); border-color: rgba(77,225,255,0.6); }
+    .pip.player { background: radial-gradient(circle at 30% 30%, #ffdce8, #ff6b8b); }
+    .pip.ai { background: radial-gradient(circle at 30% 30%, #fff4cc, #f3c228); }
+    .hud-footer {
+      margin-top: 10px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding-top: 8px;
+      display: grid;
+      gap: 4px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    #statusLabel { color: var(--text); font-weight: 500; letter-spacing: 0.02em; }
+    #scoreLabel { font-weight: 700; color: var(--text); }
     #uiPanel {
       position: absolute;
       top: 50%;
@@ -133,12 +258,50 @@
   </style>
 </head>
 <body>
-  <div id="hud">
-    <div class="title">WebXR Curling</div>
-    <div id="turnLabel">Turn: Player</div>
-    <div id="stonesLabel">Stones: 0 / 0</div>
-    <div id="scoreLabel">Score (Player / AI): 0 - 0</div>
-    <div id="statusLabel" class="muted">Grip to pick up and release to throw. Press B to open tuning UI.</div>
+  <div id="hud" aria-live="polite">
+    <div class="hud-header">
+      <div>
+        <div class="title">Jaylabs Amatuer Championships</div>
+        <div class="subtitle">Sheet A | Coats vs Ardro</div>
+      </div>
+      <div class="hud-right">
+        <span class="pill live" id="endLabel">End 1 of 8</span>
+        <span class="pill accent" id="turnLabel">Coats to deliver</span>
+      </div>
+    </div>
+
+    <div class="hud-scoreboard">
+      <div class="hud-row hud-row-head">
+        <div class="team-name muted">Team</div>
+        <div class="ends-grid" id="endColumns"></div>
+        <div class="total-box muted">Total</div>
+        <div class="stone-track muted">Stones</div>
+      </div>
+      <div class="hud-row team" data-team="player">
+        <div class="team-name">
+          <span class="tag player">C</span>
+          <span class="name">Coats</span>
+        </div>
+        <div class="ends-grid" id="playerEnds"></div>
+        <div class="total-box" id="playerTotal">0</div>
+        <div class="stone-track" id="playerStonesTrack"></div>
+      </div>
+      <div class="hud-row team" data-team="ai">
+        <div class="team-name">
+          <span class="tag ai">A</span>
+          <span class="name">Ardro</span>
+        </div>
+        <div class="ends-grid" id="aiEnds"></div>
+        <div class="total-box" id="aiTotal">0</div>
+        <div class="stone-track" id="aiStonesTrack"></div>
+      </div>
+    </div>
+
+    <div class="hud-footer">
+      <div id="scoreLabel">Totals: Coats 0 | Ardro 0</div>
+      <div id="stonesLabel" class="muted">Stones remaining (Coats / Ardro): 0 / 0</div>
+      <div id="statusLabel">Grip to pick up and release to throw. Press B to open tuning UI.</div>
+    </div>
   </div>
   <div id="crosshair"></div>
   <canvas id="miniMap" width="220" height="220"></canvas>
@@ -227,37 +390,71 @@
     scene.add(arenaLight);
 
     const params = {
-      sheetLength: 44,
-      sheetWidth: 5,
-      houseRadius: 2.0,
+      sheetLength: 44.5, // meters (146 ft)
+      sheetWidth: 4.75,  // meters (max regulation width)
+      houseRadius: 1.83, // meters (12 ft diameter outer ring)
       stoneRadius: 1.0,
       stoneHeight: 1.44,
-      stoneScale: 0.025, // physics wrap scale
-      visualStoneScale: 0.25, // fixed visual scale
+      stoneScale: 0.02, // physics wrap scale
+      visualStoneScale: 0.2, // fixed visual scale
       aiStoneScaleFactor: 10,
       stoneMass: 25,
       friction: 0.00003,
-      restitution: 0.01,
+      restitution: 0.4,
       iceDrag: 0.00002,
-      iceCurl: 0.05,
-      spinCurl: 0.05,
-      throwPower: 8,
-      pushSpeed: 6,
+      spinDrag: 3,
+      iceCurl: 6.0,
+      spinCurl: 0.1,
+      throwPower: 6.5,
+      pushSpeed: 7,
       pushDirectionDeg: 0,
       pushSpin: 0,
-      motionPowerScale: 2.0,
-      twistSpinScale: 0.2,
+      motionPowerScale: 1.7,
+      twistSpinScale: 0.001,
       useControllerAim: true,
-      aiAccuracy: 0.2,
-      aiWeightBias: 0.8
+      aiAccuracy: 0.4,
+      aiWeightBias: 0.8,
+      environmentTheme: 'domed'
     };
+    const eventName = 'Jaylabs Amatuer Championships';
+    const teamNames = { player: 'Coats', ai: 'Ardro' };
+    const teamLabel = (team) => teamNames[team] || team;
+    const matchupLabel = `${teamNames.player} vs ${teamNames.ai}`;
+
+    const clampSpinDrag = (value) => THREE.MathUtils.clamp(value, 0, 4);
+    const maxPhysicsSpinDamping = 0.8;
+    const physicsSpinDamping = (value) => THREE.MathUtils.clamp(value, 0, maxPhysicsSpinDamping);
+    const extraSpinDrag = (value) => Math.max(0, clampSpinDrag(value) - maxPhysicsSpinDamping);
 
     const hud = {
       turn: document.getElementById('turnLabel'),
       stones: document.getElementById('stonesLabel'),
       score: document.getElementById('scoreLabel'),
-      status: document.getElementById('statusLabel')
+      status: document.getElementById('statusLabel'),
+      end: document.getElementById('endLabel'),
+      endColumns: document.getElementById('endColumns'),
+      playerEnds: document.getElementById('playerEnds'),
+      aiEnds: document.getElementById('aiEnds'),
+      playerStones: document.getElementById('playerStonesTrack'),
+      aiStones: document.getElementById('aiStonesTrack'),
+      playerTotal: document.getElementById('playerTotal'),
+      aiTotal: document.getElementById('aiTotal'),
+      scoreboard: document.querySelector('.hud-scoreboard'),
+      rows: {
+        player: document.querySelector('.hud-row[data-team="player"]'),
+        ai: document.querySelector('.hud-row[data-team="ai"]')
+      }
     };
+    const hudTitle = document.querySelector('#hud .title');
+    const hudSubtitle = document.querySelector('#hud .subtitle');
+    const hudTeamLabels = {
+      player: document.querySelector('.hud-row[data-team="player"] .name'),
+      ai: document.querySelector('.hud-row[data-team="ai"] .name')
+    };
+    if (hudTitle) hudTitle.textContent = eventName;
+    if (hudSubtitle) hudSubtitle.textContent = `Sheet A | ${matchupLabel}`;
+    if (hudTeamLabels.player) hudTeamLabels.player.textContent = teamNames.player;
+    if (hudTeamLabels.ai) hudTeamLabels.ai.textContent = teamNames.ai;
 
     const uiPanel = document.getElementById('uiPanel');
     const crosshair = document.getElementById('crosshair');
@@ -288,13 +485,14 @@
     const pointerLines = [];
     const raycasters = [new THREE.Raycaster(), new THREE.Raycaster()];
     const vrPrompt = { group: null, buttons: [] };
-    const crowdData = { mesh: null, material: null, cheer: 0, lights: [], targets: [] };
+    const crowdData = { headMesh: null, torsoMesh: null, material: null, torsoMaterial: null, cheer: 0, lights: [], targets: [], jitter: [] };
     const audio = {
       ctx: null,
       ready: false,
       buffers: {},
       ambience: null,
-      slideBuffers: {}
+      slideBuffers: {},
+      hasGesture: false
     };
 
     const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
@@ -315,7 +513,7 @@
     const houseRings = [];
     const lines = [];
 
-    let housePositionZ = -params.sheetLength / 2 + 4;
+    let housePositionZ = -params.sheetLength / 2 + 4.875; // 4.875m buffer from sheet end to house center (real sheet proportions)
     const loader = new GLTFLoader();
     let playerStoneTemplate = null;
     let aiStoneTemplate = null;
@@ -382,7 +580,7 @@
       if (e.key.toLowerCase() === 'u') toggleUI();
       if (e.key.toLowerCase() === 't') handlePlayerThrow(null);
       if (e.key.toLowerCase() === 'r') resetEnd();
-      startAudio();
+      startAudio(true);
     });
 
     function initSheet() {
@@ -399,21 +597,24 @@
       sheetMesh.receiveShadow = true;
       scene.add(sheetMesh);
 
-      housePositionZ = -params.sheetLength / 2 + 4;
+      housePositionZ = -params.sheetLength / 2 + 4.875; // real sheet leaves ~4.875m from end board to house center
       buildHouseRings();
       buildLines();
       rebuildPhysicsSurface();
     }
 
     function buildHouseRings() {
-      const sizes = [
-        { radius: params.houseRadius, color: '#c82b41' },
-        { radius: params.houseRadius * 0.66, color: '#1d68ff' },
-        { radius: params.houseRadius * 0.33, color: '#ffffff' }
+      const standardOuter = 1.83; // 12 ft outer ring radius
+      const scale = params.houseRadius / standardOuter;
+      const rings = [
+        { outer: 1.83 * scale, inner: 1.22 * scale, color: '#1d68ff' }, // blue 12' to 8'
+        { outer: 1.22 * scale, inner: 0.61 * scale, color: '#ffffff' }, // white 8' to 4'
+        { outer: 0.61 * scale, inner: 0.1525 * scale, color: '#c82b41' } // red 4' to button
       ];
-      sizes.forEach((cfg, idx) => {
-        const geo = new THREE.RingGeometry(cfg.radius * 0.66, cfg.radius, 48);
-        const mat = new THREE.MeshBasicMaterial({ color: cfg.color, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+
+      rings.forEach((cfg, idx) => {
+        const geo = new THREE.RingGeometry(cfg.inner, cfg.outer, 64);
+        const mat = new THREE.MeshBasicMaterial({ color: cfg.color, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
         const ring = new THREE.Mesh(geo, mat);
         ring.rotation.x = -Math.PI / 2;
         ring.position.z = housePositionZ;
@@ -421,16 +622,26 @@
         scene.add(ring);
         houseRings.push(ring);
       });
+
+      const buttonGeo = new THREE.CircleGeometry(0.1525 * scale, 48); // 1 ft diameter
+      const buttonMat = new THREE.MeshBasicMaterial({ color: '#f7d80b', side: THREE.DoubleSide, transparent: true, opacity: 0.95 });
+      const button = new THREE.Mesh(buttonGeo, buttonMat);
+      button.rotation.x = -Math.PI / 2;
+      button.position.z = housePositionZ;
+      button.position.y = 0.001 * (rings.length + 1);
+      scene.add(button);
+      houseRings.push(button);
     }
 
     function buildLines() {
       const lineMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
-      const hogZ = params.sheetLength * 0.15;
       const teeZ = housePositionZ;
-      const backZ = housePositionZ - params.houseRadius;
+      const hogDistance = 6.4016; // 21 ft from tee line
+      const backOffset = 1.829;   // 6 ft behind tee
+      const hackOffset = 3.66;    // 12 ft behind tee
 
-      const addLine = (zPos, color = '#ffffff', width = params.sheetWidth) => {
-        const geo = new THREE.PlaneGeometry(width, 0.05);
+      const addLine = (zPos, color = '#ffffff', width = params.sheetWidth, thickness = 0.05) => {
+        const geo = new THREE.PlaneGeometry(width, thickness);
         const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
         const mesh = new THREE.Mesh(geo, mat);
         mesh.rotation.x = -Math.PI / 2;
@@ -440,10 +651,35 @@
         lines.push(mesh);
       };
 
-      addLine(hogZ, '#ffcc00');
-      addLine(hogZ * -1, '#ffcc00');
-      addLine(teeZ, '#ffffff', params.sheetWidth * 0.5);
-      addLine(backZ, '#aa0000', params.sheetWidth * 0.5);
+      // Centre line (full length)
+      const centerGeo = new THREE.PlaneGeometry(0.06, params.sheetLength);
+      const centerMesh = new THREE.Mesh(centerGeo, lineMat);
+      centerMesh.rotation.x = -Math.PI / 2;
+      centerMesh.position.set(0, 0.0015, 0);
+      scene.add(centerMesh);
+      lines.push(centerMesh);
+
+      // Hog line (delivery side for single-house setup)
+      addLine(teeZ + hogDistance, '#d22', params.sheetWidth);
+
+      // Tee line at house center
+      addLine(teeZ, '#ffffff', params.sheetWidth * 0.8);
+
+      // Back line behind house
+      addLine(teeZ - backOffset, '#ffffff', params.sheetWidth * 0.7);
+
+      // Hack marks (twin)
+      const hackWidth = 0.18;
+      const hackLength = 0.6;
+      [-0.15, 0.15].forEach((xOffset) => {
+        const geo = new THREE.PlaneGeometry(hackWidth, hackLength);
+        const mat = new THREE.MeshBasicMaterial({ color: '#111', side: THREE.DoubleSide });
+        const hack = new THREE.Mesh(geo, mat);
+        hack.rotation.x = -Math.PI / 2;
+        hack.position.set(xOffset, 0.0025, teeZ - hackOffset);
+        scene.add(hack);
+        lines.push(hack);
+      });
     }
 
     function rebuildPhysicsSurface() {
@@ -556,11 +792,12 @@
 
     function makeStoneBody(team) {
       const dims = stoneDimsFor(team);
+      const spinDamping = physicsSpinDamping(params.spinDrag);
       const body = new CANNON.Body({
         mass: params.stoneMass,
         material: stoneMaterial,
         linearDamping: params.iceDrag,
-        angularDamping: params.iceDrag
+        angularDamping: spinDamping
       });
       body.angularFactor.set(0, 1, 0); // allow spin only around up-axis
       body.linearFactor.set(1, 0, 1); // lock vertical translation
@@ -632,7 +869,7 @@
         tryPromptClick(controller);
         return;
       }
-      startAudio();
+      startAudio(true);
       if (gameState.currentTeam !== 'player' || !gameState.activeStone || gameState.activeStone.thrown === true) return;
       const motion = computeMotionThrow(controller);
       if (motion) {
@@ -646,7 +883,7 @@
     function beginGrab(controller) {
       if (gameState.waitingForNextEnd || gameState.gameOver) return;
       if (gameState.currentTeam !== 'player' || !gameState.activeStone || gameState.activeStone.thrown) return;
-      startAudio();
+      startAudio(true);
       grabState.stone = gameState.activeStone;
       grabState.controller = controller;
       const s = grabState.stone;
@@ -656,6 +893,7 @@
       s.body.updateMassProperties();
       s.body.wakeUp();
       hud.status.textContent = 'Hold grip, move to aim, release grip to throw.';
+      drawHudCanvas();
     }
 
     function endGrab(controller) {
@@ -754,9 +992,10 @@
       stone.body.velocity.copy(force);
       stone.spin = spin;
       gameState.thrown[stone.team] += 1;
-      hud.status.textContent = `Stone released (${stone.team === 'player' ? 'Player' : 'AI'})`;
+      hud.status.textContent = `Stone released (${teamLabel(stone.team)})`;
+      drawHudCanvas();
       if (stone.team === 'player') triggerCrowdCheer(0.2);
-      startAudio();
+      startAudio(stone.team === 'player');
       ensureSlideSound(stone.body);
     }
 
@@ -770,8 +1009,9 @@
       stone.thrown = true;
       stone.spin = spin || 0;
       gameState.thrown[stone.team] += 1;
-      hud.status.textContent = `Stone released (${stone.team === 'player' ? 'Player' : 'AI'})`;
-      startAudio();
+      hud.status.textContent = `Stone released (${teamLabel(stone.team)})`;
+      drawHudCanvas();
+      startAudio(true);
       ensureSlideSound(stone.body);
     }
 
@@ -820,14 +1060,19 @@
     }
 
     function setupAudioUnlock() {
-      const unlock = () => startAudio();
+      const unlock = () => {
+        audio.hasGesture = true;
+        startAudio(true);
+      };
       ['pointerdown', 'touchstart', 'keydown'].forEach(evt => {
         window.addEventListener(evt, unlock, { once: true });
       });
     }
 
-    async function startAudio() {
+    async function startAudio(fromUser = false) {
       if (audio.ready) return;
+      audio.hasGesture = audio.hasGesture || fromUser;
+      if (!audio.hasGesture) return;
       try {
         audio.ctx = audio.ctx || new (window.AudioContext || window.webkitAudioContext)();
         await audio.ctx.resume();
@@ -1007,17 +1252,26 @@
       miniCtx.fillStyle = 'rgba(6,12,20,0.95)';
       miniCtx.fillRect(0, 0, w, h);
       const cx = w / 2, cy = h / 2;
-      const scale = Math.min(w, h) * 0.45 / params.houseRadius;
-      const drawRing = (r, color) => {
+      const scale = Math.min(w, h) * 0.5 / params.houseRadius;
+      const { rings } = (function getRingSpecs() {
+        const standardOuter = 1.83;
+        const scale = params.houseRadius / standardOuter;
+        return {
+          rings: [
+            { outer: 1.83 * scale, color: '#1d68ff' },
+            { outer: 1.22 * scale, color: '#ffffff' },
+            { outer: 0.61 * scale, color: '#c82b41' },
+            { outer: 0.1525 * scale, color: '#f7d80b' }
+          ]
+        };
+      })();
+      rings.forEach((ring) => {
         miniCtx.beginPath();
-        miniCtx.strokeStyle = color;
+        miniCtx.strokeStyle = ring.color;
         miniCtx.lineWidth = 4;
-        miniCtx.arc(cx, cy, r * scale, 0, Math.PI * 2);
+        miniCtx.arc(cx, cy, ring.outer * scale, 0, Math.PI * 2);
         miniCtx.stroke();
-      };
-      drawRing(params.houseRadius, '#c82b41');
-      drawRing(params.houseRadius * 0.66, '#1d68ff');
-      drawRing(params.houseRadius * 0.33, '#ffffff');
+      });
       const scoring = computeScoringData();
       stones.filter(s => s.thrown).forEach((s) => {
         const dx = s.body.position.x;
@@ -1050,9 +1304,9 @@
     function showEndOverlay(pScore, aScore) {
       const isFinal = gameState.currentEnd >= gameState.totalEnds;
       const winner = gameState.scores.player === gameState.scores.ai ? 'Tied' :
-        (gameState.scores.player > gameState.scores.ai ? 'Player leads' : 'AI leads');
+        (gameState.scores.player > gameState.scores.ai ? `${teamNames.player} leads` : `${teamNames.ai} leads`);
       endTitle.textContent = isFinal ? 'Game Complete' : `End ${gameState.currentEnd} Complete`;
-      endBody.textContent = `End score — Player: ${pScore}, AI: ${aScore}. Cumulative ${gameState.scores.player} - ${gameState.scores.ai} (${winner}).`;
+      endBody.textContent = `End score - ${teamNames.player}: ${pScore}, ${teamNames.ai}: ${aScore}. Cumulative ${gameState.scores.player} - ${gameState.scores.ai} (${winner}).`;
       endScores.innerHTML = renderEndScoresTable(isFinal);
       nextEndBtn.style.display = isFinal ? 'none' : 'inline-block';
       playAgainBtn.style.display = isFinal ? 'inline-block' : 'none';
@@ -1062,11 +1316,12 @@
       const cheerStrength = Math.max(pScore, aScore) > 0 ? 0.4 + Math.max(pScore, aScore) * 0.3 : 0.2;
       triggerCrowdCheer(cheerStrength);
       gameState.gameOver = isFinal;
+      buildCrowd(); // increase crowd interest for next end
     }
 
     function renderEndScoresTable(includeFinal) {
-      const rows = gameState.endScores.map(es => `<div>End ${es.end}: P ${es.player} — AI ${es.ai}</div>`).join('');
-      const finalLine = includeFinal ? `<div style="margin-top:6px;"><strong>Final:</strong> P ${gameState.scores.player} — AI ${gameState.scores.ai}</div>` : '';
+      const rows = gameState.endScores.map(es => `<div>End ${es.end}: ${teamNames.player} ${es.player} - ${teamNames.ai} ${es.ai}</div>`).join('');
+      const finalLine = includeFinal ? `<div style="margin-top:6px;"><strong>Final:</strong> ${teamNames.player} ${gameState.scores.player} - ${teamNames.ai} ${gameState.scores.ai}</div>` : '';
       return rows + finalLine;
     }
 
@@ -1077,6 +1332,7 @@
       hideVRPrompt();
       resetEnd();
       gameState.waitingForNextEnd = false;
+      buildCrowd();
       drawHudCanvas();
     }
 
@@ -1090,6 +1346,7 @@
       gameState.gameOver = false;
       gameState.waitingForNextEnd = false;
       resetEnd();
+      buildCrowd();
       drawHudCanvas();
     }
 
@@ -1099,6 +1356,7 @@
       endOverlay.style.display = 'none';
       hideVRPrompt();
       hud.status.textContent = 'Game ended.';
+      drawHudCanvas();
     }
 
     function updateStoneMeshes() {
@@ -1136,11 +1394,12 @@
       spawnStone(team);
       updateHud();
       if (team === 'ai') {
-        hud.status.textContent = 'AI thinking...';
+        hud.status.textContent = `${teamNames.ai} thinking...`;
         setTimeout(aiThrow, 800);
       } else {
         hud.status.textContent = 'Grip to grab, move, release to throw (trigger also works).';
       }
+      drawHudCanvas();
     }
 
     function evaluateScore() {
@@ -1185,10 +1444,77 @@
       startTurn('player');
     }
 
+    function getEndValue(endNumber, team) {
+      const found = gameState.endScores.find(e => e.end === endNumber);
+      return found ? found[team] : null;
+    }
+
+    function renderEndHeader() {
+      if (!hud.endColumns) return;
+      hud.endColumns.innerHTML = '';
+      for (let i = 1; i <= gameState.totalEnds; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'end-cell head';
+        if (i === gameState.currentEnd) cell.classList.add('active');
+        cell.textContent = i;
+        hud.endColumns.appendChild(cell);
+      }
+    }
+
+    function renderEndRow(container, team) {
+      if (!container) return;
+      container.innerHTML = '';
+      for (let i = 1; i <= gameState.totalEnds; i++) {
+        const val = getEndValue(i, team);
+        const cell = document.createElement('div');
+        cell.className = 'end-cell';
+        if (i === gameState.currentEnd && gameState.inEnd && !gameState.waitingForNextEnd) {
+          cell.classList.add('active');
+        }
+        cell.textContent = val != null ? val : (i === gameState.currentEnd ? '*' : '-');
+        container.appendChild(cell);
+      }
+    }
+
+    function renderStoneTrack(container, team) {
+      if (!container) return;
+      container.innerHTML = '';
+      const used = gameState.thrown[team];
+      for (let i = 0; i < gameState.stonesPerTeam; i++) {
+        const pip = document.createElement('span');
+        pip.className = `pip ${team}`;
+        if (i < used) pip.classList.add('used');
+        if (gameState.currentTeam === team && i === used && gameState.inEnd && !gameState.waitingForNextEnd) {
+          pip.classList.add('active');
+        }
+        container.appendChild(pip);
+      }
+    }
+
+    function updateScoreboardGrid() {
+      if (hud.scoreboard) hud.scoreboard.style.setProperty('--end-count', gameState.totalEnds);
+      renderEndHeader();
+      renderEndRow(hud.playerEnds, 'player');
+      renderEndRow(hud.aiEnds, 'ai');
+      renderStoneTrack(hud.playerStones, 'player');
+      renderStoneTrack(hud.aiStones, 'ai');
+      if (hud.playerTotal) hud.playerTotal.textContent = gameState.scores.player;
+      if (hud.aiTotal) hud.aiTotal.textContent = gameState.scores.ai;
+      ['player', 'ai'].forEach((team) => {
+        const row = hud.rows && hud.rows[team];
+        if (row) row.classList.toggle('active', gameState.currentTeam === team && !gameState.waitingForNextEnd);
+      });
+    }
+
     function updateHud() {
-      hud.turn.textContent = `Turn: ${gameState.currentTeam === 'player' ? 'Player' : 'AI'}`;
-      hud.stones.textContent = `Stones used (P / AI): ${gameState.thrown.player} / ${gameState.thrown.ai} of ${gameState.stonesPerTeam}`;
-      hud.score.textContent = `End ${gameState.currentEnd}/${gameState.totalEnds} — Score (Player / AI): ${gameState.scores.player} - ${gameState.scores.ai}`;
+      const nextTeamName = teamLabel(gameState.currentTeam);
+      const remainingPlayer = Math.max(0, gameState.stonesPerTeam - gameState.thrown.player);
+      const remainingAi = Math.max(0, gameState.stonesPerTeam - gameState.thrown.ai);
+      if (hud.turn) hud.turn.textContent = `${nextTeamName} to deliver`;
+      if (hud.stones) hud.stones.textContent = `Stones remaining (${teamNames.player} / ${teamNames.ai}): ${remainingPlayer} / ${remainingAi}`;
+      if (hud.score) hud.score.textContent = `Totals: ${teamNames.player} ${gameState.scores.player} | ${teamNames.ai} ${gameState.scores.ai}`;
+      if (hud.end) hud.end.textContent = `End ${gameState.currentEnd} of ${gameState.totalEnds}`;
+      updateScoreboardGrid();
       drawHudCanvas();
     }
 
@@ -1277,12 +1603,12 @@
       uiVisible = !uiVisible;
       uiPanel.style.display = uiVisible ? 'block' : 'none';
       wrapHelpers.visible = uiVisible;
-      setStoneWrapVisible(false);
+      setStoneWrapVisible(uiVisible);
     }
 
     function setStoneWrapVisible(flag) {
       stones.forEach((s) => {
-        if (s.debug) s.debug.visible = false;
+        if (s.debug) s.debug.visible = !!flag;
       });
     }
 
@@ -1363,6 +1689,7 @@
             ['Friction', 'friction', 0.00001, 0.002, 0.00001],
             ['Restitution', 'restitution', 0.01, 0.3, 0.005],
             ['Ice drag', 'iceDrag', 0.00001, 0.002, 0.00001],
+            ['Spin drag', 'spinDrag', 0, 4, 0.05],
             ['Ice curl', 'iceCurl', 0.01, 0.6, 0.01],
             ['Spin curl', 'spinCurl', 0.05, 0.6, 0.01]
           ]
@@ -1411,6 +1738,15 @@
       aimToggle.appendChild(label);
       aimToggle.appendChild(checkbox);
       uiPanel.appendChild(aimToggle);
+
+      const envSection = document.createElement('div');
+      envSection.className = 'section';
+      const envHeader = document.createElement('h3');
+      envHeader.textContent = 'Environment';
+      envSection.appendChild(envHeader);
+      envSection.appendChild(buildButton('Domed arena', () => setEnvironmentTheme('domed')));
+      envSection.appendChild(buildButton('Outdoor sheet', () => setEnvironmentTheme('outdoor')));
+      uiPanel.appendChild(envSection);
     }
 
     function applyParamChange(key) {
@@ -1443,15 +1779,28 @@
           contact.restitution = params.restitution;
           break;
         case 'iceDrag':
-          stones.forEach((s) => { s.body.linearDamping = params.iceDrag; s.body.angularDamping = params.iceDrag; });
+          stones.forEach((s) => {
+            s.body.linearDamping = params.iceDrag;
+            s.body.angularDamping = physicsSpinDamping(params.spinDrag);
+          });
+          break;
+        case 'spinDrag':
+          stones.forEach((s) => { s.body.angularDamping = physicsSpinDamping(params.spinDrag); });
           break;
         default:
           break;
       }
     }
 
+    function setEnvironmentTheme(theme) {
+      params.environmentTheme = theme;
+      buildEnvironment();
+      drawHudCanvas();
+    }
+
     function retuneStonePhysics(stone) {
       const dims = stoneDimsFor(stone.team);
+      const spinDamping = physicsSpinDamping(params.spinDrag);
       stone.mesh.scale.setScalar(params.visualStoneScale);
       stone.body.shapes.length = 0;
       stone.body.shapeOffsets.length = 0;
@@ -1461,6 +1810,8 @@
       stone.body.mass = params.stoneMass;
       stone.body.updateMassProperties();
       stone.body.aabbNeedsUpdate = true;
+      stone.body.linearDamping = params.iceDrag;
+      stone.body.angularDamping = spinDamping;
       stone.body.angularFactor.set(0, 1, 0);
       stone.body.linearFactor.set(1, 0, 1);
       if (stone.debug) {
@@ -1501,11 +1852,33 @@
       }
     }
 
+    function disposeGroup(group) {
+      group.children.slice().forEach((child) => {
+        group.remove(child);
+        child.traverse?.((c) => {
+          if (c.geometry) c.geometry.dispose?.();
+          if (c.material) {
+            if (Array.isArray(c.material)) c.material.forEach(m => m.dispose?.());
+            else c.material.dispose?.();
+          }
+        });
+      });
+    }
+
     function buildEnvironment() {
-      envGroup.clear();
+      disposeGroup(envGroup);
+      const theme = params.environmentTheme || 'domed';
+      scene.background = new THREE.Color(theme === 'outdoor' ? '#7ab6ff' : '#0b192d');
+      hemi.intensity = theme === 'outdoor' ? 1.0 : 0.9;
+      dirLight.intensity = theme === 'outdoor' ? 0.75 : 0.9;
+
       const floorSize = Math.max(params.sheetLength, params.sheetWidth) * 3;
       const floorGeom = new THREE.PlaneGeometry(floorSize, floorSize);
-      const floorMat = new THREE.MeshStandardMaterial({ color: '#0a1014', roughness: 0.9, metalness: 0.05 });
+      const floorMat = new THREE.MeshStandardMaterial({
+        color: theme === 'outdoor' ? '#b7d1e6' : '#0a1014',
+        roughness: theme === 'outdoor' ? 0.85 : 0.9,
+        metalness: theme === 'outdoor' ? 0.05 : 0.1
+      });
       const floor = new THREE.Mesh(floorGeom, floorMat);
       floor.rotation.x = -Math.PI / 2;
       floor.position.y = -0.001;
@@ -1514,10 +1887,14 @@
 
       const boardHeight = stoneDimsFor('player').height * 1.4;
       const boardThickness = 0.15;
-      // Pull the visual boards in to hug the sheet wrap helper.
       const boardLen = params.sheetLength + 0.8;
       const boardWide = params.sheetWidth + 0.8;
-      const boardMat = new THREE.MeshStandardMaterial({ color: '#1a2638', emissive: '#0b101a', metalness: 0.2, roughness: 0.6 });
+      const boardMat = new THREE.MeshStandardMaterial({
+        color: theme === 'outdoor' ? '#d9e4ec' : '#1a2638',
+        emissive: theme === 'outdoor' ? '#8ba8c4' : '#0b101a',
+        metalness: 0.2,
+        roughness: 0.6
+      });
       const makeBoard = (w, h, d, x, z, rotY = 0) => {
         const geo = new THREE.BoxGeometry(w, h, d);
         const mesh = new THREE.Mesh(geo, boardMat);
@@ -1527,15 +1904,44 @@
         mesh.receiveShadow = true;
         envGroup.add(mesh);
       };
-      // Long boards
       makeBoard(boardThickness, boardHeight, boardLen, boardWide / 2, 0);
       makeBoard(boardThickness, boardHeight, boardLen, -boardWide / 2, 0);
-      // Back board
       makeBoard(boardWide, boardHeight, boardThickness, 0, -boardLen / 2);
 
-      // Crowd wall behind back board
+      if (theme === 'domed') {
+        const domeGeo = new THREE.SphereGeometry(40, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+        const domeMat = new THREE.MeshStandardMaterial({
+          color: '#0f1a2a',
+          emissive: '#0a1322',
+          roughness: 0.8,
+          metalness: 0.15,
+          side: THREE.BackSide,
+          transparent: true,
+          opacity: 0.96
+        });
+        const dome = new THREE.Mesh(domeGeo, domeMat);
+        dome.position.y = 10;
+        envGroup.add(dome);
+      } else {
+        const skyGeo = new THREE.SphereGeometry(70, 18, 12);
+        const skyMat = new THREE.MeshBasicMaterial({ color: '#7ab6ff', side: THREE.BackSide });
+        const sky = new THREE.Mesh(skyGeo, skyMat);
+        sky.position.y = 5;
+        envGroup.add(sky);
+
+        const sun = new THREE.DirectionalLight(0xfff1c1, 0.55);
+        sun.position.set(12, 18, 6);
+        envGroup.add(sun);
+      }
+
+      const bannerGeo = new THREE.PlaneGeometry(5, 1.2);
+      const bannerMat = new THREE.MeshBasicMaterial({ color: '#1f7fff', transparent: true, opacity: 0.65 });
+      const banner = new THREE.Mesh(bannerGeo, bannerMat);
+      banner.position.set(0, boardHeight * 1.2, -boardLen / 2 - 0.05);
+      envGroup.add(banner);
+
       const crowdGeo = new THREE.PlaneGeometry(boardWide, boardHeight * 1.5);
-      const crowdMat = new THREE.MeshBasicMaterial({ color: '#112033', transparent: true, opacity: 0.6 });
+      const crowdMat = new THREE.MeshBasicMaterial({ color: '#112033', transparent: true, opacity: theme === 'outdoor' ? 0.4 : 0.6 });
       const crowd = new THREE.Mesh(crowdGeo, crowdMat);
       crowd.position.set(0, boardHeight * 0.75, -boardLen / 2 - 0.2);
       envGroup.add(crowd);
@@ -1589,33 +1995,146 @@
       if (!hudCtx) return;
       const w = hudCanvas.width, h = hudCanvas.height;
       hudCtx.clearRect(0, 0, w, h);
-      hudCtx.fillStyle = 'rgba(8,12,20,0.7)';
+      const bg = hudCtx.createLinearGradient(0, 0, w, h);
+      bg.addColorStop(0, 'rgba(8,14,24,0.95)');
+      bg.addColorStop(1, 'rgba(12,26,44,0.92)');
+      hudCtx.fillStyle = bg;
       hudCtx.fillRect(0, 0, w, h);
+
       hudCtx.fillStyle = '#4de1ff';
-      hudCtx.font = '24px Segoe UI, sans-serif';
-      hudCtx.fillText('Curling HUD (VR)', 16, 32);
-      hudCtx.fillStyle = '#e9f2ff';
-      hudCtx.font = '18px Segoe UI, sans-serif';
-      hudCtx.fillText(`End ${gameState.currentEnd}/${gameState.totalEnds}`, 16, 64);
-      hudCtx.fillText(`Score P/AI: ${gameState.scores.player} - ${gameState.scores.ai}`, 16, 90);
-      hudCtx.fillText(`Turn: ${gameState.currentTeam === 'player' ? 'Player' : 'AI'}`, 16, 116);
-      hudCtx.fillText(`Stones used P/AI: ${gameState.thrown.player}/${gameState.thrown.ai} of ${gameState.stonesPerTeam}`, 16, 142);
-      const status = gameState.waitingForNextEnd ? 'End complete — use UI to advance' :
-        hud.status.textContent || '';
+      hudCtx.font = '26px "Barlow Condensed", "Segoe UI", sans-serif';
+      hudCtx.textAlign = 'left';
+      hudCtx.textBaseline = 'alphabetic';
+      hudCtx.fillText(eventName.toUpperCase(), 18, 34);
       hudCtx.fillStyle = '#9fb4cc';
-      hudCtx.font = '16px Segoe UI, sans-serif';
-      hudCtx.fillText(status, 16, 172);
+      hudCtx.font = '15px "Inter", "Segoe UI", sans-serif';
+      hudCtx.fillText(`End ${gameState.currentEnd} of ${gameState.totalEnds} | Sheet A | ${matchupLabel}`, 18, 54);
+      const nextTeam = teamLabel(gameState.currentTeam);
+      hudCtx.fillStyle = '#e9f2ff';
+      hudCtx.font = '17px "Inter", "Segoe UI", sans-serif';
+      hudCtx.fillText(`${nextTeam} to deliver`, 18, 74);
+      hudCtx.fillText(`Totals: ${teamNames.player} ${gameState.scores.player} | ${teamNames.ai} ${gameState.scores.ai}`, 18, 94);
+
+      const pad = 16;
+      const startY = 106;
+      const teamColW = 110;
+      const totalColW = 46;
+      const endsCount = gameState.totalEnds;
+      const endsWidth = w - pad * 2 - teamColW - totalColW;
+      const cellW = endsWidth / endsCount;
+
+      hudCtx.fillStyle = 'rgba(255,255,255,0.06)';
+      hudCtx.fillRect(pad, startY, w - pad * 2, 24);
+      hudCtx.textAlign = 'center';
+      hudCtx.textBaseline = 'middle';
+      hudCtx.font = '13px "Inter", "Segoe UI", sans-serif';
+      hudCtx.fillStyle = '#9fb4cc';
+      for (let i = 0; i < endsCount; i++) {
+        const x = pad + teamColW + cellW * i + cellW / 2;
+        if (i + 1 === gameState.currentEnd) {
+          hudCtx.strokeStyle = 'rgba(77,225,255,0.6)';
+          hudCtx.lineWidth = 2;
+          hudCtx.strokeRect(pad + teamColW + cellW * i + 2, startY + 2, cellW - 4, 20);
+        }
+        hudCtx.fillText(i + 1, x, startY + 12);
+      }
+      const totalX = pad + teamColW + endsWidth + totalColW / 2;
+      hudCtx.fillText('T', totalX, startY + 12);
+
+      const rows = [
+        { label: teamNames.player.toUpperCase(), team: 'player', color: '#ff6b8b' },
+        { label: teamNames.ai.toUpperCase(), team: 'ai', color: '#ffd84d' }
+      ];
+      const rowGap = 34;
+      rows.forEach((row, idx) => {
+        const rowY = startY + 32 + idx * rowGap;
+        const isActive = gameState.currentTeam === row.team && !gameState.waitingForNextEnd;
+        if (isActive) {
+          hudCtx.fillStyle = 'rgba(77,225,255,0.12)';
+          hudCtx.fillRect(pad, rowY - 16, w - pad * 2, 30);
+        }
+        hudCtx.textAlign = 'left';
+        hudCtx.fillStyle = row.color;
+        hudCtx.font = '18px "Barlow Condensed", "Segoe UI", sans-serif';
+        hudCtx.fillText(row.label, pad + 4, rowY);
+        hudCtx.textAlign = 'center';
+        hudCtx.font = '16px "Inter", "Segoe UI", sans-serif';
+        for (let i = 0; i < endsCount; i++) {
+          const endVal = getEndValue(i + 1, row.team);
+          const display = endVal != null ? endVal : (i + 1 === gameState.currentEnd ? '*' : '-');
+          const x = pad + teamColW + cellW * i + cellW / 2;
+          hudCtx.fillStyle = endVal != null ? '#e9f2ff' : '#6f829c';
+          hudCtx.fillText(display, x, rowY);
+        }
+        hudCtx.fillStyle = '#e9f2ff';
+        hudCtx.fillText(gameState.scores[row.team], totalX, rowY);
+      });
+
+      const trackerStart = startY + 32 + rows.length * rowGap + 12;
+      rows.forEach((row, idx) => {
+        const y = trackerStart + idx * 18;
+        hudCtx.textAlign = 'left';
+        hudCtx.font = '12px "Inter", "Segoe UI", sans-serif';
+        hudCtx.fillStyle = row.color;
+        hudCtx.fillText('stones', pad + 4, y + 2);
+        const totalStones = gameState.stonesPerTeam;
+        const used = gameState.thrown[row.team];
+        for (let i = 0; i < totalStones; i++) {
+          const x = pad + 60 + i * 14;
+          const isUsed = i < used;
+          const isLive = gameState.currentTeam === row.team && i === used && gameState.inEnd && !gameState.waitingForNextEnd;
+          const fill = row.team === 'player' ? ['#ffdce8', '#ff6b8b'] : ['#fff4cc', '#f3c228'];
+          const grad = hudCtx.createRadialGradient(x - 3, y - 3, 2, x, y, 10);
+          grad.addColorStop(0, fill[0]);
+          grad.addColorStop(1, fill[1]);
+          hudCtx.fillStyle = isUsed ? 'rgba(255,255,255,0.16)' : grad;
+          hudCtx.strokeStyle = isLive ? 'rgba(77,225,255,0.8)' : 'rgba(255,255,255,0.35)';
+          hudCtx.lineWidth = isLive ? 2 : 1;
+          hudCtx.beginPath();
+          hudCtx.arc(x, y, 6, 0, Math.PI * 2);
+          hudCtx.fill();
+          hudCtx.stroke();
+          if (isUsed) {
+            hudCtx.fillStyle = 'rgba(0,0,0,0.35)';
+            hudCtx.beginPath();
+            hudCtx.arc(x, y, 6, 0, Math.PI * 2);
+            hudCtx.fill();
+          }
+        }
+      });
+
+      const statusText = hud.status.textContent || '';
+      const isInstruction = /grip|press|controller|toggle|trigger/i.test(statusText);
+      const status = gameState.waitingForNextEnd ? 'End complete - use UI to advance' :
+        (isInstruction ? '' : statusText);
+      hudCtx.textAlign = 'right';
+      hudCtx.textBaseline = 'alphabetic';
+      hudCtx.fillStyle = '#9fb4cc';
+      hudCtx.font = '13px "Inter", "Segoe UI", sans-serif';
+      hudCtx.fillText(status, w - pad, h - 14);
       hudCtx.strokeStyle = '#234';
       hudCtx.strokeRect(0.5, 0.5, w - 1, h - 1);
       if (hudTexture) hudTexture.needsUpdate = true;
     }
 
-    function buildCrowd(boardWide, boardLen, boardHeight) {
-      if (crowdData.mesh) {
-        envGroup.remove(crowdData.mesh);
-        crowdData.mesh.geometry.dispose();
-        crowdData.mesh.material.dispose();
-      }
+    function crowdPopulationForEnd() {
+      const endsMax = Math.max(1, gameState.totalEnds - 1);
+      const ratio = Math.min(1, Math.max(0, (gameState.currentEnd - 1) / endsMax));
+      const base = 3 + Math.round(Math.random()); // start with 3-4 people
+      const target = Math.round(THREE.MathUtils.lerp(base, 140, ratio));
+      return Math.max(base, target);
+    }
+
+    function clearCrowd() {
+      ['headMesh', 'torsoMesh'].forEach((k) => {
+        if (crowdData[k]) {
+          envGroup.remove(crowdData[k]);
+          crowdData[k].geometry.dispose();
+          if (Array.isArray(crowdData[k].material)) crowdData[k].material.forEach(m => m.dispose?.());
+          else crowdData[k].material.dispose();
+          crowdData[k] = null;
+        }
+      });
       if (crowdData.lights) {
         crowdData.lights.forEach(l => { envGroup.remove(l); l.dispose?.(); });
         crowdData.lights = [];
@@ -1624,65 +2143,87 @@
         crowdData.targets.forEach(t => envGroup.remove(t));
         crowdData.targets = [];
       }
-      const rows = 6;
-      const perRow = 30;
-      const count = rows * perRow;
-      const headRadius = 0.21;
-      const geo = new THREE.SphereGeometry(headRadius, 12, 8);
-      const mat = new THREE.MeshPhongMaterial({
-        color: '#b0c8ff',
-        emissive: '#102033',
-        emissiveIntensity: 0.4,
+      crowdData.jitter = [];
+    }
+
+    function buildCrowd(boardWide, boardLen, boardHeight) {
+      clearCrowd();
+      if (!boardWide || !boardLen || !boardHeight) {
+        boardHeight = stoneDimsFor('player').height * 1.4;
+        boardLen = params.sheetLength + 0.8;
+        boardWide = params.sheetWidth + 0.8;
+      }
+      const count = crowdPopulationForEnd();
+      const headRadius = 0.2;
+      const torsoHeight = 0.45;
+      const torsoGeo = new THREE.BoxGeometry(0.32, torsoHeight, 0.18);
+      const torsoMat = new THREE.MeshPhongMaterial({
+        color: '#8fa9c8',
+        emissive: '#0f1a27',
+        emissiveIntensity: 0.15,
         flatShading: true
       });
-      const mesh = new THREE.InstancedMesh(geo, mat, count);
-      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      const palette = ['#f25f5c', '#ffe066', '#247ba0', '#70c1b3', '#ffe8d6'];
+      const torsoMesh = new THREE.InstancedMesh(torsoGeo, torsoMat, count);
+      torsoMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+      const headGeo = new THREE.SphereGeometry(headRadius, 14, 10);
+      const headMat = new THREE.MeshPhongMaterial({
+        color: '#d6c3b0',
+        emissive: '#101820',
+        emissiveIntensity: 0.25,
+        flatShading: true
+      });
+      const headMesh = new THREE.InstancedMesh(headGeo, headMat, count);
+      headMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
       const baseZ = housePositionZ - boardLen * 0.25 - 4.5;
-      const rowDepth = 0.9;
-      const rowRise = 0.5;
+      const depthSpread = 5;
+      const heightSpread = 2.2;
       crowdData.jitter = [];
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < perRow; c++) {
-          const i = r * perRow + c;
-          const spread = boardWide * 1.4;
-          const x = -spread / 2 + (c / (perRow - 1)) * spread + (Math.random() - 0.5) * 0.2;
-          const z = baseZ - r * rowDepth + (Math.random() - 0.5) * 0.2;
-          const y = boardHeight * 1.0 + r * rowRise + (Math.random() - 0.5) * 0.1;
-          const m = new THREE.Matrix4();
-          m.makeRotationY(0);
-          m.setPosition(x, y, z);
-          mesh.setMatrixAt(i, m);
-          crowdData.jitter.push({
-            base: new THREE.Vector3(x, y, z),
-            phase: Math.random() * Math.PI * 2,
-            freq: THREE.MathUtils.lerp(0.5, 1.4, Math.random()),
-            amp: THREE.MathUtils.lerp(0.02, 0.05, Math.random())
-          });
-          const color = new THREE.Color();
-          // Common hair tones including grey
-          const hairPalette = [
-            '#2d1b0a', // dark brown
-            '#4a4a4a', // black
-            '#d4b483', // blond
-            '#8b5a2b', // medium brown
-            '#b56576', // auburn
-            '#c0c0c0', // grey
-            '#9a9a9a'  // darker grey
-          ];
-          color.set(hairPalette[Math.floor(Math.random() * hairPalette.length)]);
-          color.offsetHSL((Math.random() - 0.5) * 0.06, (Math.random() - 0.5) * 0.08, (Math.random() - 0.5) * 0.08);
-          mesh.setColorAt(i, color);
-        }
+      const skinPalette = ['#f7d7c4', '#e7c2a0', '#d1a074', '#b67c50', '#8b5a33', '#6d4426'];
+      const jacketPalette = ['#1f7fff', '#f25f5c', '#ffe066', '#247ba0', '#70c1b3', '#9b8bf4', '#f78fb3'];
+      const widthSpread = boardWide * 1.4;
+      for (let i = 0; i < count; i++) {
+        const x = THREE.MathUtils.randFloatSpread(widthSpread);
+        const z = baseZ - Math.random() * depthSpread + THREE.MathUtils.randFloatSpread(0.4);
+        const baseY = boardHeight * 1.0 + Math.random() * heightSpread;
+        const mTorso = new THREE.Matrix4();
+        mTorso.makeRotationY((Math.random() - 0.5) * 0.25);
+        mTorso.setPosition(x, baseY, z);
+        torsoMesh.setMatrixAt(i, mTorso);
+
+        const mHead = new THREE.Matrix4();
+        const headY = baseY + torsoHeight * 0.5 + headRadius * 0.95;
+        mHead.makeRotationY((Math.random() - 0.5) * 0.3);
+        mHead.setPosition(x, headY, z);
+        headMesh.setMatrixAt(i, mHead);
+
+        crowdData.jitter.push({
+          base: new THREE.Vector3(x, headY, z),
+          baseTorso: new THREE.Vector3(x, baseY, z),
+          phase: Math.random() * Math.PI * 2,
+          freq: THREE.MathUtils.lerp(0.5, 1.4, Math.random()),
+          amp: THREE.MathUtils.lerp(0.02, 0.05, Math.random())
+        });
+
+        const jacket = new THREE.Color(jacketPalette[Math.floor(Math.random() * jacketPalette.length)]);
+        jacket.offsetHSL((Math.random() - 0.5) * 0.05, (Math.random() - 0.5) * 0.08, (Math.random() - 0.5) * 0.08);
+        torsoMesh.setColorAt(i, jacket);
+        const skin = new THREE.Color(skinPalette[Math.floor(Math.random() * skinPalette.length)]);
+        headMesh.setColorAt(i, skin);
       }
-      mesh.castShadow = false;
-      mesh.receiveShadow = false;
-      envGroup.add(mesh);
-      crowdData.mesh = mesh;
-      crowdData.material = mat;
+      headMesh.castShadow = false;
+      headMesh.receiveShadow = false;
+      torsoMesh.castShadow = false;
+      torsoMesh.receiveShadow = false;
+      envGroup.add(torsoMesh);
+      envGroup.add(headMesh);
+      crowdData.headMesh = headMesh;
+      crowdData.torsoMesh = torsoMesh;
+      crowdData.material = headMat;
+      crowdData.torsoMaterial = torsoMat;
       crowdData.cheer = 0;
 
-      // Crowd lighting from above/front
       const addLight = (xOffset) => {
         const light = new THREE.SpotLight(0x9fcfff, 0.8, 40, Math.PI / 5, 0.4, 1.5);
         light.position.set(xOffset, boardHeight * 2.2, housePositionZ - (params.sheetLength * 0.25) - 4);
@@ -1752,9 +2293,12 @@
         crowdData.cheer = Math.max(0, crowdData.cheer - dt * 0.6);
       }
       const lively = 0.05 * Math.sin(timeElapsed * 2);
-      crowdData.material.emissiveIntensity = 0.4 + crowdData.cheer * 0.8 + lively;
-      if (crowdData.mesh && crowdData.jitter) {
+      const emissiveBase = 0.25 + crowdData.cheer * 0.8 + lively;
+      if (crowdData.material) crowdData.material.emissiveIntensity = emissiveBase;
+      if (crowdData.torsoMaterial) crowdData.torsoMaterial.emissiveIntensity = 0.1 + crowdData.cheer * 0.5;
+      if (crowdData.headMesh && crowdData.jitter) {
         const m = new THREE.Matrix4();
+        const mTorso = new THREE.Matrix4();
         const q = new THREE.Quaternion();
         const tmp = new THREE.Vector3();
         crowdData.jitter.forEach((j, idx) => {
@@ -1764,9 +2308,15 @@
           q.setFromEuler(new THREE.Euler(0, nod * 0.8, 0));
           m.makeRotationFromQuaternion(q);
           m.setPosition(tmp);
-          crowdData.mesh.setMatrixAt(idx, m);
+          crowdData.headMesh.setMatrixAt(idx, m);
+          const torsoPos = j.baseTorso.clone();
+          torsoPos.y += sway * 0.6;
+          mTorso.makeRotationFromQuaternion(q);
+          mTorso.setPosition(torsoPos);
+          crowdData.torsoMesh.setMatrixAt(idx, mTorso);
         });
-        crowdData.mesh.instanceMatrix.needsUpdate = true;
+        crowdData.headMesh.instanceMatrix.needsUpdate = true;
+        crowdData.torsoMesh.instanceMatrix.needsUpdate = true;
       }
     }
 
@@ -1795,7 +2345,7 @@
       const label = makeLabelMesh(gameState.currentEnd >= gameState.totalEnds ? 'Game Complete' : `End ${gameState.currentEnd} Complete`, 0.5);
       label.position.set(0, 0.2, 0.01);
       group.add(label);
-      const desc = makeLabelMesh(`End: P ${pScore} / AI ${aScore} | Total: ${gameState.scores.player}-${gameState.scores.ai}`, 0.22);
+      const desc = makeLabelMesh(`End: ${teamNames.player} ${pScore} / ${teamNames.ai} ${aScore} | Total: ${gameState.scores.player}-${gameState.scores.ai}`, 0.22);
       desc.position.set(0, -0.05, 0.01);
       group.add(desc);
 
@@ -1891,6 +2441,16 @@
       applyList(stones);
     }
 
+    function applyExtraSpinDamping(delta) {
+      const extra = extraSpinDrag(params.spinDrag);
+      if (extra <= 0) return;
+      const factor = Math.max(0, 1 - extra * delta);
+      stones.forEach((s) => {
+        if (!s.thrown || s.body.sleepState === CANNON.Body.SLEEPING) return;
+        s.body.angularVelocity.scale(factor, s.body.angularVelocity);
+      });
+    }
+
     function animate() {
       renderer.setAnimationLoop(render);
     }
@@ -1907,6 +2467,7 @@
       keepStonesUpright(stones);
       applyCurlDrag(dt);
       applySpinCurve(stones);
+      applyExtraSpinDamping(dt);
       updateStoneMeshes();
       updateMiniMap();
       updateAimIndicator();
