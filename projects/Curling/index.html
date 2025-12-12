@@ -334,6 +334,7 @@
     import * as THREE from 'three';
     import { OrbitControls } from 'https://unpkg.com/three@0.164.1/examples/jsm/controls/OrbitControls.js';
     import { GLTFLoader } from 'https://unpkg.com/three@0.164.1/examples/jsm/loaders/GLTFLoader.js';
+    import { RGBELoader } from 'https://unpkg.com/three@0.164.1/examples/jsm/loaders/RGBELoader.js';
     import { XRButton } from 'https://unpkg.com/three@0.164.1/examples/jsm/webxr/XRButton.js';
     import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js';
 
@@ -351,6 +352,8 @@
     renderer.xr.enabled = true;
     renderer.shadowMap.enabled = true;
     document.body.appendChild(renderer.domElement);
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    pmremGenerator.compileEquirectangularShader();
 
     // Strip unsupported XR optional features (notably "layers") to avoid noisy console warnings on platforms
     // that don't implement them yet.
@@ -416,6 +419,10 @@
       aiWeightBias: 0.8,
       environmentTheme: 'domed'
     };
+    const stoneColors = {
+      player: { albedo: '#f3a5bb', emissive: '#f1c7d4', emissiveIntensity: 0.16 },
+      ai: { albedo: '#ffd84d', emissive: '#ffd84d', emissiveIntensity: 0.24 }
+    };
     const eventName = 'Jaylabs Amatuer Championships';
     const teamNames = { player: 'Coats', ai: 'Ardro' };
     const teamLabel = (team) => teamNames[team] || team;
@@ -425,6 +432,16 @@
     const maxPhysicsSpinDamping = 0.8;
     const physicsSpinDamping = (value) => THREE.MathUtils.clamp(value, 0, maxPhysicsSpinDamping);
     const extraSpinDrag = (value) => Math.max(0, clampSpinDrag(value) - maxPhysicsSpinDamping);
+    const stoneVisualRotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
+    const environmentModes = ['passendorf', 'rink', 'off'];
+    let environmentModeIndex = 0;
+    let currentEnvironmentMode = environmentModes[environmentModeIndex];
+    const environmentMaps = {
+      passendorf: { env: null, background: null },
+      rink: { env: null, background: null }
+    };
+    let environmentBaseBackground = scene.background.clone();
+    let iceTexture = null;
 
     const hud = {
       turn: document.getElementById('turnLabel'),
@@ -515,6 +532,8 @@
 
     let housePositionZ = -params.sheetLength / 2 + 4.875; // 4.875m buffer from sheet end to house center (real sheet proportions)
     const loader = new GLTFLoader();
+    const rgbeLoader = new RGBELoader();
+    const textureLoader = new THREE.TextureLoader();
     let playerStoneTemplate = null;
     let aiStoneTemplate = null;
 
@@ -547,6 +566,7 @@
     scene.add(aimArrow);
     const envGroup = new THREE.Group();
     scene.add(envGroup);
+    let skyDome = null;
     const wrapHelpers = new THREE.Group();
     wrapHelpers.visible = false;
     scene.add(wrapHelpers);
@@ -562,6 +582,7 @@
     initSheet();
     buildEnvironment();
     buildVRPanels();
+    loadEnvironmentMaps();
     updateRigPosition();
     loadStones().then(() => {
       startTurn('player');
@@ -577,9 +598,11 @@
 
     window.addEventListener('resize', onWindowResize);
     window.addEventListener('keydown', (e) => {
-      if (e.key.toLowerCase() === 'u') toggleUI();
-      if (e.key.toLowerCase() === 't') handlePlayerThrow(null);
-      if (e.key.toLowerCase() === 'r') resetEnd();
+      const key = e.key.toLowerCase();
+      if (key === 'u') toggleUI();
+      if (key === 't') handlePlayerThrow(null);
+      if (key === 'r') resetEnd();
+      if (key === 'o') cycleEnvironmentMode();
       startAudio(true);
     });
 
@@ -747,8 +770,10 @@
 
     async function loadStones() {
       const yellow = await loader.loadAsync('curlyellow.glb');
-      aiStoneTemplate = yellow.scene;
-      playerStoneTemplate = cloneWithTint(yellow.scene, '#ff4d6d');
+      aiStoneTemplate = cloneWithTint(yellow.scene, stoneColors.ai);
+      playerStoneTemplate = cloneWithTint(yellow.scene, stoneColors.player);
+      aiStoneTemplate.rotation.y = Math.PI / 2;
+      playerStoneTemplate.rotation.y = Math.PI / 2;
       [playerStoneTemplate, aiStoneTemplate].forEach((root) => {
         root.traverse((child) => {
           if (child.isMesh) {
@@ -759,16 +784,31 @@
       });
     }
 
-    function cloneWithTint(root, color) {
+    function cloneWithTint(root, tint) {
       const clone = root.clone(true);
-      clone.traverse((child) => {
+      applyStoneTint(clone, tint);
+      return clone;
+    }
+
+    function applyStoneTint(root, tint) {
+      const config = typeof tint === 'string' ? { albedo: tint, emissive: tint } : (tint || {});
+      const baseColor = new THREE.Color(config.albedo || config.color || '#ffffff');
+      const emissiveColor = new THREE.Color(config.emissive || config.albedo || config.color || '#ffffff');
+      const emissiveIntensity = config.emissiveIntensity ?? 0.25;
+      root.traverse((child) => {
         if (child.isMesh && child.material) {
-          child.material = child.material.clone();
-          if (child.material.color) child.material.color.set(color);
-          if (child.material.emissive) child.material.emissive.set(color).multiplyScalar(0.25);
+          const paintMaterial = (material) => {
+            const mat = material.clone();
+            if (mat.color) mat.color.copy(baseColor);
+            if (mat.emissive) {
+              mat.emissive.copy(emissiveColor);
+              mat.emissiveIntensity = emissiveIntensity;
+            }
+            return mat;
+          };
+          child.material = Array.isArray(child.material) ? child.material.map(paintMaterial) : paintMaterial(child.material);
         }
       });
-      return clone;
     }
 
     function stoneScaleFor(team) {
@@ -787,6 +827,7 @@
       const base = team === 'player' ? playerStoneTemplate : aiStoneTemplate;
       const mesh = base.clone(true);
       mesh.scale.setScalar(params.visualStoneScale);
+      mesh.rotation.y = Math.PI / 2;
       return mesh;
     }
 
@@ -1018,7 +1059,7 @@
     function syncStoneTransforms(list) {
       list.forEach(s => {
         s.mesh.position.copy(s.body.position);
-        s.mesh.quaternion.copy(s.body.quaternion);
+        s.mesh.quaternion.copy(s.body.quaternion).multiply(stoneVisualRotation);
         if (s.debug) {
           s.debug.position.copy(s.body.position);
           s.debug.quaternion.copy(s.body.quaternion);
@@ -1744,8 +1785,23 @@
       const envHeader = document.createElement('h3');
       envHeader.textContent = 'Environment';
       envSection.appendChild(envHeader);
+      const lightingLabel = document.createElement('div');
+      lightingLabel.textContent = 'Lighting base';
+      lightingLabel.className = 'muted';
+      lightingLabel.style.fontSize = '12px';
+      lightingLabel.style.marginTop = '4px';
+      envSection.appendChild(lightingLabel);
       envSection.appendChild(buildButton('Domed arena', () => setEnvironmentTheme('domed')));
       envSection.appendChild(buildButton('Outdoor sheet', () => setEnvironmentTheme('outdoor')));
+      const envMapLabel = document.createElement('div');
+      envMapLabel.textContent = 'Environment map';
+      envMapLabel.className = 'muted';
+      envMapLabel.style.fontSize = '12px';
+      envMapLabel.style.marginTop = '10px';
+      envSection.appendChild(envMapLabel);
+      envSection.appendChild(buildButton('Passendorf HDR', () => setEnvironmentMode('passendorf')));
+      envSection.appendChild(buildButton('Indoor rink HDR', () => setEnvironmentMode('rink')));
+      envSection.appendChild(buildButton('Sky dome only', () => setEnvironmentMode('off')));
       uiPanel.appendChild(envSection);
     }
 
@@ -1796,6 +1852,14 @@
       params.environmentTheme = theme;
       buildEnvironment();
       drawHudCanvas();
+    }
+
+    function setEnvironmentMode(mode) {
+      const idx = environmentModes.indexOf(mode);
+      if (idx >= 0) {
+        environmentModeIndex = idx;
+        applyEnvironment(mode);
+      }
     }
 
     function retuneStonePhysics(stone) {
@@ -1865,20 +1929,130 @@
       });
     }
 
+    async function loadEnvironmentMaps() {
+      try {
+        const hdrTexture = await rgbeLoader.loadAsync('passendorf_snow_4k.hdr');
+        hdrTexture.mapping = THREE.EquirectangularReflectionMapping;
+        hdrTexture.colorSpace = THREE.LinearSRGBColorSpace;
+        environmentMaps.passendorf = {
+          env: pmremGenerator.fromEquirectangular(hdrTexture).texture,
+          background: hdrTexture
+        };
+      } catch (err) {
+        console.warn('Failed to load HDR environment', err);
+      }
+
+      try {
+        const rinkTexture = await textureLoader.loadAsync('Rink.jpeg');
+        rinkTexture.mapping = THREE.EquirectangularReflectionMapping;
+        rinkTexture.colorSpace = THREE.SRGBColorSpace;
+        environmentMaps.rink = {
+          env: pmremGenerator.fromEquirectangular(rinkTexture).texture,
+          background: rinkTexture
+        };
+      } catch (err) {
+        console.warn('Failed to load rink environment', err);
+      }
+
+      applyEnvironment(currentEnvironmentMode);
+    }
+
+    function applyEnvironment(mode = currentEnvironmentMode) {
+      currentEnvironmentMode = mode;
+      const entry = environmentMaps[mode] || {};
+      const envTex = entry.env || null;
+      const bgTex = mode === 'off' ? null : (entry.background || null);
+      scene.environment = envTex;
+      if (bgTex) {
+        scene.background = bgTex;
+      } else if (environmentBaseBackground) {
+        scene.background = environmentBaseBackground.clone ? environmentBaseBackground.clone() : environmentBaseBackground;
+      }
+      if (skyDome) skyDome.visible = mode === 'off';
+    }
+
+    function cycleEnvironmentMode() {
+      environmentModeIndex = (environmentModeIndex + 1) % environmentModes.length;
+      currentEnvironmentMode = environmentModes[environmentModeIndex];
+      applyEnvironment(currentEnvironmentMode);
+    }
+
+    function applyGroundTexture(material) {
+      const tex = makeIceTexture();
+      material.map = tex;
+      material.roughnessMap = tex;
+      material.bumpMap = tex;
+      material.bumpScale = 0.012;
+      material.needsUpdate = true;
+    }
+
+    function makeIceTexture() {
+      if (iceTexture) return iceTexture;
+      const size = 1024;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const base = ctx.createLinearGradient(0, 0, size, size);
+      base.addColorStop(0, '#e6eef9');
+      base.addColorStop(1, '#c9d9eb');
+      ctx.fillStyle = base;
+      ctx.fillRect(0, 0, size, size);
+
+      const noise = ctx.getImageData(0, 0, size, size);
+      for (let i = 0; i < noise.data.length; i += 4) {
+        const variance = Math.random() * 22;
+        noise.data[i] = Math.min(255, noise.data[i] + variance * 0.35);
+        noise.data[i + 1] = Math.min(255, noise.data[i + 1] + variance * 0.3);
+        noise.data[i + 2] = Math.min(255, noise.data[i + 2] + variance);
+      }
+      ctx.putImageData(noise, 0, 0);
+
+      for (let i = 0; i < 1200; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const len = Math.random() * 28 + 8;
+        const wobble = (Math.random() - 0.5) * 0.7;
+        ctx.strokeStyle = `rgba(255,255,255,${Math.random() * 0.05 + 0.02})`;
+        ctx.lineWidth = Math.random() * 1.2 + 0.2;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + len * Math.cos(wobble), y + len * Math.sin(wobble));
+        ctx.stroke();
+      }
+
+      iceTexture = new THREE.CanvasTexture(canvas);
+      iceTexture.wrapS = THREE.RepeatWrapping;
+      iceTexture.wrapT = THREE.RepeatWrapping;
+      iceTexture.repeat.set(8, 8);
+      iceTexture.anisotropy = 8;
+      iceTexture.needsUpdate = true;
+      return iceTexture;
+    }
+
     function buildEnvironment() {
       disposeGroup(envGroup);
+      skyDome = null;
       const theme = params.environmentTheme || 'domed';
-      scene.background = new THREE.Color(theme === 'outdoor' ? '#7ab6ff' : '#0b192d');
+      environmentBaseBackground = new THREE.Color(theme === 'outdoor' ? '#7ab6ff' : '#0b192d');
+      scene.background = environmentBaseBackground.clone();
       hemi.intensity = theme === 'outdoor' ? 1.0 : 0.9;
       dirLight.intensity = theme === 'outdoor' ? 0.75 : 0.9;
 
       const floorSize = Math.max(params.sheetLength, params.sheetWidth) * 3;
       const floorGeom = new THREE.PlaneGeometry(floorSize, floorSize);
-      const floorMat = new THREE.MeshStandardMaterial({
-        color: theme === 'outdoor' ? '#b7d1e6' : '#0a1014',
-        roughness: theme === 'outdoor' ? 0.85 : 0.9,
-        metalness: theme === 'outdoor' ? 0.05 : 0.1
+      const floorMat = new THREE.MeshPhysicalMaterial({
+        color: theme === 'outdoor' ? '#d7e6f5' : '#c6d8eb',
+        roughness: 0.16,
+        metalness: 0.08,
+        reflectivity: 0.72,
+        clearcoat: 0.9,
+        clearcoatRoughness: 0.08,
+        transmission: 0.02,
+        ior: 1.31,
+        envMapIntensity: 1.2
       });
+      applyGroundTexture(floorMat);
       const floor = new THREE.Mesh(floorGeom, floorMat);
       floor.rotation.x = -Math.PI / 2;
       floor.position.y = -0.001;
@@ -1908,31 +2082,16 @@
       makeBoard(boardThickness, boardHeight, boardLen, -boardWide / 2, 0);
       makeBoard(boardWide, boardHeight, boardThickness, 0, -boardLen / 2);
 
-      if (theme === 'domed') {
-        const domeGeo = new THREE.SphereGeometry(40, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-        const domeMat = new THREE.MeshStandardMaterial({
-          color: '#0f1a2a',
-          emissive: '#0a1322',
-          roughness: 0.8,
-          metalness: 0.15,
-          side: THREE.BackSide,
-          transparent: true,
-          opacity: 0.96
-        });
-        const dome = new THREE.Mesh(domeGeo, domeMat);
-        dome.position.y = 10;
-        envGroup.add(dome);
-      } else {
-        const skyGeo = new THREE.SphereGeometry(70, 18, 12);
-        const skyMat = new THREE.MeshBasicMaterial({ color: '#7ab6ff', side: THREE.BackSide });
-        const sky = new THREE.Mesh(skyGeo, skyMat);
-        sky.position.y = 5;
-        envGroup.add(sky);
+      const skyGeo = new THREE.SphereGeometry(70, 18, 12);
+      const skyMat = new THREE.MeshBasicMaterial({ color: '#7ab6ff', side: THREE.BackSide });
+      skyDome = new THREE.Mesh(skyGeo, skyMat);
+      skyDome.position.y = 5;
+      skyDome.visible = currentEnvironmentMode === 'off';
+      envGroup.add(skyDome);
 
-        const sun = new THREE.DirectionalLight(0xfff1c1, 0.55);
-        sun.position.set(12, 18, 6);
-        envGroup.add(sun);
-      }
+      const sun = new THREE.DirectionalLight(0xfff1c1, 0.55);
+      sun.position.set(12, 18, 6);
+      envGroup.add(sun);
 
       const bannerGeo = new THREE.PlaneGeometry(5, 1.2);
       const bannerMat = new THREE.MeshBasicMaterial({ color: '#1f7fff', transparent: true, opacity: 0.65 });
@@ -1948,6 +2107,7 @@
 
       buildVRPanels();
       buildCrowd(boardWide, boardLen, boardHeight);
+      applyEnvironment(currentEnvironmentMode);
     }
 
     function buildVRPanels() {
@@ -2182,10 +2342,16 @@
       crowdData.jitter = [];
       const skinPalette = ['#f7d7c4', '#e7c2a0', '#d1a074', '#b67c50', '#8b5a33', '#6d4426'];
       const jacketPalette = ['#1f7fff', '#f25f5c', '#ffe066', '#247ba0', '#70c1b3', '#9b8bf4', '#f78fb3'];
-      const widthSpread = boardWide * 1.4;
+      const perRow = 60;
+      const widthSpread = boardWide * 2.8;
+      const rows = Math.max(1, Math.ceil(count / perRow));
+      const depthStep = depthSpread / rows;
       for (let i = 0; i < count; i++) {
-        const x = THREE.MathUtils.randFloatSpread(widthSpread);
-        const z = baseZ - Math.random() * depthSpread + THREE.MathUtils.randFloatSpread(0.4);
+        const row = Math.floor(i / perRow);
+        const col = i % perRow;
+        const colNorm = perRow > 1 ? col / (perRow - 1) : 0.5;
+        const x = (colNorm - 0.5) * widthSpread + THREE.MathUtils.randFloatSpread(boardWide * 0.15);
+        const z = baseZ - row * (depthStep * 0.8 + 0.3) - Math.random() * depthStep + THREE.MathUtils.randFloatSpread(0.4);
         const baseY = boardHeight * 1.0 + Math.random() * heightSpread;
         const mTorso = new THREE.Matrix4();
         mTorso.makeRotationY((Math.random() - 0.5) * 0.25);
