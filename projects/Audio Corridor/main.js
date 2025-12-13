@@ -64,9 +64,6 @@ const autoPilotState = {
   lastAudio: null,
   fireTimer: 0,
 };
-const vrMoveDir = new THREE.Vector3();
-const vrRight = new THREE.Vector3();
-const vrUp = new THREE.Vector3(0, 1, 0);
 function formatScore(value) {
   const safe = Math.max(0, Math.floor(value));
   return safe.toLocaleString("en-US", { minimumIntegerDigits: 6, useGrouping: false });
@@ -428,7 +425,6 @@ function finalizeCues(label, cues, origin) {
   resetCuePlayback();
   if (analysisState.cues.length) {
     updateAnalysisStatus(`Analysis ready (${analysisState.cues.length} cues via ${origin}).`);
-    offerCueDownload(label, analysisState.cues);
   } else {
     updateAnalysisStatus(`No cue data available for "${label}".`);
   }
@@ -712,6 +708,7 @@ function updateFollowCamera(delta) {
   cameraRig.position.lerp(followTemp, lerpAmount);
   lookTemp.copy(heroAnchorPosition).add(thirdPersonLookOffset);
   cameraRig.lookAt(lookTemp);
+  cameraRig.rotateY(Math.PI); // flip view down the corridor
   cameraRig.rotation.z = 0;
   cameraRig.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraRig.rotation.x));
 }
@@ -826,17 +823,55 @@ const audioDynamics = {
   bass: 0, mid: 0, high: 0, prevBass: 0, prevMid: 0, prevHigh: 0, bassRise: 0, midRise: 0, highRise: 0, crest: 0,
 };
 
+const tunnelShapeState = { width: 9, height: 5, depth: 4 };
+
+// Reactive targets
+const targetInstances = [];
+let targetSpawnTimer = 0;
+const targetGroup = new THREE.Group();
+scene?.add?.(targetGroup);
+
 // Tunnel creation
-const tunnelLineGeometry = new THREE.EdgesGeometry(new THREE.BoxGeometry(9, 5, 0.5));
+function buildTunnelSegmentGeometry(audioLevels) {
+  const avg = audioLevels?.avg ?? 0.25;
+  const bass = audioLevels?.bass ?? 0.25;
+  const high = audioLevels?.high ?? 0.25;
+  const targetWidth = THREE.MathUtils.lerp(7.5, 11, bass) * (0.92 + Math.random() * 0.18);
+  const targetHeight = THREE.MathUtils.lerp(4, 6.5, high) * (0.92 + Math.random() * 0.18);
+  const targetDepth = THREE.MathUtils.lerp(3.6, 4.4, avg);
+  tunnelShapeState.width = THREE.MathUtils.lerp(tunnelShapeState.width, targetWidth, 0.55);
+  tunnelShapeState.height = THREE.MathUtils.lerp(tunnelShapeState.height, targetHeight, 0.55);
+  tunnelShapeState.depth = targetDepth;
+  const box = new THREE.BoxGeometry(tunnelShapeState.width, tunnelShapeState.height, tunnelShapeState.depth);
+  return new THREE.EdgesGeometry(box);
+}
+
+function spawnTunnelSegment(i, zPos, audioLevels) {
+  const geometry = buildTunnelSegmentGeometry(audioLevels);
+  let segment = tunnelSegments[i];
+  if (!segment) {
+    const material = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.28 });
+    const line = new THREE.LineSegments(geometry, material);
+    scene.add(line);
+    segment = { line, material, baseZ: zPos, index: i };
+    tunnelSegments[i] = segment;
+  } else {
+    segment.line.geometry.dispose();
+    segment.line.geometry = geometry;
+    segment.material.opacity = 0.28;
+  }
+  const avg = audioLevels?.avg ?? 0.25;
+  const high = audioLevels?.high ?? 0.25;
+  const hue = (0.48 + high * 0.3 + Math.random() * 0.05) % 1;
+  segment.material.color.setHSL(hue, 0.65, 0.55 - avg * 0.12);
+  segment.material.needsUpdate = true;
+  segment.baseZ = zPos;
+  segment.line.position.set(0, 0, zPos);
+  segment.line.scale.setScalar(1);
+}
+
 for (let i = 0; i < segmentCount; i++) {
-  const material = new THREE.LineBasicMaterial({ color: 0x4444ff, transparent: true, opacity: 0.3 });
-  const line = new THREE.LineSegments(tunnelLineGeometry, material);
-  line.position.z = -i * segmentSpacing;
-  scene.add(line);
-  tunnelSegments.push({
-    line, material, baseZ: -i * segmentSpacing, index: i,
-    motion: { phase: i * 0.5, speed: 1, amplitudeX: 0.5, amplitudeY: 0.5, baseScale: 1, scaleSpeed: 1, scaleOffset: 0 }
-  });
+  spawnTunnelSegment(i, -i * segmentSpacing, audioState.levels);
 }
 
 function boostCorridorSpectrum(amount) {
@@ -1140,87 +1175,29 @@ const celebrationBursts = [];
 
 function updateCorridor(delta, audioLevels, time) {
   const depth = corridorState.depth;
-  const flowSpeed = computeCorridorFlowSpeed(audioLevels) * getThrottleBoost();
+  const flowSpeed = Math.min(9, computeCorridorFlowSpeed(audioLevels) * getThrottleBoost());
   updateHoopSpawner(delta, audioLevels);
   updateEnemySpawner(delta, audioLevels);
   updateAudioDynamics(delta, audioLevels);
-  corridorState.scroll += flowSpeed * delta;
-  if (corridorState.scroll > depth) {
-    const wrapUnits = Math.floor(corridorState.scroll / depth);
-    const wrapOffset = wrapUnits * depth;
-    corridorState.scroll -= wrapOffset;
-    tunnelSegments.forEach((segment) => {
-      segment.baseZ += wrapOffset;
-    });
-  }
-  const offset = corridorState.scroll;
+  updateTargets(delta, audioLevels, flowSpeed);
+  corridorState.scroll = (corridorState.scroll + flowSpeed * delta) % depth;
   const heroFlashInfluence = heroCollisionEvent.flash * 0.6;
   const impactBlend = Math.max(corridorImpactState.intensity, heroFlashInfluence);
   const cueBlend = analysisState.active || 0;
   const ringBlend = Math.min(1, ringPassState.intensity + cueBlend * 0.4);
-  const morphEnergy = worldReactState.energy;
-  const paletteShift = worldReactState.paletteShift;
-  const worldVolatility = worldReactState.volatility;
-  const evolution = worldReactState.evolution;
-  const bass = audioLevels?.bass ?? 0;
-  const mid = audioLevels?.mid ?? 0;
-  const high = audioLevels?.high ?? 0;
-  const avg = audioLevels?.avg ?? 0;
-
-  const impactHue = corridorImpactState.hue || (0.52 + high * 0.35);
-  const spectrumValues = audioState.spectrum ?? [];
+  const paletteShift = worldReactState?.paletteShift ?? 0;
+  let minBaseZ = Infinity;
+  tunnelSegments.forEach((segment) => { if (segment.baseZ < minBaseZ) minBaseZ = segment.baseZ; });
   tunnelSegments.forEach((segment) => {
-    let z = segment.baseZ + offset;
-    while (z > cameraWorldPos.z + 2) {
-      z -= depth;
-      segment.baseZ -= depth;
+    segment.baseZ += flowSpeed * delta;
+    if (segment.baseZ > cameraWorldPos.z + segmentSpacing) {
+      segment.baseZ = minBaseZ - segmentSpacing;
+      minBaseZ = segment.baseZ;
+      spawnTunnelSegment(segment.index, segment.baseZ, audioLevels);
+      segment.line.rotation.z = (Math.random() - 0.5) * 0.35 * ((audioLevels?.mid ?? 0.3) + 0.2);
+      segment.line.rotation.y = (Math.random() - 0.5) * 0.18 * ((audioLevels?.high ?? 0.3) + 0.2);
     }
-    segment.line.position.z = z;
-    const baseHue = 0.5 + mid * 0.18 - segment.index * 0.002 + paletteShift * 0.25;
-    const hueLerp = Math.min(1, impactBlend * 0.7);
-    const blendedHue = THREE.MathUtils.lerp(baseHue, impactHue, hueLerp);
-    const adjustedHue = (blendedHue + ringBlend * 0.12 + audioDynamics.highRise * 0.2) % 1;
-    const lightness = 0.35 + high * 0.28 + impactBlend * 0.2 + ringBlend * 0.1;
-    segment.material.color.setHSL(adjustedHue, 0.82, lightness);
-    const shapeBoost = 1 + impactBlend * 0.25 + ringBlend * 0.15 + morphEnergy * 0.25 + audioDynamics.midRise * 0.2;
-    const targetOpacity = 0.2 + bass * 0.55 + impactBlend * 0.35 + audioDynamics.bassRise * 0.25;
-    segment.material.opacity = THREE.MathUtils.lerp(
-      segment.material.opacity,
-      targetOpacity + ringBlend * 0.2,
-      0.15
-    );
-    const motion = segment.motion;
-    const motionSeed = time * 0.00145 + motion.phase;
-    const xOffset = Math.sin(motionSeed * motion.speed) * motion.amplitudeX;
-    const yOffset = Math.cos(motionSeed * motion.speed * 1.25) * motion.amplitudeY;
-    segment.line.position.x = xOffset;
-    segment.line.position.y = yOffset;
-    const morphPhase = evolution + segment.index * 0.28;
-    const motionScale = motion.baseScale + Math.sin(motionSeed * motion.scaleSpeed) * 0.08 + motion.scaleOffset;
-    const morphScale = 1 + Math.sin(morphPhase * 1.1) * morphEnergy * 0.25;
-    const axisScale = 1 + Math.cos(morphPhase * 0.9) * paletteShift * 0.12;
-    segment.line.scale.set(
-      motionScale * shapeBoost * morphScale,
-      motionScale * shapeBoost * axisScale,
-      motionScale * shapeBoost * (1 + morphEnergy * 0.05)
-    );
-    if (segment.overlay) {
-      segment.overlay.position.copy(segment.line.position);
-      segment.overlay.scale.copy(segment.line.scale);
-      segment.wallBars?.forEach((entry) => {
-        const bandValue = spectrumValues.length
-          ? spectrumValues[entry.bandIndex % spectrumValues.length]
-          : audioLevels.avg ?? 0;
-        const boost = corridorSpectra.boost;
-        entry.mesh.scale.y = 0.6 + bandValue * 3 + boost * 0.5;
-        entry.mesh.material.opacity = 0.05 + bandValue * 0.45 + boost * 0.2;
-        entry.mesh.material.color.setHSL(
-          (0.56 - bandValue * 0.25 + ringBlend * 0.12 + paletteShift * 0.2) % 1,
-          0.9,
-          0.55 + bandValue * 0.35 + boost * 0.1
-        );
-      });
-    }
+    segment.line.position.z = segment.baseZ;
   });
   corridorSpectra.boost = Math.max(0, corridorSpectra.boost - delta * 0.9);
 
@@ -1792,22 +1769,22 @@ function spawnFireworkProjectile(audioLevels) {
 }
 
 function burstFirework(projectile, audioLevels) {
-  const sparks = Math.min(18, 8 + Math.floor(projectile.intensity * 12));
+  const sparks = Math.min(26, 12 + Math.floor(projectile.intensity * 16));
   const hue = (projectile.hue + (audioLevels?.mid ?? 0) * 0.2) % 1;
   for (let i = 0; i < sparks; i += 1) {
     const entry = acquireFireworkSpark();
     if (!entry) break;
-    entry.life = 0.35 + projectile.intensity * 0.35 + Math.random() * 0.2;
+    entry.life = 0.28 + projectile.intensity * 0.28 + Math.random() * 0.18;
     entry.maxLife = entry.life;
     entry.hue = (hue + Math.random() * 0.2 - 0.1 + i * 0.01) % 1;
     entry.sprite.material.color.setHSL(entry.hue, 0.95, 0.6 + Math.random() * 0.25);
-    entry.sprite.material.opacity = 0.95;
+    entry.sprite.material.opacity = 0.9;
     entry.sprite.position.copy(projectile.mesh.position);
     entry.velocity
       .set(
-        (Math.random() * 2 - 1) * (4 + projectile.intensity * 4),
-        (Math.random() * 2 - 1) * (4 + projectile.intensity * 3),
-        (Math.random() * 2 - 0.2) * (6 + projectile.intensity * 6)
+        (Math.random() * 2 - 1) * (3.5 + projectile.intensity * 3.5),
+        (Math.random() * 2 - 1) * (3.5 + projectile.intensity * 3),
+        (Math.random() * 2 - 0.2) * (5 + projectile.intensity * 5.5)
       )
       .addScaledVector(fireworkDirection, 3);
     entry.sprite.visible = true;
@@ -1820,6 +1797,7 @@ function updateFireworkProjectiles(delta, audioLevels) {
     projectile.mesh.position.addScaledVector(projectile.velocity, delta);
     projectile.life = Math.max(0, projectile.life - delta);
     projectile.mesh.material.opacity = projectile.life * 0.9;
+    checkProjectileHits(projectile, audioLevels);
     if (projectile.life <= 0 || projectile.mesh.position.z < cameraWorldPos.z - corridorState.depth) {
       burstFirework(projectile, audioLevels);
       scene.remove(projectile.mesh);
@@ -1836,8 +1814,8 @@ function updateFireworkSparks(delta) {
     const blend = entry.maxLife > 0 ? entry.life / entry.maxLife : 0;
     entry.sprite.position.addScaledVector(entry.velocity, delta);
     entry.velocity.multiplyScalar(0.9);
-    entry.sprite.material.opacity = blend * 0.9;
-    entry.sprite.scale.setScalar(0.4 + (1 - blend) * 0.8);
+    entry.sprite.material.opacity = blend * 0.8;
+    entry.sprite.scale.setScalar(0.14 + (1 - blend) * 0.25);
     entry.sprite.visible = entry.life > 0;
   });
 }
@@ -1855,11 +1833,94 @@ function tryFire(currentTime, audioLevels) {
   armPulseState.recoil = 1;
 }
 
+function spawnAudioTarget(audioLevels) {
+  const avg = audioLevels?.avg ?? 0.3;
+  const bass = audioLevels?.bass ?? 0.3;
+  const high = audioLevels?.high ?? 0.3;
+  const geom = new THREE.SphereGeometry(0.28 + avg * 0.25, 14, 14);
+  const hue = (0.08 + high * 0.5 + Math.random() * 0.1) % 1;
+  const mat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color().setHSL(hue, 0.9, 0.55),
+    emissive: new THREE.Color().setHSL(hue, 0.9, 0.45),
+    emissiveIntensity: 1.2 + bass * 1.2,
+    transparent: true,
+    opacity: 0.9,
+  });
+  const mesh = new THREE.Mesh(geom, mat);
+  mesh.position.set(
+    (Math.random() * 2 - 1) * 4.5,
+    (Math.random() * 2 - 1) * 3,
+    -corridorState.depth - 6 - Math.random() * 12
+  );
+  targetGroup.add(mesh);
+  targetInstances.push({
+    mesh,
+    speed: 4 + avg * 5,
+    alive: true,
+    hue,
+    baseX: mesh.position.x,
+    swayPhase: Math.random() * Math.PI * 2,
+    swayAmp: 0.5 + bass * 1.2,
+  });
+}
+
+function updateTargets(delta, audioLevels, flowSpeed) {
+  targetSpawnTimer = Math.max(0, targetSpawnTimer - delta);
+  const energy = (audioLevels?.avg ?? 0.2) + (audioLevels?.bass ?? 0.2) * 0.5;
+  if (targetSpawnTimer <= 0 && energy > 0.25) {
+    spawnAudioTarget(audioLevels);
+    targetSpawnTimer = 2 - Math.min(1.5, energy * 2);
+  }
+  for (let i = targetInstances.length - 1; i >= 0; i -= 1) {
+    const t = targetInstances[i];
+    if (!t.alive) continue;
+    const swaySpeed = 1.5 + (audioLevels?.high ?? 0.2) * 3;
+    t.swayPhase += delta * swaySpeed;
+    const offsetX = Math.sin(t.swayPhase) * t.swayAmp;
+    t.mesh.position.x = t.baseX + offsetX;
+    t.mesh.position.z += (flowSpeed + t.speed) * delta;
+    if (t.mesh.position.z > cameraWorldPos.z + 6) {
+      targetGroup.remove(t.mesh);
+      targetInstances.splice(i, 1);
+    }
+  }
+}
+
+function checkProjectileHits(projectile, audioLevels) {
+  for (let i = targetInstances.length - 1; i >= 0; i -= 1) {
+    const t = targetInstances[i];
+    if (!t.alive) continue;
+    const dist = projectile.mesh.position.distanceTo(t.mesh.position);
+    if (dist < 0.6) {
+      boostCorridorSpectrum(0.4 + (audioLevels?.avg ?? 0.2));
+      registerHit(450, audioLevels, { feedTitle: "Target down", feedDetail: "Reactive node destroyed." });
+      burstFirework(projectile, audioLevels);
+      scene.remove(projectile.mesh);
+      fireworkProjectiles.splice(fireworkProjectiles.indexOf(projectile), 1);
+      targetGroup.remove(t.mesh);
+      targetInstances.splice(i, 1);
+      return;
+    }
+  }
+}
+
 const controllerModelFactory = new XRControllerModelFactory();
 const xrTempPos = new THREE.Vector3();
 const xrTempDir = new THREE.Vector3();
 
 function setupWebXRControllers() {
+  const makeControllerRay = () => {
+    const geometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 0, -1),
+    ]);
+    const material = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 });
+    const line = new THREE.Line(geometry, material);
+    line.name = "ray";
+    line.scale.z = 0.3;
+    return line;
+  };
+
   const bindController = (index) => {
     const controller = renderer.xr.getController(index);
     controller.userData.index = index;
@@ -1875,6 +1936,9 @@ function setupWebXRControllers() {
       controller.userData.handedness = event.data.handedness;
       controller.visible = true;
       refreshXrHands();
+      if (!controller.getObjectByName("ray")) {
+        controller.add(makeControllerRay());
+      }
     });
     controller.addEventListener("disconnected", () => {
       controller.userData.inputSource = null;
@@ -1900,7 +1964,6 @@ function setupWebXRControllers() {
     camera.getWorldPosition(lastFlatView.pos);
     lastFlatView.target.copy(heroAnchorPosition);
     positionRigForVR();
-    setShowcaseMode(true, { silent: true });
     ui.vrBtn?.classList.add("active");
     setStatus("VR session ready - Quest controllers active.");
   });
@@ -1952,54 +2015,16 @@ function positionRigForVR() {
   cameraRig.position.copy(desired);
   const forward = target.clone().sub(cameraRig.position);
   const yaw = Math.atan2(forward.x, forward.z);
-  cameraRig.rotation.set(0, yaw, 0);
+  cameraRig.rotation.set(0, yaw + Math.PI, 0); // face down the tunnel in VR
 }
 
-function getXRThumbstick(session) {
-  const candidates = [];
-  for (const s of session.inputSources) {
-    if (!s.gamepad || !s.gamepad.axes) continue;
-    const axes = s.gamepad.axes;
-    if (axes.length >= 2) {
-      candidates.push({ x: axes[0], y: axes[1], handedness: s.handedness || "unknown", priority: s.handedness === "left" ? 2 : 1 });
-    }
-    if (axes.length >= 4) {
-      candidates.push({ x: axes[2], y: axes[3], handedness: s.handedness || "unknown", priority: 1 });
-    }
-  }
-  if (candidates.length) {
-    candidates.sort((a, b) => b.priority - a.priority);
-    const active = candidates.find(c => Math.abs(c.x) > 0.01 || Math.abs(c.y) > 0.01) || candidates[0];
-    return { x: active.x, y: active.y };
-  }
-  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-  if (pads) {
-    for (const pad of pads) {
-      if (!pad || !pad.connected || !pad.axes || pad.axes.length < 2) continue;
-      return { x: pad.axes[0], y: pad.axes[1] };
-    }
-  }
-  return { x: 0, y: 0 };
-}
-
-function updateVRLocomotion(dt) {
-  const session = renderer.xr.getSession();
-  if (!session) return;
-  const axes = getXRThumbstick(session);
-  const deadzone = 0.05;
-  if (Math.abs(axes.x) < deadzone && Math.abs(axes.y) < deadzone) return;
-  const xrCam = renderer.xr.getCamera(camera);
-  xrCam.getWorldDirection(vrMoveDir);
-  vrMoveDir.set(vrMoveDir.x, 0, vrMoveDir.z).normalize();
-  if (vrMoveDir.lengthSq() === 0) {
-    vrMoveDir.set(0, 0, -1);
-  }
-  vrRight.copy(vrMoveDir).cross(vrUp).normalize();
-  const speed = 2.4;
-  const forward = vrMoveDir.clone().multiplyScalar(-axes.y);
-  const strafe = vrRight.clone().multiplyScalar(axes.x);
-  const deltaMove = forward.add(strafe).multiplyScalar(speed * dt);
-  cameraRig.position.add(deltaMove);
+function updateVRLocomotion(delta) {
+  if (!renderer.xr.isPresenting) return;
+  // Anchor the VR rig to the hero so headset/controllers move with Iron Man.
+  const followLerp = Math.min(1, delta * 6);
+  cameraRig.position.lerp(heroAnchorPosition, followLerp);
+  const yawTarget = manState.rotation.y;
+  cameraRig.rotation.y = lerpAngle(cameraRig.rotation.y, yawTarget, 0.08);
 }
 
 function getVrControlInput() {
@@ -2014,9 +2039,9 @@ function getVrControlInput() {
   const lookX = applyDeadzone(rightPad?.axes?.[0] ?? 0);
   const lookY = -applyDeadzone(rightPad?.axes?.[1] ?? 0);
   const throttle = applyDeadzone(-(rightPad?.axes?.[1] ?? 0) * 0.8);
-  const extendArm = computeXrExtend(right) || (rightPad?.buttons?.[1]?.pressed ?? false);
   const triggerValue = rightPad?.buttons?.[0]?.value ?? 0;
-  const firePressed = extendArm && (triggerValue > 0.18 || right?.userData?.selectPressed);
+  const firePressed = triggerValue > 0.12 || right?.userData?.selectPressed;
+  const extendArm = firePressed || computeXrExtend(right) || (rightPad?.buttons?.[1]?.pressed ?? false);
   const active =
     Math.abs(moveX) > 0.01 ||
     Math.abs(moveY) > 0.01 ||
@@ -2154,6 +2179,7 @@ setupTouchControls();
 const controlConfig = {
   lateralSpeed: 7,
   verticalSpeed: 5,
+  forwardSpeed: 6,
   velocityResponsiveness: 4,
   inertiaResponsiveness: 2,
   drag: 2.2,
@@ -2165,6 +2191,7 @@ const controlConfig = {
   lookPitchGain: 0.35,
   rollGain: 0.5,
 };
+const movementBounds = { x: 6, y: 4.5, zFront: 8, zBack: -12 };
 const throttleConfig = {
   accelRate: 1.2,
   brakeRate: 1.8,
@@ -2378,19 +2405,28 @@ function getAutoPilotInput(delta, audioLevels, time) {
 }
 
 function resolveControlInput(delta, audioLevels, time) {
+  autoPilotState.lastAudio = audioLevels;
   if (xrState.sessionActive) {
-    if (!autoPilotState.enabled) {
-      setShowcaseMode(true, { silent: true });
+    const vrInput = getVrControlInput();
+    if (vrInput) {
+      lastResolvedInput = { ...vrInput, source: "vr" };
+      return lastResolvedInput;
     }
-    autoPilotState.lastAudio = audioLevels;
-    const autoInput = { ...getAutoPilotInput(delta, audioLevels, time), source: "auto" };
-    lastResolvedInput = autoInput;
-    return autoInput;
+    if (autoPilotState.enabled) {
+      const autoInput = { ...getAutoPilotInput(delta, audioLevels, time), source: "auto" };
+      lastResolvedInput = autoInput;
+      return autoInput;
+    }
+    const neutral = {
+      moveX: 0, moveY: 0, forward: 0, lookX: 0, lookY: 0,
+      firePressed: false, extendArm: false, source: "vr", active: false,
+    };
+    lastResolvedInput = neutral;
+    return neutral;
   }
   if (autoPilotState.enabled && manualInputActive() && !xrState.sessionActive) {
     handleManualOverride();
   }
-  autoPilotState.lastAudio = audioLevels;
   const vrInput = getVrControlInput();
   if (vrInput) {
     lastResolvedInput = vrInput;
@@ -2417,29 +2453,20 @@ function updateMovement(delta, currentTime, inputState, audioLevels) {
   const desiredVelocity = new THREE.Vector3(
     input.moveX * controlConfig.lateralSpeed,
     input.moveY * controlConfig.verticalSpeed,
-    0
+    input.source === "vr" ? -input.forward * controlConfig.forwardSpeed : 0
   );
   const hasMotionInput =
-    Math.abs(input.moveX) > 0 || Math.abs(input.moveY) > 0;
+    Math.abs(input.moveX) > 0 ||
+    Math.abs(input.moveY) > 0 ||
+    (input.source === "vr" && Math.abs(input.forward) > 0.001);
 
   const forwardInput = THREE.MathUtils.clamp(input.forward, -1, 1);
-  if (forwardInput > 0) {
-    throttleState.value = Math.min(
-      throttleConfig.max,
-      throttleState.value + forwardInput * throttleConfig.accelRate * delta
-    );
-  } else if (forwardInput < 0) {
-    throttleState.value = Math.max(
-      throttleConfig.min,
-      throttleState.value + forwardInput * throttleConfig.brakeRate * delta
-    );
-  } else {
-    throttleState.value = THREE.MathUtils.lerp(
-      throttleState.value,
-      throttleConfig.base,
-      delta * throttleConfig.settleRate
-    );
-  }
+  const forwardTarget = forwardInput > 0 ? forwardInput : throttleConfig.base;
+  throttleState.value = THREE.MathUtils.clamp(
+    THREE.MathUtils.lerp(throttleState.value, forwardTarget, delta * 3),
+    throttleConfig.min,
+    throttleConfig.max
+  );
 
   const velocityAlpha = THREE.MathUtils.clamp(
     delta * (hasMotionInput ? controlConfig.velocityResponsiveness : controlConfig.inertiaResponsiveness),
@@ -2451,9 +2478,17 @@ function updateMovement(delta, currentTime, inputState, audioLevels) {
   manState.velocity.multiplyScalar(damping);
   manState.position.addScaledVector(manState.velocity, delta);
 
-  manState.position.x = THREE.MathUtils.clamp(manState.position.x, -6, 6);
-  manState.position.y = THREE.MathUtils.clamp(manState.position.y, -4, 4.5);
-  manState.position.z = 0;
+  manState.position.x = THREE.MathUtils.clamp(manState.position.x, -movementBounds.x, movementBounds.x);
+  manState.position.y = THREE.MathUtils.clamp(manState.position.y, -movementBounds.y, movementBounds.y);
+  if (input.source === "vr") {
+    manState.position.z = THREE.MathUtils.clamp(
+      manState.position.z,
+      movementBounds.zBack,
+      movementBounds.zFront
+    );
+  } else {
+    manState.position.z = 0;
+  }
   manState.facingYaw = Math.PI;
 
   const yawTarget =
@@ -2493,13 +2528,13 @@ function applyIdleMotion(delta, audioLevels, currentTime, inputActive) {
   const swayY = Math.sin(idleMotion.phase * 0.9) * (0.22 + audioLevels.high * 0.15);
   manState.position.x = THREE.MathUtils.clamp(
     THREE.MathUtils.lerp(manState.position.x, swayX, delta * 0.35),
-    -6,
-    6
+    -movementBounds.x,
+    movementBounds.x
   );
   manState.position.y = THREE.MathUtils.clamp(
     THREE.MathUtils.lerp(manState.position.y, swayY, delta * 0.35),
-    -4,
-    4.5
+    -movementBounds.y,
+    movementBounds.y
   );
   const pitchTarget = -0.08 + Math.sin(idleMotion.phase * 0.7) * 0.08;
   manState.rotation.x = THREE.MathUtils.lerp(manState.rotation.x, pitchTarget, delta * 0.25);
@@ -2518,6 +2553,20 @@ function animate(time) {
   const delta = clock.getDelta();
   const audioLevels = sampleAudioLevels();
   updateWorldReactivity(delta, audioLevels, time);
+  syncCuePlayback(delta);
+  const controlInput = resolveControlInput(delta, audioLevels, clock.elapsedTime);
+  updateMovement(delta, clock.elapsedTime, controlInput, audioLevels);
+  applyIdleMotion(delta, audioLevels, clock.elapsedTime, controlInput.active);
+  updateArmPulse(delta);
+  manModel.position.copy(manState.position);
+  manModel.rotation.copy(manState.rotation);
+
+  if (gltfMixer) gltfMixer.update(delta);
+  refreshPoseBaseQuaternions();
+  applyPoseOverrides(delta, controlInput);
+  manModel.updateMatrixWorld(true);
+  updateHeroAnchorPosition();
+
   if (renderer.xr.isPresenting) {
     updateVRLocomotion(delta);
   } else {
@@ -2525,12 +2574,7 @@ function animate(time) {
   }
   camera.getWorldPosition(cameraWorldPos);
   camera.getWorldQuaternion(cameraWorldQuat);
-  const flowSpeed = computeCorridorFlowSpeed(audioLevels) * getThrottleBoost();
-  syncCuePlayback(delta);
-  const controlInput = resolveControlInput(delta, audioLevels, clock.elapsedTime);
-  updateMovement(delta, clock.elapsedTime, controlInput, audioLevels);
-  applyIdleMotion(delta, audioLevels, clock.elapsedTime, controlInput.active);
-  updateArmPulse(delta);
+
   updateCorridor(delta, audioLevels, time);
   updateFireworkProjectiles(delta, audioLevels);
   updateFireworkSparks(delta);
@@ -2542,14 +2586,6 @@ function animate(time) {
   checkCubeCollisions(delta, audioLevels);
   updateGameStats(delta, audioLevels);
   updateOverdriveState(delta, audioLevels);
-  if (gltfMixer) gltfMixer.update(delta);
-  refreshPoseBaseQuaternions();
-  applyPoseOverrides(delta, controlInput);
-  manModel.position.copy(manState.position);
-  manModel.rotation.copy(manState.rotation);
-  manModel.updateMatrixWorld(true);
-  updateHeroAnchorPosition();
-  // Non-XR follow handled earlier; XR uses headset pose with rig locomotion.
   renderScene();
 }
 renderer.setAnimationLoop(animate);

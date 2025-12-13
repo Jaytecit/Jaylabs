@@ -21,15 +21,16 @@
             --text-2: rgba(200, 220, 255, 0.7);
             --glass-border: rgba(255, 255, 255, 0.1);
             
-            /* Hi-Fi Unit Colors */
-            --metal-light: #e0e0e0;
-            --metal-mid: #b0b0b0;
-            --metal-dark: #2a2a2a;
-            --lcd-bg: #101215;
+            /* Hi-Fi Unit Colors (silver deck) */
+            --metal-light: #f0f0f0;
+            --metal-mid: #d7d7d7;
+            --metal-dark: #5a5a5a;
+            --lcd-bg: #161616;
             --lcd-off: #111;
-            --lcd-text: #00f0ff;
-            --led-red: #ff3333;
-            --led-off: #4a0000;
+            --lcd-text: #ffd699;
+            --led-red: #e94a2f;
+            --led-off: #5d1200;
+            --panel-text: #1f1f1f;
         }
 
         * { box-sizing: border-box; }
@@ -95,17 +96,17 @@
             max-width: 100%;
             height: 360px;
             background:
-                repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.03) 0px, rgba(0, 0, 0, 0.03) 1px, transparent 1px, transparent 4px),
-                linear-gradient(to bottom, #d9d9d9 0%, #f2f2f2 10%, #bfbfbf 100%);
-            border-radius: 4px;
+                linear-gradient(180deg, #f6f6f6 0%, #ededed 35%, #dfdfdf 100%);
+            border-radius: 6px;
             position: relative;
             box-shadow:
-                0 0 0 1px #555,
-                0 20px 50px rgba(0, 0, 0, 0.8),
-                inset 0 1px 0 rgba(255, 255, 255, 0.9);
+                0 0 0 1px #c7c7c7,
+                0 14px 40px rgba(0, 0, 0, 0.6),
+                inset 0 1px 0 rgba(255, 255, 255, 0.8),
+                inset 0 -1px 0 rgba(0, 0, 0, 0.08);
             display: flex;
-            padding: 30px;
-            gap: 20px;
+            padding: 24px 26px;
+            gap: 16px;
             box-sizing: border-box;
             user-select: none;
             margin-bottom: 2rem;
@@ -174,25 +175,26 @@
             flex-direction: column;
             position: relative;
             height: 100%;
+            color: var(--panel-text);
         }
 
         .left-panel {
             flex: 1.1;
             padding-right: 15px;
-            border-right: 1px solid rgba(0, 0, 0, 0.1);
+            border-right: 1px solid rgba(0, 0, 0, 0.08);
         }
 
         .center-panel {
             flex: 1.3;
             padding: 0 15px;
-            border-right: 1px solid rgba(0, 0, 0, 0.1);
-            border-left: 1px solid rgba(255, 255, 255, 0.5);
+            border-right: 1px solid rgba(0, 0, 0, 0.08);
+            border-left: 1px solid rgba(255, 255, 255, 0.7);
         }
 
         .right-panel {
             flex: 1;
             padding-left: 15px;
-            border-left: 1px solid rgba(255, 255, 255, 0.5);
+            border-left: 1px solid rgba(255, 255, 255, 0.7);
         }
 
         /* Typography */
@@ -214,7 +216,7 @@
         .label-text {
             font-family: 'Roboto Condensed', sans-serif;
             font-size: 0.55rem;
-            color: #444;
+            color: #3a3a3a;
             text-transform: uppercase;
             font-weight: 700;
             letter-spacing: 0.5px;
@@ -388,13 +390,15 @@
             width: 44px;
             height: 34px;
             border-radius: 2px;
-            border: 1px solid #888;
-            background: linear-gradient(to bottom, #f0f0f0, #ccc);
-            box-shadow: 0 3px 4px rgba(0, 0, 0, 0.3);
+            border: 1px solid #9b9b9b;
+            background: linear-gradient(to bottom, #f5f5f5, #d1d1d1);
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,0.7),
+                0 2px 3px rgba(0, 0, 0, 0.25);
             cursor: pointer;
             font-size: 10px;
             font-weight: bold;
-            color: #333;
+            color: #2b2b2b;
             font-family: 'Roboto Condensed', sans-serif;
         }
 
@@ -509,14 +513,20 @@
             height: 100%;
         }
 
+        #trackTitle { color: #fff; }
+        #trackArtist { color: #f5c77d; }
+
         /* --- CASSETTE DECK --- */
         .cassette-deck {
             width: 100%;
-            height: 140px;
-            background: #2a2a2a;
-            border-radius: 2px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: inset 0 0 15px rgba(0, 0, 0, 1);
+            height: 142px;
+            background: linear-gradient(180deg, #e6e6e6 0%, #d8d8d8 100%);
+            border-radius: 3px;
+            border: 1px solid #c2c2c2;
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,0.7),
+                inset 0 -1px 0 rgba(0,0,0,0.08),
+                0 2px 4px rgba(0,0,0,0.25);
             position: relative;
             display: flex;
             justify-content: center;
@@ -527,38 +537,101 @@
         .cassette-window {
             width: 90%;
             height: 85%;
-            background: rgba(0, 0, 0, 0.5);
-            border: 1px solid #444;
+            background: linear-gradient(180deg, rgba(32,32,32,0.7), rgba(15,15,15,0.85));
+            border: 1px solid #7f7f7f;
             position: relative;
             display: flex;
             justify-content: center;
             align-items: center;
             overflow: hidden;
             transition: opacity 0.5s;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.55);
         }
 
         .cassette-body {
             width: 95%;
             height: 90%;
-            background: #c0c0c0;
+            background: linear-gradient(180deg, #dcdcdc 0%, #c7c7c7 100%);
             border-radius: 4px;
             position: relative;
             display: flex;
             justify-content: center;
             align-items: center;
-            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+            box-shadow:
+                inset 0 1px 1px rgba(255,255,255,0.6),
+                0 0 4px rgba(0, 0, 0, 0.35);
         }
 
         .tape-sticker {
             width: 90%;
             height: 70%;
-            background: #eee;
-            border: 1px solid #999;
+            background: linear-gradient(180deg, #f7f7f7 0%, #ededed 60%, #f9f9f9 100%);
+            border: 1px solid #9c9c9c;
+            border-radius: 4px;
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 5px;
+            justify-content: center;
+            gap: 6px;
+            padding: 6px 8px;
             position: relative;
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,0.8),
+                inset 0 -1px 0 rgba(0,0,0,0.1),
+                0 1px 3px rgba(0,0,0,0.25);
+            overflow: hidden;
+        }
+
+        .tape-sticker::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: repeating-linear-gradient(
+                90deg,
+                rgba(0,0,0,0.025) 0,
+                rgba(0,0,0,0.025) 6px,
+                transparent 6px,
+                transparent 12px
+            );
+            pointer-events: none;
+        }
+
+        .tape-meta,
+        .tape-specs {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            font-family: 'Roboto Condensed', sans-serif;
+            letter-spacing: 0.02em;
+        }
+
+        .tape-meta {
+            font-size: 0.53rem;
+            color: #333;
+            text-transform: uppercase;
+            gap: 8px;
+        }
+
+        .tape-header {
+            width: 100%;
+            border-bottom: 2px solid #c00;
+            font-size: 0.55rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            color: #1d1d1d;
+            text-align: center;
+            padding-bottom: 4px;
+            text-transform: uppercase;
+        }
+
+        .tape-specs {
+            font-size: 0.46rem;
+            color: #555;
+            text-transform: uppercase;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+            text-align: center;
         }
 
         .tape-window-cutout {
@@ -576,9 +649,10 @@
             width: 32px;
             height: 32px;
             border-radius: 50%;
-            background: #fff;
+            background: radial-gradient(circle, #f8f8f8 40%, #c4c4c4 100%);
             position: relative;
-            border: 3px dashed #555;
+            border: 3px dashed #666;
+            box-shadow: inset 0 0 2px rgba(0,0,0,0.35);
         }
 
         .reel.spinning {
@@ -595,11 +669,12 @@
         .analyzer-wrapper {
             width: 100%;
             height: 80px;
-            background: #151515;
+            background: linear-gradient(180deg, #161616, #0d0d0d);
             position: relative;
-            border: 1px solid #444;
+            border: 1px solid #5b5b5b;
             display: flex;
             align-items: flex-end;
+            box-shadow: inset 0 1px 4px rgba(0,0,0,0.6);
         }
 
         canvas {
@@ -624,7 +699,7 @@
         .peak-val {
             height: 100%;
             width: 0%;
-            background: linear-gradient(to right, lime, yellow, red);
+            background: linear-gradient(to right, #ffef9a 0%, #f2a14a 60%, #d84526 100%);
             transition: width 0.1s;
         }
 
@@ -801,12 +876,20 @@
                     <div class="cassette-window">
                         <div class="cassette-body">
                             <div class="tape-sticker">
-                                <div
-                                    style="width:100%; border-bottom:2px solid #c00; font-size:0.5rem; font-weight:bold; margin-bottom:5px;">
-                                    JAYLABS C-90</div>
+                                <div class="tape-header">JAYLABS C-90 HIGH FIDELITY</div>
+                                <div class="tape-meta">
+                                    <span>STEREO / SIDE A</span>
+                                    <span>HI-BIAS CrO2</span>
+                                </div>
                                 <div class="tape-window-cutout">
                                     <div class="reel left"></div>
                                     <div class="reel right"></div>
+                                </div>
+                                <div class="tape-specs">
+                                    <span>Dolby B NR</span>
+                                    <span>Compact Cassette</span>
+                                    <span>120µs EQ</span>
+                                    <span>90 MIN</span>
                                 </div>
                             </div>
                         </div>
@@ -986,6 +1069,9 @@
         let isPlaying = false;
         let currentIndex = 0;
         let audioCtx, analyser, source, dataArray, canvasCtx;
+        let bassFilter, trebleFilter, panNode, compressor;
+        let bassVal = 50, trebleVal = 50, balanceVal = 50;
+        let dolbyEnabled = false, cro2Enabled = false;
         const audio = new Audio();
         audio.crossOrigin = "anonymous";
         audio.volume = 0.4;
@@ -1024,8 +1110,19 @@
         function toggleLed(ledId, btn) {
             if (!isPowerOn) return;
             const led = document.getElementById(ledId);
-            led?.classList.toggle('led-lit');
+            const isLit = led?.classList.toggle('led-lit');
             btn?.classList.toggle('pressed');
+
+            if (ledId === 'led-dolby') {
+                dolbyEnabled = !!isLit;
+                initContext();
+                applyToneSettings();
+            }
+            if (ledId === 'led-cro2') {
+                cro2Enabled = !!isLit;
+                initContext();
+                applyToneSettings();
+            }
         }
 
         // --- AUDIO LOGIC ---
@@ -1034,15 +1131,25 @@
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 audioCtx = new AudioContext();
                 analyser = audioCtx.createAnalyser();
+                bassFilter = audioCtx.createBiquadFilter(); bassFilter.type = 'lowshelf'; bassFilter.frequency.value = 200;
+                trebleFilter = audioCtx.createBiquadFilter(); trebleFilter.type = 'highshelf'; trebleFilter.frequency.value = 4000;
+                panNode = audioCtx.createStereoPanner ? audioCtx.createStereoPanner() : audioCtx.createGain();
+                compressor = audioCtx.createDynamicsCompressor();
                 try {
                     source = audioCtx.createMediaElementSource(audio);
-                    source.connect(analyser);
+                    source
+                        .connect(bassFilter)
+                        .connect(trebleFilter)
+                        .connect(panNode)
+                        .connect(compressor)
+                        .connect(analyser);
                     analyser.connect(audioCtx.destination);
                 } catch (e) { console.warn("CORS/Server needed for visualizer"); }
 
                 analyser.fftSize = 64;
                 dataArray = new Uint8Array(analyser.frequencyBinCount);
                 canvasCtx = canvas?.getContext('2d');
+                applyToneSettings();
                 draw();
             }
             if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
@@ -1060,6 +1167,22 @@
             document.getElementById('trackIdx').textContent = `TRK 0${i + 1}`;
             elStatus.textContent = "STOPPED";
             elStatus.style.color = "#005555";
+        }
+
+        function applyToneSettings() {
+            if (!bassFilter || !trebleFilter || !panNode || !compressor) return;
+            const map = (val, min, max) => min + (max - min) * (val / 100);
+
+            bassFilter.gain.value = map(bassVal, -12, 12) + (cro2Enabled ? 1.5 : 0);
+            trebleFilter.gain.value = map(trebleVal, -10, 10) + (cro2Enabled ? 3 : 0) + (dolbyEnabled ? -4 : 0);
+
+            const pan = map(balanceVal, -1, 1);
+            if (panNode.pan) panNode.pan.value = pan;
+
+            compressor.threshold.value = dolbyEnabled ? -30 : -18;
+            compressor.ratio.value = dolbyEnabled ? 3 : 2;
+            compressor.attack.value = 0.005;
+            compressor.release.value = 0.25;
         }
 
         function playAudio() {
@@ -1123,7 +1246,7 @@
 
                 for (let i = 0; i < dataArray.length; i++) {
                     const barH = (dataArray[i] / 255) * h;
-                    canvasCtx.fillStyle = `rgba(0, 240, 255, 0.6)`;
+                    canvasCtx.fillStyle = `rgba(233, 94, 47, 0.75)`;
                     canvasCtx.fillRect(x, h - barH, barW - 1, barH);
                     x += barW;
                     sum += dataArray[i];
@@ -1137,7 +1260,7 @@
         }
 
         // --- KNOB INTERACTION ---
-        function setupKnob(id, isVol) {
+        function setupKnob(id, onChange) {
             const knob = document.getElementById(id);
             if (!knob) return;
             let startY = 0;
@@ -1160,9 +1283,7 @@
                 knob.style.transform = `rotate(${deg}deg)`;
                 knob.setAttribute('data-val', newVal.toString());
 
-                if (isVol) {
-                    audio.volume = newVal / 100;
-                }
+                if (onChange) onChange(newVal);
             };
 
             const onUp = () => {
@@ -1172,12 +1293,13 @@
 
             const initDeg = (parseInt(knob.getAttribute('data-val')) / 100 * 270) - 135;
             knob.style.transform = `rotate(${initDeg}deg)`;
+            if (onChange) onChange(parseInt(knob.getAttribute('data-val')));
         }
 
-        setupKnob('knob-vol', true);
-        setupKnob('knob-bass', false);
-        setupKnob('knob-treble', false);
-        setupKnob('knob-bal', false);
+        setupKnob('knob-vol', (v) => { audio.volume = v / 100; });
+        setupKnob('knob-bass', (v) => { bassVal = v; applyToneSettings(); });
+        setupKnob('knob-treble', (v) => { trebleVal = v; applyToneSettings(); });
+        setupKnob('knob-bal', (v) => { balanceVal = v; applyToneSettings(); });
 
         document.getElementById('year').textContent = new Date().getFullYear();
 

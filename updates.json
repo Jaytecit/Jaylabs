@@ -38,6 +38,11 @@
         "date": "2025-12-13",
         "title": "Landing page soundtrack update",
         "summary": "Added the \"Bay Leaves\" track to the JL-85 audio deck playlist on the main JayLabs landing page."
+    },
+    {
+        "date": "2025-12-14",
+        "title": "Audio Corridor XR rig sync",
+        "summary": "VR rig now follows Iron Man with full 3-axis controller locomotion and z-bounded depth travel, keeping headset/hand alignment stable in WebXR."
     }
     
 ]

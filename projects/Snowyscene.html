@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Christmas VR Experience</title>
+    <title>Christmas VR Cinema</title>
     <style>
         body { margin: 0; background-color: #000; overflow: hidden; }
         #info {
@@ -12,17 +12,17 @@
             pointer-events: none; text-shadow: 0 0 5px black; z-index: 1;
             background: rgba(0,0,0,0.5); padding: 10px;
         }
+        /* Hide the file input, we trigger it via JS */
         #video-input { display: none; }
     </style>
 </head>
 <body>
     <div id="info">
-        <b>Ultimate Christmas VR</b><br/>
-        LEFT Stick: Move | TRIGGER: Grab Snow/Presents/Play TV<br/>
-        Stack snowballs to build a snowman!
+        <b>Christmas VR Cinema</b><br/>
+        LEFT Stick: Move | TRIGGER: Click Buttons / Throw Snow<br/>
+        <i>Note: Clicking 'Load' opens the file picker on your 2D Desktop overlay.</i>
     </div>
     
-    <!-- Hidden input for loading movies -->
     <input type="file" id="video-input" accept="video/*">
 
     <!-- Import Map -->
@@ -39,25 +39,44 @@
         import * as THREE from 'three';
         import { VRButton } from 'three/addons/webxr/VRButton.js';
         import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
         // --- Configuration ---
         const SNOW_COUNT = 5000;
-        const SNOW_RANGE = 25;
+        const SNOW_RANGE = 40;
         
         // --- Globals ---
         let camera, scene, renderer;
         let controller1, controller2;
         let controllerGrip1, controllerGrip2;
         let raycaster;
-        let dolly; // The camera rig container
+        let dolly; 
         
-        // State
+        // Cinema State
+        let videoElement, videoTexture, tvGroup, tvMesh;
+        let isVideoPlaying = false;
+        let controlPanel;
+        let controlsVisible = true;
+        
+        // Scene State
         const snowSystem = { mesh: null, velocities: [] };
         const thrownSnowballs = [];
-        const interactableObjects = [];
+        const interactableObjects = []; // Buttons and hit children
+        const floorObjects = []; // Snowballs hit this
         const footprints = [];
         let santaGroup;
-        let videoElement;
+        let santaLoaded = false;
+        let santaActive = false;
+        let santaPassStart = 0;
+        const santaPassDuration = 20;
+        let santaNextPassTime = 0;
+        const santaStartPos = new THREE.Vector3();
+        const santaEndPos = new THREE.Vector3();
+        const controllerHoverTargets = [null, null];
+        let mouseHoverTarget = null;
+
+        // Sound Context
+        let audioCtx;
 
         // Interaction
         const tempMatrix = new THREE.Matrix4();
@@ -65,20 +84,18 @@
             new THREE.RingGeometry(0.02, 0.04, 32).rotateX(-Math.PI / 2),
             new THREE.MeshBasicMaterial({ color: 0xffff00, opacity: 0.8, transparent: true })
         );
-
-        // Sound Context
-        let audioCtx;
+        const clock = new THREE.Clock();
         
         init();
 
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x020205);
-            scene.fog = new THREE.FogExp2(0x020205, 0.015);
+            scene.background = new THREE.Color(0x050510);
+            scene.fog = new THREE.FogExp2(0x050510, 0.02);
 
-            // Setup Camera Rig (Dolly) for movement
+            // Camera Rig
             dolly = new THREE.Group();
-            dolly.position.set(0, 0, 4);
+            dolly.position.set(0, 0, 5); // Start user back a bit
             scene.add(dolly);
 
             camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
@@ -93,15 +110,19 @@
             renderer.xr.enabled = true;
             document.body.appendChild(renderer.domElement);
             document.body.appendChild(VRButton.createButton(renderer));
+            renderer.domElement.addEventListener('pointerdown', onPointerDown);
+            renderer.domElement.addEventListener('pointermove', onPointerMove);
+            renderer.domElement.addEventListener('pointerleave', () => { mouseHoverTarget = null; });
 
             // --- Scene Building ---
             createEnvironment();
             createChristmasLights();
             createSnowSystem();
             createSanta();
-            createPresents();
-            createMulledWine(2, 0.5, 3);
-            createTV(-3, 1.5, -2);
+            
+            // Build the Cinema Area
+            createCinemaSystem(0, 2.9, -4); // Raised to stay above snow
+            
             setupControllers();
 
             raycaster = new THREE.Raycaster();
@@ -109,50 +130,153 @@
 
             window.addEventListener('resize', onWindowResize);
             
-            // Video Input Handler
-            document.getElementById('video-input').addEventListener('change', function(e) {
+            // HTML Video Logic
+            setupVideoElement();
+
+            renderer.setAnimationLoop(render);
+        }
+
+        // --- CINEMA & MEDIA LOGIC ---
+
+        function setupVideoElement() {
+            videoElement = document.createElement('video');
+            videoElement.crossOrigin = "anonymous";
+            videoElement.loop = false;
+            videoElement.style.display = 'none'; 
+            videoElement.addEventListener('play', () => syncVideoState(true));
+            videoElement.addEventListener('pause', () => syncVideoState(false));
+            videoElement.addEventListener('ended', () => syncVideoState(false));
+            
+            // Create texture but don't assign map yet until loaded
+            videoTexture = new THREE.VideoTexture(videoElement);
+            videoTexture.minFilter = THREE.LinearFilter;
+            videoTexture.magFilter = THREE.LinearFilter;
+            videoTexture.colorSpace = THREE.SRGBColorSpace;
+
+            // Handle File Input
+            const input = document.getElementById('video-input');
+            input.addEventListener('change', function(e) {
                 const file = e.target.files[0];
                 if (file) {
                     const url = URL.createObjectURL(file);
                     videoElement.src = url;
-                    videoElement.play();
+                    videoElement.load();
+                    // Play automatically on load
+                    videoElement.play().then(() => {
+                        // State handled by play event
+                    }).catch(e => console.log("Play interrupted", e));
+                    syncVideoState(false);
                 }
             });
-
-            // *** CRITICAL FIX: Start the loop ***
-            renderer.setAnimationLoop(render);
         }
 
-        // --- CREATION HELPERS ---
+        function createCinemaSystem(x, y, z) {
+            tvGroup = new THREE.Group();
+            tvGroup.position.set(x, y, z);
+            scene.add(tvGroup);
+
+            // 1. The Screen (16:9 aspect ratio start)
+            const geometry = new THREE.PlaneGeometry(4, 2.25);
+            const material = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide });
+            tvMesh = new THREE.Mesh(geometry, material);
+            tvMesh.name = "tv_screen";
+            tvGroup.add(tvMesh);
+
+            // 2. The Frame
+            const frameGeo = new THREE.BoxGeometry(4.2, 2.45, 0.1);
+            const frameMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
+            const frame = new THREE.Mesh(frameGeo, frameMat);
+            frame.position.z = -0.06;
+            tvGroup.add(frame);
+
+            // 3. Control Panel (Floating below screen)
+            const panelGroup = new THREE.Group();
+            panelGroup.position.set(0, -1.7, 0.2);
+            panelGroup.rotation.x = -Math.PI / 6; // Angled up towards user
+            tvGroup.add(panelGroup);
+            controlPanel = panelGroup;
+
+            // Create Buttons
+            createButton(panelGroup, -2.1, 0, "LOAD", 0x4444ff, "btn_load");
+            createButton(panelGroup, -0.7, 0, "PLAY/PAUSE", 0x44ff44, "btn_play");
+            createButton(panelGroup,  0.7, 0, "SIZE -", 0xffaa00, "btn_scale_down");
+            createButton(panelGroup,  2.1, 0, "SIZE +", 0xffaa00, "btn_scale_up");
+        }
+
+        function createButton(parent, x, y, text, color, name) {
+            // Button Base
+            const geometry = new THREE.BoxGeometry(1.2, 0.6, 0.12);
+            const material = new THREE.MeshStandardMaterial({ color: color, emissive: 0x111111, emissiveIntensity: 0.4 });
+            const btn = new THREE.Mesh(geometry, material);
+            btn.position.set(x, y, 0);
+            btn.name = name;
+            btn.userData.baseColor = color;
+            btn.userData.baseEmissive = 0x111111;
+            btn.userData.hovered = false;
+            parent.add(btn);
+            interactableObjects.push(btn);
+
+            // Text Label (Canvas Texture)
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = color === 0x111111 ? 'white' : 'black'; // contrast
+            ctx.fillRect(0,0,256,128); // bg
+            ctx.fillStyle = color === 0x111111 ? 'black' : 'white'; // text
+            ctx.font = 'bold 40px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 128, 64);
+            
+            const tex = new THREE.CanvasTexture(canvas);
+            const labelMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+            const label = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.45), labelMat);
+            label.position.z = 0.06;
+            label.userData.baseButton = btn;
+            label.userData.actionName = name;
+            btn.add(label);
+            interactableObjects.push(label); // Make label surface clickable
+            
+            return btn;
+        }
+
+        // --- ENVIRONMENT ---
 
         function createEnvironment() {
             // Ground
-            const groundGeo = new THREE.PlaneGeometry(60, 60, 128, 128);
+            const groundGeo = new THREE.PlaneGeometry(80, 80, 128, 128);
             const pos = groundGeo.attributes.position;
             for(let i=0; i<pos.count; i++){
                 pos.setZ(i, Math.sin(pos.getX(i)*0.1)*0.5 + Math.cos(pos.getY(i)*0.1)*0.5);
             }
             groundGeo.computeVertexNormals();
-            
-            const groundMat = new THREE.MeshStandardMaterial({
-                color: 0xffffff, roughness: 0.2, metalness: 0.1
-            });
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.1 });
             const ground = new THREE.Mesh(groundGeo, groundMat);
             ground.rotation.x = -Math.PI / 2;
             ground.receiveShadow = true;
             ground.name = "ground";
             scene.add(ground);
-            interactableObjects.push(ground);
+            floorObjects.push(ground);
 
-            // Trees
-            for(let i=0; i<20; i++) createTree((Math.random()-0.5)*40, (Math.random()-0.5)*40);
+            // Trees (Avoid the center view channel)
+            for(let i=0; i<30; i++) {
+                let tx = (Math.random()-0.5)*50;
+                let tz = (Math.random()-0.5)*50;
+                
+                // CLEAR ZONE: Keep the area in front of TV clear (X: -3 to 3, Z: -10 to 5)
+                if (tx > -4 && tx < 4 && tz > -10 && tz < 5) continue; 
+
+                createTree(tx, tz);
+            }
 
             // Lights
-            const ambient = new THREE.AmbientLight(0x404060, 0.5);
+            const ambient = new THREE.AmbientLight(0x404060, 0.4);
             scene.add(ambient);
             const moonLight = new THREE.DirectionalLight(0xaaccff, 0.8);
             moonLight.position.set(10, 20, 10);
             moonLight.castShadow = true;
+            moonLight.shadow.mapSize.width = 2048;
+            moonLight.shadow.mapSize.height = 2048;
             scene.add(moonLight);
         }
 
@@ -164,8 +288,6 @@
             ctx.translate(16,16);
             for(let i=0; i<6; i++) {
                 ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 14); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(0,6); ctx.lineTo(4, 10); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(0,6); ctx.lineTo(-4, 10); ctx.stroke();
                 ctx.rotate(Math.PI/3);
             }
             return new THREE.CanvasTexture(canvas);
@@ -187,7 +309,7 @@
             geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
             const material = new THREE.PointsMaterial({
                 color: 0xffffff, size: 0.1, map: createSnowflakeTexture(),
-                transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending
+                transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false
             });
             snowSystem.mesh = new THREE.Points(geometry, material);
             scene.add(snowSystem.mesh);
@@ -203,58 +325,65 @@
                 const s = 1.5 - (i * 0.4);
                 const cone = new THREE.Mesh(new THREE.ConeGeometry(s, 1.5, 8), leafMat);
                 cone.position.y = 1.5 + (i * 0.8);
+                cone.castShadow = true;
                 group.add(cone);
             }
             scene.add(group);
         }
 
         function createSanta() {
-            santaGroup = new THREE.Group();
-            const sleigh = new THREE.Mesh(new THREE.BoxGeometry(1, 0.5, 2), new THREE.MeshStandardMaterial({ color: 0xaa0000 }));
-            santaGroup.add(sleigh);
-            scene.add(santaGroup);
+            const loader = new GLTFLoader();
+            loader.load('santas_sleigh_ride.glb', (gltf) => {
+                santaGroup = gltf.scene;
+                santaGroup.scale.set(0.6, 0.6, 0.6);
+                santaGroup.traverse(node => {
+                    if (node.isMesh) {
+                        node.castShadow = true;
+                        node.receiveShadow = true;
+                    }
+                });
+                santaGroup.visible = false;
+                scene.add(santaGroup);
+                santaLoaded = true;
+                scheduleNextSantaPass();
+            }, undefined, (err) => console.log('Santa load error', err));
         }
 
-        function createPresents() {
-            const geo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
-            const cols = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00];
-            for(let i=0; i<8; i++) {
-                const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: cols[i%4] }));
-                mesh.position.set((Math.random()-0.5)*15, 0.2, (Math.random()-0.5)*15);
-                mesh.name = "present";
-                scene.add(mesh);
-                interactableObjects.push(mesh);
-            }
+        function scheduleNextSantaPass() {
+            santaActive = false;
+            const delay = 120 + Math.random() * 180; // 2–5 minutes
+            santaNextPassTime = clock.getElapsedTime() + delay;
+            if (santaGroup) santaGroup.visible = false;
         }
 
-        function createMulledWine(x, y, z) {
-            const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.25, 12), new THREE.MeshStandardMaterial({ color: 0x880000 }));
-            cup.position.set(x, y, z);
-            const liquid = new THREE.Mesh(new THREE.CircleGeometry(0.09, 12), new THREE.MeshStandardMaterial({ color: 0x330000 }));
-            liquid.rotation.x = -Math.PI/2; liquid.position.y = 0.12;
-            cup.add(liquid);
-            scene.add(cup);
-        }
-
-        function createTV(x, y, z) {
-            videoElement = document.createElement('video');
-            videoElement.crossOrigin = "anonymous"; videoElement.loop = true;
-            const tex = new THREE.VideoTexture(videoElement);
-            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3, 1.7), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
-            mesh.position.set(x, y, z); mesh.lookAt(0, 1.5, 0); mesh.name = "tv";
-            scene.add(mesh);
-            interactableObjects.push(mesh);
+        function startSantaPass() {
+            if (!santaGroup) return;
+            santaActive = true;
+            santaPassStart = clock.getElapsedTime();
+            const y = 20 + Math.random() * 4;
+            const z = -40 + Math.random() * 80; // wide band across the scene
+            santaStartPos.set(-80, y, z);
+            santaEndPos.set(80, y + (Math.random()*4 - 2), z + (Math.random()*8 - 4));
+            santaGroup.position.copy(santaStartPos);
+            santaGroup.visible = true;
         }
 
         function createChristmasLights() {
-            const points = new THREE.EllipseCurve(0, 0, 5, 5, 0, 6.28, false, 0).getPoints(40);
+            // Simple string of lights around the viewing area
+            const curve = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(-5, 4, -5),
+                new THREE.Vector3(5, 4, -5),
+                new THREE.Vector3(5, 4, 5),
+                new THREE.Vector3(-5, 4, 5),
+            ], true);
+            
+            const points = curve.getPoints(50);
             points.forEach((p, i) => {
                 if(i%2===0) {
                     const c = new THREE.Color().setHSL(Math.random(), 1, 0.5);
                     const b = new THREE.Mesh(new THREE.SphereGeometry(0.05), new THREE.MeshStandardMaterial({ color: c, emissive: c }));
-                    b.position.set(p.x, 2.5 + Math.sin(p.x)*0.5, p.y);
+                    b.position.copy(p);
                     scene.add(b);
-                    const l = new THREE.PointLight(c, 0.5, 3); l.position.copy(b.position); scene.add(l);
                 }
             });
         }
@@ -270,6 +399,8 @@
             controller2 = renderer.xr.getController(1);
             controller2.addEventListener('selectstart', onSelectStart);
             controller2.addEventListener('selectend', onSelectEnd);
+            controller2.addEventListener('squeezestart', toggleControlPanelViaGrip);
+            controller2.addEventListener('squeeze', toggleControlPanelViaGrip);
             dolly.add(controller2);
 
             const factory = new XRControllerModelFactory();
@@ -282,7 +413,8 @@
             dolly.add(controllerGrip2);
 
             // Ray visual
-            const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-1)]));
+            const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-1)]);
+            const line = new THREE.Line(geo);
             line.name = 'line'; line.scale.z = 5;
             controller1.add(line.clone()); controller2.add(line.clone());
         }
@@ -293,23 +425,21 @@
             const c = event.target;
             const idx = c === controller1 ? 0 : 1;
             
+            // Raycasting
             tempMatrix.identity().extractRotation(c.matrixWorld);
             raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);
             raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
             
-            const hits = raycaster.intersectObjects(interactableObjects);
+            const hits = raycaster.intersectObjects(interactableObjects, true);
+            
             if (hits.length > 0) {
-                const hit = hits[0].object;
-                if(hit.name === "tv") { playJingle(); document.getElementById('video-input').click(); return; }
-                if(hit.name === "present") { 
-                    playJingle(); 
-                    scene.remove(hit); 
-                    interactableObjects.splice(interactableObjects.indexOf(hit), 1);
-                    return; 
-                }
+                const hitObj = hits[0].object;
+                const targetName = resolveButtonName(hitObj);
+                handleButtonAction(targetName);
+                return;
             }
 
-            // Spawn Snowball
+            // If no button clicked, Spawn Snowball
             const sb = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 16), new THREE.MeshStandardMaterial({ color: 0xffffff }));
             c.add(sb);
             controllerData[idx].obj = sb;
@@ -326,33 +456,155 @@
                 const pos = new THREE.Vector3(); sb.getWorldPosition(pos);
                 c.remove(sb); scene.add(sb); sb.position.copy(pos);
 
-                let vel = new THREE.Vector3(0,0,-1).applyQuaternion(c.quaternion).multiplyScalar(5);
+                let vel = new THREE.Vector3(0,0,-1).applyQuaternion(c.quaternion).multiplyScalar(10); // Faster throw
                 if (data.hist.length >= 2) {
                     const last = data.hist[data.hist.length-1];
                     const prev = data.hist[0];
-                    vel.subVectors(last.p, prev.p).multiplyScalar(1000 / (last.t - prev.t));
+                    // Simple throw physics based on hand movement
+                    vel.subVectors(last.p, prev.p).multiplyScalar(800 / (last.t - prev.t)); 
                 }
                 thrownSnowballs.push({ mesh: sb, vel: vel, active: true });
-                interactableObjects.push(sb); // Make it hittable
-                sb.name = "snowball";
                 data.obj = null;
             }
         }
 
-        function playJingle() {
-            if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const now = audioCtx.currentTime;
-            [659, 659, 659].forEach((f, i) => {
-                const osc = audioCtx.createOscillator();
-                const g = audioCtx.createGain();
-                osc.frequency.value = f;
-                g.gain.setValueAtTime(0.1, now + i*0.2);
-                g.gain.exponentialRampToValueAtTime(0.001, now + i*0.2 + 0.15);
-                osc.connect(g); g.connect(audioCtx.destination);
-                osc.start(now + i*0.2); osc.stop(now + i*0.2 + 0.2);
+        // Allow desktop clicking to trigger button actions (including file picker)
+        const mouse = new THREE.Vector2();
+
+        function onPointerDown(event) {
+            // Skip when in XR so we don't double-trigger
+            if (renderer.xr.isPresenting) return;
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const hits = raycaster.intersectObjects(interactableObjects, true);
+            if (hits.length > 0) {
+                const targetName = resolveButtonName(hits[0].object);
+                handleButtonAction(targetName);
+            }
+        }
+
+        function onPointerMove(event) {
+            // Highlight buttons when hovering on desktop
+            if (renderer.xr.isPresenting) return;
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const hits = raycaster.intersectObjects(interactableObjects, true);
+            mouseHoverTarget = hits.length > 0 ? resolveButtonMesh(hits[0].object) : null;
+        }
+
+        function resolveButtonMesh(obj) {
+            if(!obj) return null;
+            return obj.userData.baseButton || obj;
+        }
+
+        function resolveButtonName(obj) {
+            if(!obj) return null;
+            return obj.userData.actionName || obj.name;
+        }
+
+        function handleButtonAction(name) {
+            if(!name) return;
+            if(name === 'btn_load') {
+                clickSound();
+                triggerFilePicker();
+                return;
+            }
+            if(name === 'btn_play') {
+                clickSound();
+                if(videoElement.paused) {
+                    videoElement.play();
+                } else {
+                    videoElement.pause();
+                }
+                return;
+            }
+            if(name === 'btn_scale_up') {
+                clickSound();
+                const s = tvGroup.scale.x + 0.1;
+                tvGroup.scale.set(s,s,s);
+                return;
+            }
+            if(name === 'btn_scale_down') {
+                clickSound();
+                const s = Math.max(0.5, tvGroup.scale.x - 0.1);
+                tvGroup.scale.set(s,s,s);
+                return;
+            }
+        }
+
+        function triggerFilePicker() {
+            const input = document.getElementById('video-input');
+            // Clear to ensure consecutive identical selections still fire change
+            input.value = '';
+            input.click();
+        }
+
+        function setControlsVisibility(show) {
+            controlsVisible = show;
+            if (controlPanel) controlPanel.visible = show;
+        }
+
+        function toggleControlPanelViaGrip() {
+            setControlsVisibility(!controlsVisible);
+        }
+
+        function syncVideoState(playing) {
+            isVideoPlaying = playing;
+            if (playing) {
+                setControlsVisibility(false);
+                if (tvMesh) {
+                    tvMesh.material.map = videoTexture;
+                    tvMesh.material.color.set(0xffffff);
+                    tvMesh.material.needsUpdate = true;
+                }
+            } else {
+                setControlsVisibility(true);
+                if (tvMesh) {
+                    tvMesh.material.map = null;
+                    tvMesh.material.color.set(0x000000);
+                    tvMesh.material.needsUpdate = true;
+                }
+            }
+            updatePlayButtonVisuals();
+        }
+
+        function updateHoverVisuals(hoverTargets) {
+            interactableObjects.forEach(obj => {
+                const btn = resolveButtonMesh(obj);
+                const isHover = hoverTargets.has(btn);
+                if(isHover && !btn.userData.hovered) {
+                    btn.userData.hovered = true;
+                    btn.material.emissive.setHex(0xffffaa);
+                    btn.material.emissiveIntensity = 0.8;
+                    btn.scale.set(1.05, 1.05, 1.05);
+                } else if(!isHover && btn.userData.hovered) {
+                    btn.userData.hovered = false;
+                    btn.material.emissive.setHex(btn.userData.baseEmissive ?? 0x111111);
+                    btn.material.emissiveIntensity = 0.4;
+                    btn.scale.set(1, 1, 1);
+                }
             });
         }
 
+        function clickSound() {
+            if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.1);
+            g.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+            osc.connect(g); g.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime+0.1);
+        }
+
+        function updatePlayButtonVisuals() {
+            // Visual feedback could be added here (change button color)
+        }
+
+        // --- LOCOMOTION ---
         function handleMovement(dt) {
             const s = renderer.xr.getSession();
             if(!s) return;
@@ -362,7 +614,7 @@
                     if(axes.length >= 4) {
                         const x = axes[2], z = axes[3];
                         if(Math.abs(x)>0.1 || Math.abs(z)>0.1) {
-                            const speed = 3 * dt;
+                            const speed = 2 * dt;
                             const dir = new THREE.Vector3(); camera.getWorldDirection(dir); dir.y=0; dir.normalize();
                             const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0,1,0));
                             dolly.position.addScaledVector(right, x * speed).addScaledVector(dir, z * speed);
@@ -386,31 +638,42 @@
             }
         }
 
-        function updatePhysics(dt) {
-            // Santa
-            if(santaGroup) {
-                const t = Date.now() * 0.0005;
-                santaGroup.position.set(Math.cos(t)*20, 15+Math.sin(t*2)*2, Math.sin(t)*20);
-                santaGroup.lookAt(0,15,0);
-            }
+        // --- GAME LOOP ---
+        function render() {
+            const dt = clock.getDelta();
+            const elapsed = clock.getElapsedTime();
+            handleMovement(dt);
 
-            // Snowballs
-            for(const obj of thrownSnowballs) {
-                if(!obj.active) continue;
-                obj.vel.y -= 9.8 * dt;
-                obj.mesh.position.addScaledVector(obj.vel, dt);
-                
-                // Stack collision (Simplified: check distance to other inactive snowballs)
-                for(const other of thrownSnowballs) {
-                    if(other === obj || other.active) continue;
-                    if(obj.mesh.position.distanceTo(other.mesh.position) < 0.18) {
-                        obj.active = false; // Stick to other ball
-                        obj.vel.set(0,0,0);
-                        break;
+            // Flying Santa Animation (rare fly-bys)
+            if (santaLoaded && santaGroup) {
+                if (!santaActive && elapsed >= santaNextPassTime) {
+                    startSantaPass();
+                }
+                if (santaActive) {
+                    const passT = (elapsed - santaPassStart) / santaPassDuration;
+                    if (passT >= 1) {
+                        scheduleNextSantaPass();
+                    } else {
+                        const eased = THREE.MathUtils.smoothstep(passT, 0, 1);
+                        santaGroup.position.lerpVectors(santaStartPos, santaEndPos, eased);
+                        santaGroup.position.y += Math.sin(elapsed * 2) * 0.5;
+                        const lookAhead = new THREE.Vector3().lerpVectors(
+                            santaStartPos,
+                            santaEndPos,
+                            Math.min(1, eased + 0.02)
+                        );
+                        santaGroup.lookAt(lookAhead);
                     }
                 }
+            }
 
-                // Ground collision
+            // Snowballs Physics
+            for(const obj of thrownSnowballs) {
+                if(!obj.active) continue;
+                obj.vel.y -= 9.8 * dt; // Gravity
+                obj.mesh.position.addScaledVector(obj.vel, dt);
+                
+                // Floor Collision
                 const gy = Math.sin(obj.mesh.position.x*0.1)*0.5 + Math.cos(obj.mesh.position.z*0.1)*0.5;
                 if(obj.mesh.position.y < gy + 0.1) {
                     obj.mesh.position.y = gy + 0.1;
@@ -418,50 +681,54 @@
                     obj.vel.set(0,0,0);
                 }
             }
-        }
 
-        const clock = new THREE.Clock();
-        function render() {
-            const dt = clock.getDelta();
-            handleMovement(dt);
-            updatePhysics(dt);
-
-            // Snow animation
+            // Snow Particles
             if(snowSystem.mesh) {
                 const pos = snowSystem.mesh.geometry.attributes.position.array;
                 for(let i=0; i<SNOW_COUNT; i++) {
                     pos[i*3+1] += snowSystem.velocities[i].y;
-                    if(pos[i*3+1] < 0) pos[i*3+1] = 15;
+                    if(pos[i*3+1] < 0) pos[i*3+1] = 15; // Reset height
+                    pos[i*3] += snowSystem.velocities[i].x; // Wiggle
                 }
                 snowSystem.mesh.geometry.attributes.position.needsUpdate = true;
             }
 
-            // Footprint fade
-            for(let i=footprints.length-1; i>=0; i--) {
-                footprints[i].age += dt;
-                footprints[i].mesh.material.opacity = 0.3 - footprints[i].age * 0.1;
-                if(footprints[i].age > 3) { scene.remove(footprints[i].mesh); footprints.splice(i,1); }
+            // Update Video Texture if playing
+            if ( videoElement && videoElement.readyState === videoElement.HAVE_ENOUGH_DATA ) {
+                if(videoTexture) videoTexture.needsUpdate = true;
             }
 
-            // Controllers
+            // Controller Interaction Logic
+            let anyCursorHit = false;
             [controller1, controller2].forEach((c, i) => {
+                // Tracking history for throw velocity
                 if(controllerData[i].obj) {
                     controllerData[i].hist.push({p:c.position.clone(), t:performance.now()});
                     if(controllerData[i].hist.length>5) controllerData[i].hist.shift();
                 }
-                // Ray visual update
+                
+                // Raycasting Visuals
                 tempMatrix.identity().extractRotation(c.matrixWorld);
                 raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);
                 raycaster.ray.direction.set(0,0,-1).applyMatrix4(tempMatrix);
-                const hits = raycaster.intersectObjects(interactableObjects);
+                
+                const hits = raycaster.intersectObjects(interactableObjects, true);
                 const line = c.children.find(o=>o.name==='line');
                 if(hits.length>0) {
-                    line.scale.z = hits[0].distance;
+                    if(line) line.scale.z = hits[0].distance;
                     cursor.visible = true; cursor.position.copy(hits[0].point);
+                    anyCursorHit = true;
                 } else {
-                    line.scale.z = 5; cursor.visible = false;
+                    if(line) line.scale.z = 5;
                 }
+                controllerHoverTargets[i] = hits.length > 0 ? resolveButtonMesh(hits[0].object) : null;
             });
+            if(!anyCursorHit) cursor.visible = false;
+
+            const hoverTargets = new Set();
+            controllerHoverTargets.forEach(t => { if(t) hoverTargets.add(t); });
+            if(mouseHoverTarget) hoverTargets.add(mouseHoverTarget);
+            updateHoverVisuals(hoverTargets);
 
             renderer.render(scene, camera);
         }
