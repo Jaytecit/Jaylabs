@@ -3,24 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Magical WebXR Christmas</title>
+    <title>Christmas VR Experience</title>
     <style>
         body { margin: 0; background-color: #000; overflow: hidden; }
         #info {
             position: absolute; top: 10px; left: 0; width: 100%;
             text-align: center; color: white; font-family: sans-serif;
             pointer-events: none; text-shadow: 0 0 5px black; z-index: 1;
+            background: rgba(0,0,0,0.5); padding: 10px;
         }
+        #video-input { display: none; }
     </style>
 </head>
 <body>
     <div id="info">
-        <b>Quest 3 Christmas Experience</b><br/>
-        Squeeze Trigger (Index Finger) to grab & throw snowballs.<br/>
-        Raycaster highlights where snow accumulates.
+        <b>Ultimate Christmas VR</b><br/>
+        LEFT Stick: Move | TRIGGER: Grab Snow/Presents/Play TV<br/>
+        Stack snowballs to build a snowman!
     </div>
+    
+    <!-- Hidden input for loading movies -->
+    <input type="file" id="video-input" accept="video/*">
 
-    <!-- Import Map for Three.js -->
+    <!-- Import Map -->
     <script type="importmap">
         {
             "imports": {
@@ -36,104 +41,51 @@
         import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 
         // --- Configuration ---
-        const SNOW_COUNT = 8000;
-        const SNOW_RANGE = 20;
+        const SNOW_COUNT = 5000;
+        const SNOW_RANGE = 25;
         
         // --- Globals ---
         let camera, scene, renderer;
         let controller1, controller2;
         let controllerGrip1, controllerGrip2;
         let raycaster;
+        let dolly; // The camera rig container
         
-        // Arrays for updates
-        const snow = []; // FIXED: Removed space in variable name
+        // State
+        const snowSystem = { mesh: null, velocities: [] };
         const thrownSnowballs = [];
         const interactableObjects = [];
+        const footprints = [];
+        let santaGroup;
+        let videoElement;
 
         // Interaction
         const tempMatrix = new THREE.Matrix4();
         const cursor = new THREE.Mesh(
             new THREE.RingGeometry(0.02, 0.04, 32).rotateX(-Math.PI / 2),
-            new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.8, transparent: true })
+            new THREE.MeshBasicMaterial({ color: 0xffff00, opacity: 0.8, transparent: true })
         );
 
-        // --- CUSTOM SHADER FOR SNOW ACCUMULATION ---
-        const snowMaterialMixin = {
-            uniforms: {
-                baseColor: { value: new THREE.Color(0x228b22) }, // Forest Green default
-                snowColor: { value: new THREE.Color(0xffffff) },
-                lightPos: { value: new THREE.Vector3(0, 10, 0) }
-            },
-            vertexShader: `
-                varying vec3 vNormal;
-                varying vec3 vViewPosition;
-                varying vec2 vUv;
-                varying vec3 vWorldPosition;
-                
-                void main() {
-                    vUv = uv;
-                    vNormal = normalize(normalMatrix * normal);
-                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                    vViewPosition = -mvPosition.xyz;
-                    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-                    vWorldPosition = worldPosition.xyz;
-                    gl_Position = projectionMatrix * mvPosition;
-                }
-            `,
-            fragmentShader: `
-                uniform vec3 baseColor;
-                uniform vec3 snowColor;
-                varying vec3 vNormal;
-                varying vec3 vWorldPosition;
-
-                void main() {
-                    // Simple directional lighting
-                    vec3 lightDir = normalize(vec3(0.5, 1.0, 0.5));
-                    float light = max(dot(vNormal, lightDir), 0.0);
-                    
-                    // Snow factor depends on the normal's Y component
-                    float snowFactor = dot(vNormal, vec3(0.0, 1.0, 0.0));
-                    
-                    // Make snow transition sharp but smooth
-                    snowFactor = smoothstep(0.4, 0.8, snowFactor);
-                    
-                    // Mix base color + light with snow
-                    vec3 finalColor = mix(baseColor * (0.2 + 0.8 * light), snowColor * (0.8 + 0.2*light), snowFactor);
-                    
-                    // Add some sparkle to snow
-                    if(snowFactor > 0.5) {
-                        float sparkle = step(0.98, fract(sin(dot(vWorldPosition.xy ,vec2(12.9898,78.233))) * 43758.5453));
-                        finalColor += vec3(sparkle * 0.5);
-                    }
-
-                    gl_FragColor = vec4(finalColor, 1.0);
-                }
-            `
-        };
-
-        // Function to create a material instance with a specific base color
-        function createSnowMaterial(colorHex) {
-            const mat = new THREE.ShaderMaterial({
-                uniforms: THREE.UniformsUtils.clone(snowMaterialMixin.uniforms),
-                vertexShader: snowMaterialMixin.vertexShader,
-                fragmentShader: snowMaterialMixin.fragmentShader
-            });
-            mat.uniforms.baseColor.value.setHex(colorHex);
-            return mat;
-        }
-
+        // Sound Context
+        let audioCtx;
+        
         init();
-        animate();
 
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x050510); // Dark night sky
-            scene.fog = new THREE.FogExp2(0x050510, 0.02);
+            scene.background = new THREE.Color(0x020205);
+            scene.fog = new THREE.FogExp2(0x020205, 0.015);
 
-            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 50);
-            camera.position.set(0, 1.6, 3);
+            // Setup Camera Rig (Dolly) for movement
+            dolly = new THREE.Group();
+            dolly.position.set(0, 0, 4);
+            scene.add(dolly);
 
-            // Setup Renderer
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 1.6, 0);
+            dolly.add(camera);
+
+            // Renderer
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -142,322 +94,382 @@
             document.body.appendChild(renderer.domElement);
             document.body.appendChild(VRButton.createButton(renderer));
 
-            // --- Scene Environment ---
-
-            // Ground
-            const groundGeo = new THREE.PlaneGeometry(40, 40, 64, 64);
-            const posAttribute = groundGeo.attributes.position;
-            for (let i = 0; i < posAttribute.count; i++) {
-                const x = posAttribute.getX(i);
-                const y = posAttribute.getY(i);
-                const z = Math.sin(x * 0.2) * 0.5 + Math.cos(y * 0.3) * 0.5;
-                posAttribute.setZ(i, z);
-            }
-            groundGeo.computeVertexNormals();
-            
-            const groundMat = createSnowMaterial(0x332211); // Brown earth underneath
-            const ground = new THREE.Mesh(groundGeo, groundMat);
-            ground.rotation.x = -Math.PI / 2;
-            ground.receiveShadow = true;
-            scene.add(ground);
-            interactableObjects.push(ground);
-
-            // Trees
-            for(let i=0; i<15; i++) {
-                createTree(
-                    (Math.random() - 0.5) * 15, 
-                    (Math.random() - 0.5) * 15
-                );
-            }
-
-            // Christmas Lights
+            // --- Scene Building ---
+            createEnvironment();
             createChristmasLights();
-
-            // Ambient Light
-            const ambient = new THREE.AmbientLight(0x222233);
-            scene.add(ambient);
-
-            // Falling Snow Particles
-            const snowGeo = new THREE.BufferGeometry();
-            const snowPos = [];
-            for (let i = 0; i < SNOW_COUNT; i++) {
-                snowPos.push((Math.random() - 0.5) * SNOW_RANGE); // x
-                snowPos.push(Math.random() * 10); // y
-                snowPos.push((Math.random() - 0.5) * SNOW_RANGE); // z
-            }
-            snowGeo.setAttribute('position', new THREE.Float32BufferAttribute(snowPos, 3));
-            const snowMat = new THREE.PointsMaterial({
-                color: 0xffffff,
-                size: 0.03,
-                transparent: true,
-                opacity: 0.8
-            });
-            const snowSystem = new THREE.Points(snowGeo, snowMat);
-            scene.add(snowSystem);
-            snow.push(snowSystem);
-
-            // --- Controllers & Interaction ---
-            
-            controller1 = renderer.xr.getController(0);
-            controller1.addEventListener('selectstart', onSelectStart);
-            controller1.addEventListener('selectend', onSelectEnd);
-            scene.add(controller1);
-
-            controller2 = renderer.xr.getController(1);
-            controller2.addEventListener('selectstart', onSelectStart);
-            controller2.addEventListener('selectend', onSelectEnd);
-            scene.add(controller2);
-
-            const controllerModelFactory = new XRControllerModelFactory();
-            controllerGrip1 = renderer.xr.getControllerGrip(0);
-            controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
-            scene.add(controllerGrip1);
-
-            controllerGrip2 = renderer.xr.getControllerGrip(1);
-            controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
-            scene.add(controllerGrip2);
-
-            // Raycaster visual line
-            const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
-            const line = new THREE.Line(geometry);
-            line.name = 'line';
-            line.scale.z = 5;
-
-            controller1.add(line.clone());
-            controller2.add(line.clone());
+            createSnowSystem();
+            createSanta();
+            createPresents();
+            createMulledWine(2, 0.5, 3);
+            createTV(-3, 1.5, -2);
+            setupControllers();
 
             raycaster = new THREE.Raycaster();
             scene.add(cursor);
 
             window.addEventListener('resize', onWindowResize);
+            
+            // Video Input Handler
+            document.getElementById('video-input').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const url = URL.createObjectURL(file);
+                    videoElement.src = url;
+                    videoElement.play();
+                }
+            });
+
+            // *** CRITICAL FIX: Start the loop ***
+            renderer.setAnimationLoop(render);
         }
 
-        // Helper: Create a Low Poly Tree
+        // --- CREATION HELPERS ---
+
+        function createEnvironment() {
+            // Ground
+            const groundGeo = new THREE.PlaneGeometry(60, 60, 128, 128);
+            const pos = groundGeo.attributes.position;
+            for(let i=0; i<pos.count; i++){
+                pos.setZ(i, Math.sin(pos.getX(i)*0.1)*0.5 + Math.cos(pos.getY(i)*0.1)*0.5);
+            }
+            groundGeo.computeVertexNormals();
+            
+            const groundMat = new THREE.MeshStandardMaterial({
+                color: 0xffffff, roughness: 0.2, metalness: 0.1
+            });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            ground.name = "ground";
+            scene.add(ground);
+            interactableObjects.push(ground);
+
+            // Trees
+            for(let i=0; i<20; i++) createTree((Math.random()-0.5)*40, (Math.random()-0.5)*40);
+
+            // Lights
+            const ambient = new THREE.AmbientLight(0x404060, 0.5);
+            scene.add(ambient);
+            const moonLight = new THREE.DirectionalLight(0xaaccff, 0.8);
+            moonLight.position.set(10, 20, 10);
+            moonLight.castShadow = true;
+            scene.add(moonLight);
+        }
+
+        function createSnowflakeTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32; canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            ctx.strokeStyle = 'white'; ctx.lineWidth = 2;
+            ctx.translate(16,16);
+            for(let i=0; i<6; i++) {
+                ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 14); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0,6); ctx.lineTo(4, 10); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0,6); ctx.lineTo(-4, 10); ctx.stroke();
+                ctx.rotate(Math.PI/3);
+            }
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function createSnowSystem() {
+            const geometry = new THREE.BufferGeometry();
+            const vertices = [];
+            for (let i = 0; i < SNOW_COUNT; i++) {
+                vertices.push((Math.random() - 0.5) * SNOW_RANGE);
+                vertices.push(Math.random() * 15);
+                vertices.push((Math.random() - 0.5) * SNOW_RANGE);
+                snowSystem.velocities.push({
+                    y: -(0.02 + Math.random() * 0.03),
+                    x: (Math.random() - 0.5) * 0.02,
+                    z: (Math.random() - 0.5) * 0.02
+                });
+            }
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            const material = new THREE.PointsMaterial({
+                color: 0xffffff, size: 0.1, map: createSnowflakeTexture(),
+                transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending
+            });
+            snowSystem.mesh = new THREE.Points(geometry, material);
+            scene.add(snowSystem.mesh);
+        }
+
         function createTree(x, z) {
-            const treeGroup = new THREE.Group();
-            treeGroup.position.set(x, 0, z);
-
-            // Trunk
-            const trunk = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.1, 0.2, 1, 6),
-                new THREE.MeshStandardMaterial({ color: 0x4d2926, roughness: 1.0 })
-            );
-            trunk.position.y = 0.5;
-            trunk.castShadow = true;
-            treeGroup.add(trunk);
-
-            // Leaves (Cones)
-            const leavesMat = createSnowMaterial(0x0f5f13);
-            
-            const level1 = new THREE.Mesh(new THREE.ConeGeometry(1.2, 2, 8), leavesMat);
-            level1.position.y = 1.5;
-            level1.castShadow = true;
-            treeGroup.add(level1);
-            interactableObjects.push(level1);
-
-            const level2 = new THREE.Mesh(new THREE.ConeGeometry(0.9, 1.5, 8), leavesMat);
-            level2.position.y = 2.5;
-            level2.castShadow = true;
-            treeGroup.add(level2);
-            interactableObjects.push(level2);
-
-            const level3 = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.2, 8), leavesMat);
-            level3.position.y = 3.3;
-            level3.castShadow = true;
-            treeGroup.add(level3);
-            interactableObjects.push(level3);
-
-            scene.add(treeGroup);
+            const group = new THREE.Group();
+            group.position.set(x, 0, z);
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.25, 1, 8), new THREE.MeshStandardMaterial({ color: 0x3d2817 }));
+            trunk.position.y = 0.5; group.add(trunk);
+            const leafMat = new THREE.MeshStandardMaterial({ color: 0x0f5f13 });
+            for(let i=0; i<3; i++) {
+                const s = 1.5 - (i * 0.4);
+                const cone = new THREE.Mesh(new THREE.ConeGeometry(s, 1.5, 8), leafMat);
+                cone.position.y = 1.5 + (i * 0.8);
+                group.add(cone);
+            }
+            scene.add(group);
         }
 
-        // Helper: Create Glowing Lights
-        function createChristmasLights() {
-            const lightCount = 20;
-            const radius = 3;
-            
-            for(let i=0; i<lightCount; i++) {
-                const angle = (i / lightCount) * Math.PI * 2;
-                const x = Math.cos(angle) * radius;
-                const z = Math.sin(angle) * radius;
-                const y = 2 + Math.sin(i * 0.5) * 0.5;
+        function createSanta() {
+            santaGroup = new THREE.Group();
+            const sleigh = new THREE.Mesh(new THREE.BoxGeometry(1, 0.5, 2), new THREE.MeshStandardMaterial({ color: 0xaa0000 }));
+            santaGroup.add(sleigh);
+            scene.add(santaGroup);
+        }
 
-                const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00];
-                const col = colors[i % colors.length];
-
-                const bulb = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.05, 16, 16),
-                    new THREE.MeshStandardMaterial({ 
-                        color: col, 
-                        emissive: col, 
-                        emissiveIntensity: 2,
-                        roughness: 0.1 
-                    })
-                );
-                bulb.position.set(x, y, z);
-                scene.add(bulb);
-
-                const light = new THREE.PointLight(col, 1, 4);
-                light.position.set(x, y, z);
-                scene.add(light);
+        function createPresents() {
+            const geo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+            const cols = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00];
+            for(let i=0; i<8; i++) {
+                const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: cols[i%4] }));
+                mesh.position.set((Math.random()-0.5)*15, 0.2, (Math.random()-0.5)*15);
+                mesh.name = "present";
+                scene.add(mesh);
+                interactableObjects.push(mesh);
             }
         }
 
-        // --- Interaction Logic ---
-        const controllerData = {
-            0: { snowball: null, positions: [] }, 
-            1: { snowball: null, positions: [] }
-        };
+        function createMulledWine(x, y, z) {
+            const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.25, 12), new THREE.MeshStandardMaterial({ color: 0x880000 }));
+            cup.position.set(x, y, z);
+            const liquid = new THREE.Mesh(new THREE.CircleGeometry(0.09, 12), new THREE.MeshStandardMaterial({ color: 0x330000 }));
+            liquid.rotation.x = -Math.PI/2; liquid.position.y = 0.12;
+            cup.add(liquid);
+            scene.add(cup);
+        }
+
+        function createTV(x, y, z) {
+            videoElement = document.createElement('video');
+            videoElement.crossOrigin = "anonymous"; videoElement.loop = true;
+            const tex = new THREE.VideoTexture(videoElement);
+            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3, 1.7), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+            mesh.position.set(x, y, z); mesh.lookAt(0, 1.5, 0); mesh.name = "tv";
+            scene.add(mesh);
+            interactableObjects.push(mesh);
+        }
+
+        function createChristmasLights() {
+            const points = new THREE.EllipseCurve(0, 0, 5, 5, 0, 6.28, false, 0).getPoints(40);
+            points.forEach((p, i) => {
+                if(i%2===0) {
+                    const c = new THREE.Color().setHSL(Math.random(), 1, 0.5);
+                    const b = new THREE.Mesh(new THREE.SphereGeometry(0.05), new THREE.MeshStandardMaterial({ color: c, emissive: c }));
+                    b.position.set(p.x, 2.5 + Math.sin(p.x)*0.5, p.y);
+                    scene.add(b);
+                    const l = new THREE.PointLight(c, 0.5, 3); l.position.copy(b.position); scene.add(l);
+                }
+            });
+        }
+
+        // --- CONTROLLER LOGIC ---
+        
+        function setupControllers() {
+            controller1 = renderer.xr.getController(0);
+            controller1.addEventListener('selectstart', onSelectStart);
+            controller1.addEventListener('selectend', onSelectEnd);
+            dolly.add(controller1);
+
+            controller2 = renderer.xr.getController(1);
+            controller2.addEventListener('selectstart', onSelectStart);
+            controller2.addEventListener('selectend', onSelectEnd);
+            dolly.add(controller2);
+
+            const factory = new XRControllerModelFactory();
+            controllerGrip1 = renderer.xr.getControllerGrip(0);
+            controllerGrip1.add(factory.createControllerModel(controllerGrip1));
+            dolly.add(controllerGrip1);
+
+            controllerGrip2 = renderer.xr.getControllerGrip(1);
+            controllerGrip2.add(factory.createControllerModel(controllerGrip2));
+            dolly.add(controllerGrip2);
+
+            // Ray visual
+            const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-1)]));
+            line.name = 'line'; line.scale.z = 5;
+            controller1.add(line.clone()); controller2.add(line.clone());
+        }
+
+        const controllerData = { 0: { obj: null, hist: [] }, 1: { obj: null, hist: [] } };
 
         function onSelectStart(event) {
-            const controller = event.target;
-            const index = controller === controller1 ? 0 : 1;
+            const c = event.target;
+            const idx = c === controller1 ? 0 : 1;
+            
+            tempMatrix.identity().extractRotation(c.matrixWorld);
+            raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);
+            raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+            
+            const hits = raycaster.intersectObjects(interactableObjects);
+            if (hits.length > 0) {
+                const hit = hits[0].object;
+                if(hit.name === "tv") { playJingle(); document.getElementById('video-input').click(); return; }
+                if(hit.name === "present") { 
+                    playJingle(); 
+                    scene.remove(hit); 
+                    interactableObjects.splice(interactableObjects.indexOf(hit), 1);
+                    return; 
+                }
+            }
 
-            // "Grab" a snowball
-            const sbGeo = new THREE.SphereGeometry(0.08, 16, 16);
-            const sbMat = new THREE.MeshStandardMaterial({ 
-                color: 0xffffff, 
-                roughness: 0.8 
-            });
-            const snowball = new THREE.Mesh(sbGeo, sbMat);
-            
-            controller.add(snowball);
-            snowball.position.set(0, 0, 0);
-            
-            controllerData[index].snowball = snowball;
-            controllerData[index].positions = [];
+            // Spawn Snowball
+            const sb = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 16), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+            c.add(sb);
+            controllerData[idx].obj = sb;
+            controllerData[idx].hist = [];
         }
 
         function onSelectEnd(event) {
-            const controller = event.target;
-            const index = controller === controller1 ? 0 : 1;
-            
-            const snowball = controllerData[index].snowball;
-            if (snowball) {
-                const worldPos = new THREE.Vector3();
-                const worldQuat = new THREE.Quaternion();
-                snowball.getWorldPosition(worldPos);
-                snowball.getWorldQuaternion(worldQuat);
+            const c = event.target;
+            const idx = c === controller1 ? 0 : 1;
+            const data = controllerData[idx];
 
-                controller.remove(snowball);
-                scene.add(snowball);
-                snowball.position.copy(worldPos);
-                snowball.quaternion.copy(worldQuat);
+            if (data.obj) {
+                const sb = data.obj;
+                const pos = new THREE.Vector3(); sb.getWorldPosition(pos);
+                c.remove(sb); scene.add(sb); sb.position.copy(pos);
 
-                // Calculate throw velocity
-                const history = controllerData[index].positions;
-                let velocity = new THREE.Vector3(0, 0, -1).applyQuaternion(controller.quaternion).multiplyScalar(5);
+                let vel = new THREE.Vector3(0,0,-1).applyQuaternion(c.quaternion).multiplyScalar(5);
+                if (data.hist.length >= 2) {
+                    const last = data.hist[data.hist.length-1];
+                    const prev = data.hist[0];
+                    vel.subVectors(last.p, prev.p).multiplyScalar(1000 / (last.t - prev.t));
+                }
+                thrownSnowballs.push({ mesh: sb, vel: vel, active: true });
+                interactableObjects.push(sb); // Make it hittable
+                sb.name = "snowball";
+                data.obj = null;
+            }
+        }
+
+        function playJingle() {
+            if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const now = audioCtx.currentTime;
+            [659, 659, 659].forEach((f, i) => {
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.frequency.value = f;
+                g.gain.setValueAtTime(0.1, now + i*0.2);
+                g.gain.exponentialRampToValueAtTime(0.001, now + i*0.2 + 0.15);
+                osc.connect(g); g.connect(audioCtx.destination);
+                osc.start(now + i*0.2); osc.stop(now + i*0.2 + 0.2);
+            });
+        }
+
+        function handleMovement(dt) {
+            const s = renderer.xr.getSession();
+            if(!s) return;
+            for(const src of s.inputSources) {
+                if(src.handedness === 'left' && src.gamepad) {
+                    const axes = src.gamepad.axes;
+                    if(axes.length >= 4) {
+                        const x = axes[2], z = axes[3];
+                        if(Math.abs(x)>0.1 || Math.abs(z)>0.1) {
+                            const speed = 3 * dt;
+                            const dir = new THREE.Vector3(); camera.getWorldDirection(dir); dir.y=0; dir.normalize();
+                            const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0,1,0));
+                            dolly.position.addScaledVector(right, x * speed).addScaledVector(dir, z * speed);
+                            createFootprint();
+                        }
+                    }
+                }
+            }
+        }
+
+        let lastFootprint = 0;
+        function createFootprint() {
+            if(Date.now() - lastFootprint > 300) {
+                const fp = new THREE.Mesh(new THREE.CircleGeometry(0.1,8), new THREE.MeshBasicMaterial({color:0xddddff, transparent:true, opacity:0.3}));
+                fp.rotation.x = -Math.PI/2; 
+                fp.position.copy(dolly.position).add(camera.position); 
+                fp.position.y = 0.02;
+                scene.add(fp);
+                footprints.push({mesh:fp, age:0});
+                lastFootprint = Date.now();
+            }
+        }
+
+        function updatePhysics(dt) {
+            // Santa
+            if(santaGroup) {
+                const t = Date.now() * 0.0005;
+                santaGroup.position.set(Math.cos(t)*20, 15+Math.sin(t*2)*2, Math.sin(t)*20);
+                santaGroup.lookAt(0,15,0);
+            }
+
+            // Snowballs
+            for(const obj of thrownSnowballs) {
+                if(!obj.active) continue;
+                obj.vel.y -= 9.8 * dt;
+                obj.mesh.position.addScaledVector(obj.vel, dt);
                 
-                if (history.length >= 2) {
-                    const latest = history[history.length - 1];
-                    const prev = history[0];
-                    velocity.subVectors(latest.pos, prev.pos).multiplyScalar(1000 / (latest.time - prev.time));
-                    velocity.multiplyScalar(2.0); 
+                // Stack collision (Simplified: check distance to other inactive snowballs)
+                for(const other of thrownSnowballs) {
+                    if(other === obj || other.active) continue;
+                    if(obj.mesh.position.distanceTo(other.mesh.position) < 0.18) {
+                        obj.active = false; // Stick to other ball
+                        obj.vel.set(0,0,0);
+                        break;
+                    }
                 }
 
-                thrownSnowballs.push({
-                    mesh: snowball,
-                    velocity: velocity
-                });
-
-                controllerData[index].snowball = null;
+                // Ground collision
+                const gy = Math.sin(obj.mesh.position.x*0.1)*0.5 + Math.cos(obj.mesh.position.z*0.1)*0.5;
+                if(obj.mesh.position.y < gy + 0.1) {
+                    obj.mesh.position.y = gy + 0.1;
+                    obj.active = false;
+                    obj.vel.set(0,0,0);
+                }
             }
+        }
+
+        const clock = new THREE.Clock();
+        function render() {
+            const dt = clock.getDelta();
+            handleMovement(dt);
+            updatePhysics(dt);
+
+            // Snow animation
+            if(snowSystem.mesh) {
+                const pos = snowSystem.mesh.geometry.attributes.position.array;
+                for(let i=0; i<SNOW_COUNT; i++) {
+                    pos[i*3+1] += snowSystem.velocities[i].y;
+                    if(pos[i*3+1] < 0) pos[i*3+1] = 15;
+                }
+                snowSystem.mesh.geometry.attributes.position.needsUpdate = true;
+            }
+
+            // Footprint fade
+            for(let i=footprints.length-1; i>=0; i--) {
+                footprints[i].age += dt;
+                footprints[i].mesh.material.opacity = 0.3 - footprints[i].age * 0.1;
+                if(footprints[i].age > 3) { scene.remove(footprints[i].mesh); footprints.splice(i,1); }
+            }
+
+            // Controllers
+            [controller1, controller2].forEach((c, i) => {
+                if(controllerData[i].obj) {
+                    controllerData[i].hist.push({p:c.position.clone(), t:performance.now()});
+                    if(controllerData[i].hist.length>5) controllerData[i].hist.shift();
+                }
+                // Ray visual update
+                tempMatrix.identity().extractRotation(c.matrixWorld);
+                raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);
+                raycaster.ray.direction.set(0,0,-1).applyMatrix4(tempMatrix);
+                const hits = raycaster.intersectObjects(interactableObjects);
+                const line = c.children.find(o=>o.name==='line');
+                if(hits.length>0) {
+                    line.scale.z = hits[0].distance;
+                    cursor.visible = true; cursor.position.copy(hits[0].point);
+                } else {
+                    line.scale.z = 5; cursor.visible = false;
+                }
+            });
+
+            renderer.render(scene, camera);
         }
 
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        function updateSnowballs(dt) {
-            const gravity = new THREE.Vector3(0, -9.8, 0);
-            
-            for (let i = thrownSnowballs.length - 1; i >= 0; i--) {
-                const sb = thrownSnowballs[i];
-                sb.velocity.addScaledVector(gravity, dt);
-                sb.mesh.position.addScaledVector(sb.velocity, dt);
-
-                if (sb.mesh.position.y < 0.08) {
-                    sb.mesh.position.y = 0.08;
-                    sb.velocity.set(0,0,0);
-                    if(sb.velocity.length() < 0.1) {
-                         sb.mesh.scale.multiplyScalar(0.95);
-                         if(sb.mesh.scale.x < 0.01) {
-                             scene.remove(sb.mesh);
-                             thrownSnowballs.splice(i, 1);
-                         }
-                    }
-                }
-            }
-        }
-
-        function handleControllerRaycast() {
-            const activeController = controller1; 
-            
-            tempMatrix.identity().extractRotation(activeController.matrixWorld);
-
-            raycaster.ray.origin.setFromMatrixPosition(activeController.matrixWorld);
-            raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-
-            const intersects = raycaster.intersectObjects(interactableObjects, false);
-
-            if (intersects.length > 0) {
-                cursor.position.copy(intersects[0].point);
-                cursor.position.add(intersects[0].face.normal.clone().multiplyScalar(0.01));
-                cursor.lookAt(intersects[0].point.clone().add(intersects[0].face.normal));
-                cursor.visible = true;
-                
-                const dist = intersects[0].distance;
-                activeController.children.find(c => c.name === 'line').scale.z = dist;
-            } else {
-                cursor.visible = false;
-                activeController.children.find(c => c.name === 'line').scale.z = 5;
-            }
-        }
-
-        function animate() {
-            renderer.setAnimationLoop(render);
-        }
-
-        const clock = new THREE.Clock();
-
-        function render() {
-            const dt = clock.getDelta();
-            const time = clock.getElapsedTime();
-
-            // 1. Update Snow
-            const snowSystem = snow[0];
-            const positions = snowSystem.geometry.attributes.position.array;
-            for (let i = 1; i < positions.length; i += 3) {
-                positions[i] -= 0.02 + Math.random() * 0.01;
-                positions[i-1] += Math.sin(time + positions[i]) * 0.002;
-                positions[i+1] += Math.cos(time + positions[i]) * 0.002;
-
-                if (positions[i] < 0) {
-                    positions[i] = 10;
-                    positions[i-1] = (Math.random() - 0.5) * SNOW_RANGE;
-                    positions[i+1] = (Math.random() - 0.5) * SNOW_RANGE;
-                }
-            }
-            snowSystem.geometry.attributes.position.needsUpdate = true;
-
-            // 2. Track Controllers
-            [controller1, controller2].forEach((c, index) => {
-                if (controllerData[index].snowball) {
-                    const posEntry = { 
-                        pos: c.position.clone(), 
-                        time: performance.now() 
-                    };
-                    controllerData[index].positions.push(posEntry);
-                    if(controllerData[index].positions.length > 5) controllerData[index].positions.shift();
-                }
-            });
-
-            // 3. Logic
-            updateSnowballs(dt);
-            handleControllerRaycast();
-
-            renderer.render(scene, camera);
         }
     </script>
 </body>

@@ -33,6 +33,11 @@
         "date": "2025-12-09",
         "title": "VR Harmonograph lab",
         "summary": "Added VR Harmonograph card to the PCVR hub with performance-friendly painting, damping controls, and VR-friendly UI layout."
+    },
+    {
+        "date": "2025-12-13",
+        "title": "Landing page soundtrack update",
+        "summary": "Added the \"Bay Leaves\" track to the JL-85 audio deck playlist on the main JayLabs landing page."
     }
     
 ]

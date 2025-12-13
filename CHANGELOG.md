@@ -1,5 +1,8 @@
 # Changelog
 
+## 2025-12-13
+- Added "Bay Leaves" track to the landing page JL-85 audio deck playlist.
+
 ## 2025-12-08
 - Added Curling VR WebXR sports sim to the PCVR lab with AI ends, grip-to-throw stones, and adjustable ice friction/curl.
 
