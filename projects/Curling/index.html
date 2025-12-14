@@ -19,6 +19,7 @@
       --ai: #ffd84d;
       font-family: "Barlow Condensed", "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
     }
+
     * { box-sizing: border-box; }
     body { margin: 0; overflow: hidden; background: #040912; color: var(--text); }
     .muted { color: var(--muted); }
@@ -225,6 +226,83 @@
       box-shadow: var(--shadow);
       z-index: 9;
     }
+    #presetDock {
+      position: absolute;
+      top: 248px;
+      right: 12px;
+      width: 220px;
+      background: rgba(4, 9, 18, 0.9);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 10px;
+      z-index: 9;
+      color: var(--text);
+      font-size: 13px;
+    }
+    #presetDock h4 {
+      margin: 0 0 6px;
+      font-size: 14px;
+      letter-spacing: 0.04em;
+      color: var(--accent);
+    }
+    #presetDock .preset-hint {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    #presetDock .preset-buttons {
+      display: grid;
+      gap: 6px;
+    }
+    #presetDock .preset-btn {
+      width: 100%;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: linear-gradient(135deg, rgba(19,51,76,0.9), rgba(12,26,44,0.9));
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    #presetDock .preset-btn:hover {
+      border-color: rgba(77,225,255,0.5);
+      box-shadow: 0 0 0 1px rgba(77,225,255,0.14);
+    }
+    #autoHelper {
+      position: absolute;
+      bottom: 12px;
+      right: 12px;
+      background: rgba(5,10,18,0.9);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: var(--shadow);
+      font-size: 12px;
+      max-width: 380px;
+      line-height: 1.4;
+      display: none;
+      z-index: 25;
+    }
+    #aiStats {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      background: rgba(5,10,18,0.9);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: var(--shadow);
+      font-size: 12px;
+      max-width: 380px;
+      line-height: 1.4;
+      display: block;
+      z-index: 24;
+    }
     #endOverlay {
       position: absolute;
       inset: 0;
@@ -300,11 +378,15 @@
     <div class="hud-footer">
       <div id="scoreLabel">Totals: Coats 0 | Ardro 0</div>
       <div id="stonesLabel" class="muted">Stones remaining (Coats / Ardro): 0 / 0</div>
+      <div id="stoneMetrics" class="muted"></div>
       <div id="statusLabel">Grip to pick up and release to throw. Press B to open tuning UI.</div>
     </div>
   </div>
   <div id="crosshair"></div>
   <canvas id="miniMap" width="220" height="220"></canvas>
+  <div id="presetDock" aria-label="Quick physics presets"></div>
+  <div id="autoHelper" aria-live="polite"></div>
+  <div id="aiStats"></div>
   <div id="uiPanel">
     <h3>Runtime Controls</h3>
     <div id="uiContent"></div>
@@ -401,22 +483,25 @@
       stoneScale: 0.02, // physics wrap scale
       visualStoneScale: 0.2, // fixed visual scale
       aiStoneScaleFactor: 10,
-      stoneMass: 25,
-      friction: 0.00003,
-      restitution: 0.4,
-      iceDrag: 0.00002,
-      spinDrag: 3,
-      iceCurl: 6.0,
-      spinCurl: 0.1,
-      throwPower: 6.5,
-      pushSpeed: 7,
+      stoneMass: 19.96,
+      friction: 0.0003,
+      restitution: 0.08,
+      iceDrag: 0.0001,
+      spinDrag: 0.01,
+      iceCurl: 0.045,
+      spinCurl: 0.12,
+      throwPower: 5.5,
+      pushSpeed: 5.5,
       pushDirectionDeg: 0,
       pushSpin: 0,
-      motionPowerScale: 1.7,
-      twistSpinScale: 0.001,
+      motionPowerScale: 1.25,
+      motionMaxSpeed: 14,
+      twistSpinScale: 0.32,
       useControllerAim: true,
-      aiAccuracy: 0.4,
-      aiWeightBias: 0.8,
+      aiAccuracy: 0.65,
+      aiWeightBias: 0.9,
+      aiAggression: 0.6,
+      aiGuardBias: 0.5,
       environmentTheme: 'domed'
     };
     const stoneColors = {
@@ -442,12 +527,14 @@
     };
     let environmentBaseBackground = scene.background.clone();
     let iceTexture = null;
+    let stonesReady = false;
 
     const hud = {
       turn: document.getElementById('turnLabel'),
       stones: document.getElementById('stonesLabel'),
       score: document.getElementById('scoreLabel'),
       status: document.getElementById('statusLabel'),
+      metrics: document.getElementById('stoneMetrics'),
       end: document.getElementById('endLabel'),
       endColumns: document.getElementById('endColumns'),
       playerEnds: document.getElementById('playerEnds'),
@@ -479,6 +566,8 @@
     const toast = document.getElementById('toast');
     const miniMap = document.getElementById('miniMap');
     const miniCtx = miniMap.getContext('2d');
+    const autoHelper = document.getElementById('autoHelper');
+    const aiStatsPanel = document.getElementById('aiStats');
     const endOverlay = document.getElementById('endOverlay');
     const endTitle = document.getElementById('endTitle');
     const endBody = document.getElementById('endBody');
@@ -486,6 +575,8 @@
     const nextEndBtn = document.getElementById('nextEndBtn');
     const playAgainBtn = document.getElementById('playAgainBtn');
     const quitBtn = document.getElementById('quitBtn');
+    const presetDock = document.getElementById('presetDock');
+    const controlBindings = new Map();
 
     let uiVisible = false;
     let bButtonState = false;
@@ -500,9 +591,184 @@
     const panelGroup = new THREE.Group();
     scene.add(panelGroup);
     const pointerLines = [];
+    const pointerReach = 6;
     const raycasters = [new THREE.Raycaster(), new THREE.Raycaster()];
     const vrPrompt = { group: null, buttons: [] };
     const crowdData = { headMesh: null, torsoMesh: null, material: null, torsoMaterial: null, cheer: 0, lights: [], targets: [], jitter: [] };
+    let lastPlayerStone = null;
+    let lastMetricsText = '';
+    const aiThrowLog = [];
+    const aiHistory = [];
+    const aiRLStorageKey = 'aiReinforce';
+    const rlAgentStorageKey = 'curlingRlAgent';
+    const rlAgentDimsDefault = { input: 10, h1: 64, h2: 32, actions: 4 };
+    const rlAgentActionKeys = ['power', 'pushSpin', 'launchDeg', 'spawnOffsetX'];
+    const rlAgentRanges = {
+      power: [6.0, 9.5],
+      pushSpin: [-6.0, 6.0],
+      launchDeg: [-12, 12],
+      spawnOffsetX: [-1.0, 1.0]
+    };
+    let exportedRlAgent = null;
+    let exportedRlAgentPromise = null;
+    const trainConfig = { shotType: null };
+    const fastTrainConfig = { enabled: false, delayMs: 0, skipRender: true };
+    let fastRenderCounter = 0;
+    let fastRenderThrowCounter = 0;
+    function updateAiStatsPanel() {
+      if (!aiStatsPanel) return;
+      const state = aiRL || loadAiRL();
+      const recent = aiHistory.slice(-20);
+      const avg = (arr, key) => arr.length ? arr.reduce((s, x) => s + (x[key] ?? 0), 0) / arr.length : 0;
+      const avgDist = avg(recent, 'dist');
+      const avgReward = avg(recent, 'reward');
+      const header = `<strong>AI Learning</strong><br>powerScale: ${state.powerScale.toFixed(3)} | noiseScale: ${state.noiseScale.toFixed(3)} | spinBias: ${state.spinBias.toFixed(3)} | seen: ${state.count}<br>Avg (last ${recent.length || 0}): dist ${avgDist.toFixed(2)}m | reward ${avgReward.toFixed(3)}`;
+      const rows = aiThrowLog.slice().reverse().map((t, idx) => {
+        const comboStr = t.combo ? `pwr ${t.combo.power?.toFixed(2) ?? ''} spin ${t.combo.pushSpin?.toFixed(2) ?? ''}` : '';
+        return `<div style="margin-top:4px;">${idx + 1}. ${t.shotType} | dist ${t.dist.toFixed(2)}m | relZ ${t.relZ.toFixed(2)} | lat ${t.lateral.toFixed(2)} | end ${t.endSpeed.toFixed(3)} | reward ${t.reward.toFixed(3)} ${comboStr}</div>`;
+      }).join('');
+      aiStatsPanel.innerHTML = header + (rows ? `<div style="margin-top:6px;">${rows}</div>` : '<div style="margin-top:6px;">No throws yet.</div>');
+    }
+
+    function inflateExportedRlAgent(raw) {
+      const toArr = (v) => Float64Array.from(v || []);
+      return {
+        dims: { ...rlAgentDimsDefault, ...(raw?.dims || {}) },
+        actionKeys: raw?.actionKeys || rlAgentActionKeys,
+        envProfile: raw?.envProfile || null,
+        skill: raw?.skill || null,
+        policy: raw?.policy ? {
+          w1: toArr(raw.policy.w1),
+          b1: toArr(raw.policy.b1),
+          w2: toArr(raw.policy.w2),
+          b2: toArr(raw.policy.b2),
+          wOut: toArr(raw.policy.wOut),
+          bOut: toArr(raw.policy.bOut),
+          logStd: toArr(raw.policy.logStd)
+        } : null,
+        meta: raw?.meta || null
+      };
+    }
+
+    async function loadExportedRlAgent() {
+      if (exportedRlAgent) return exportedRlAgent;
+      if (exportedRlAgentPromise) return exportedRlAgentPromise;
+      exportedRlAgentPromise = (async () => {
+        let data = null;
+        try {
+          const local = localStorage.getItem(rlAgentStorageKey);
+          if (local) data = JSON.parse(local);
+        } catch (err) {
+          console.warn('Failed to parse stored RL agent', err);
+        }
+        if (!data) {
+          try {
+            const res = await fetch('rl-agent.json', { cache: 'no-cache' });
+            if (res && res.ok) data = await res.json();
+          } catch (err) {
+            console.warn('No rl-agent.json found', err);
+          }
+        }
+        if (!data || !data.policy) return null;
+        exportedRlAgent = inflateExportedRlAgent(data);
+        console.info('Loaded exported RL agent', exportedRlAgent.meta || {}, exportedRlAgent.skill || {});
+        return exportedRlAgent;
+      })();
+      return exportedRlAgentPromise;
+    }
+
+    function forwardExportedRlPolicy(policy, dims, stateVec) {
+      if (!policy) return null;
+      const h1 = new Float64Array(dims.h1);
+      for (let i = 0; i < dims.h1; i++) {
+        let s = policy.b1[i];
+        for (let j = 0; j < dims.input; j++) s += policy.w1[i * dims.input + j] * stateVec[j];
+        h1[i] = Math.tanh(s);
+      }
+      const h2 = new Float64Array(dims.h2);
+      for (let i = 0; i < dims.h2; i++) {
+        let s = policy.b2[i];
+        for (let j = 0; j < dims.h1; j++) s += policy.w2[i * dims.h1 + j] * h1[j];
+        h2[i] = Math.tanh(s);
+      }
+      const mu = new Float64Array(dims.actions);
+      for (let k = 0; k < dims.actions; k++) {
+        let s = policy.bOut[k];
+        for (let i = 0; i < dims.h2; i++) s += policy.wOut[k * dims.h2 + i] * h2[i];
+        mu[k] = s;
+      }
+      return mu;
+    }
+
+    function actionToComboFromAgent(rawAction, envProfile = null) {
+      const combo = envProfile ? { ...envProfile } : {};
+      rlAgentActionKeys.forEach((key, idx) => {
+        const bounds = rlAgentRanges[key];
+        if (!bounds) return;
+        const [min, max] = bounds;
+        const span = max - min;
+        const centered = Math.tanh(rawAction[idx] ?? 0);
+        const val = THREE.MathUtils.clamp((span / 2) * centered + (min + span / 2), min, max);
+        combo[key] = val;
+      });
+      return combo;
+    }
+
+    function buildRlStateVecFromGame(target, shotType, stonesList) {
+      const norm = (v, span) => THREE.MathUtils.clamp(v / span, -1, 1);
+      const spawnZ = getSpawnZ();
+      const distToTarget = Math.hypot(target.x, target.z - spawnZ);
+      const angleToTarget = Math.atan2(target.x, target.z - spawnZ);
+      const g1 = stonesList?.[0];
+      const g2 = stonesList?.[1];
+      return [
+        norm(target.x, params.sheetWidth / 2),
+        norm(target.z - housePositionZ, params.sheetLength),
+        norm(distToTarget, params.sheetLength),
+        angleToTarget,
+        norm(g1?.x || 0, params.sheetWidth / 2),
+        norm((g1?.z || housePositionZ) - housePositionZ, params.sheetLength),
+        norm(g2?.x || 0, params.sheetWidth / 2),
+        norm((g2?.z || housePositionZ) - housePositionZ, params.sheetLength),
+        shotType === 'takeout' ? 1 : 0,
+        shotType === 'guard' ? 1 : 0
+      ];
+    }
+
+    function collectRlObstacles(shotType, aiShot, oppShot) {
+      const picks = [];
+      if (shotType === 'takeout' && oppShot?.stone) {
+        picks.push({ x: oppShot.stone.body.position.x, z: oppShot.stone.body.position.z });
+      }
+      const candidates = stones
+        .filter((s) => s !== gameState.activeStone && s.thrown)
+        .map((s) => ({ stone: s, dist: Math.hypot(s.body.position.x, s.body.position.z - housePositionZ) }))
+        .sort((a, b) => a.dist - b.dist);
+      for (const c of candidates) {
+        if (picks.length >= 2) break;
+        picks.push({ x: c.stone.body.position.x, z: c.stone.body.position.z });
+      }
+      return picks;
+    }
+
+    function maybeUseExportedRlAgent(shotType, target, aiShot, oppShot) {
+      if (!exportedRlAgent || !exportedRlAgent.policy) return null;
+      const obsStones = collectRlObstacles(shotType, aiShot, oppShot);
+      const stateVec = buildRlStateVecFromGame(target, shotType, obsStones);
+      const mu = forwardExportedRlPolicy(exportedRlAgent.policy, exportedRlAgent.dims, stateVec);
+      if (!mu) return null;
+      const combo = actionToComboFromAgent(mu, exportedRlAgent.envProfile);
+      return { combo, stateVec };
+    }
+
+    const debugConfig = {
+      enabled: true,
+      sampleInterval: 0.05,
+      speedEpsilon: 0.01,
+      maxSamples: 240
+    };
+    const debugTraces = new Map();
+    let aiRL = null;
     const audio = {
       ctx: null,
       ready: false,
@@ -514,7 +780,7 @@
 
     const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
     world.broadphase = new CANNON.SAPBroadphase(world);
-    world.allowSleep = true;
+    world.allowSleep = false;
 
     const iceMaterial = new CANNON.Material('ice');
     const stoneMaterial = new CANNON.Material('stone');
@@ -522,6 +788,10 @@
       friction: params.friction,
       restitution: params.restitution
     });
+    // Prevent stone-stone self-collisions acting as friction walls by separating groups.
+    stoneMaterial.friction = params.friction;
+    stoneMaterial.restitution = params.restitution;
+    stoneMaterial.frictionGravity = 0;
     world.addContactMaterial(contact);
 
     let groundBody;
@@ -549,7 +819,9 @@
       totalEnds: 8,
       waitingForNextEnd: false,
       gameOver: false,
-      inEnd: true
+      inEnd: true,
+      selfPlay: false,
+      trainMode: false
     };
 
     const controller1 = renderer.xr.getController(0);
@@ -579,8 +851,16 @@
 
     initUI();
     uiPanel.style.display = 'none';
+    loadExportedRlAgent();
+    await loadAutoPhysicsFromStorage();
     initSheet();
     buildEnvironment();
+    debugLog('sheet-info', {
+      sheetLength: params.sheetLength,
+      sheetWidth: params.sheetWidth,
+      housePositionZ,
+      spawnZ: getSpawnZ()
+    });
     buildVRPanels();
     loadEnvironmentMaps();
     updateRigPosition();
@@ -589,8 +869,8 @@
     });
     setupAudioUnlock();
 
-    controller1.addEventListener('selectstart', () => handlePlayerThrow(controller1));
-    controller2.addEventListener('selectstart', () => handlePlayerThrow(controller2));
+    controller1.addEventListener('selectstart', () => handleControllerSelect(controller1));
+    controller2.addEventListener('selectstart', () => handleControllerSelect(controller2));
     controller1.addEventListener('squeezestart', () => beginGrab(controller1));
     controller2.addEventListener('squeezestart', () => beginGrab(controller2));
     controller1.addEventListener('squeezeend', () => endGrab(controller1));
@@ -603,7 +883,64 @@
       if (key === 't') handlePlayerThrow(null);
       if (key === 'r') resetEnd();
       if (key === 'o') cycleEnvironmentMode();
+      if (key === 'p') toggleSelfPlay();
+      if (key === 'f') toggleFastTrain();
+      if (key === 'l') toggleTrainMode();
+      if (gameState.trainMode) {
+        if (key === '1') setTrainingShot('draw');
+        if (key === '2') setTrainingShot('guard');
+        if (key === '3') setTrainingShot('takeout');
+      }
       startAudio(true);
+    });
+    const mouseState = { down: false, history: [] };
+    const mouseHistoryMs = 220;
+    const recordMouseSample = (e) => {
+      if (!mouseState.down) return;
+      const t = performance.now();
+      mouseState.history.push({ x: e.clientX, y: e.clientY, t });
+      while (mouseState.history.length && t - mouseState.history[0].t > mouseHistoryMs) {
+        mouseState.history.shift();
+      }
+    };
+    const computeMouseMotion = () => {
+      if (!mouseState.history.length) return null;
+      const first = mouseState.history[0];
+      const last = mouseState.history[mouseState.history.length - 1];
+      const dt = Math.max(0.001, (last.t - first.t) / 1000);
+      const dx = last.x - first.x;
+      const dy = first.y - last.y; // upward swipe gives positive
+      const dist = Math.hypot(dx, dy);
+      if (dist < 6 || dt < 0.05) return null;
+      const speedPx = dist / dt;
+      const speed = THREE.MathUtils.clamp(speedPx * 0.01, 0.5, params.motionMaxSpeed);
+      const dir = computePushDirection(null);
+      return { dir, speed, spin: 0 };
+    };
+    renderer.domElement.addEventListener('mousedown', (e) => {
+      if (renderer.xr.isPresenting) return;
+      if (gameState.waitingForNextEnd || gameState.gameOver) return;
+      if (e.button !== 0) return;
+      mouseState.down = true;
+      mouseState.history = [];
+      recordMouseSample(e);
+    });
+    renderer.domElement.addEventListener('mousemove', recordMouseSample);
+    renderer.domElement.addEventListener('mouseup', (e) => {
+      if (renderer.xr.isPresenting) return;
+      if (gameState.waitingForNextEnd || gameState.gameOver) return;
+      if (e.button !== 0) return;
+      const motion = computeMouseMotion();
+      mouseState.down = false;
+      mouseState.history = [];
+      if (motion) {
+        const s = gameState.activeStone;
+        if (gameState.currentTeam === 'player' && s && !s.thrown) {
+          throwStone(s, motion.dir, motion.speed, motion.spin);
+        }
+      } else {
+        handlePlayerThrow(null);
+      }
     });
 
     function initSheet() {
@@ -717,17 +1054,23 @@
 
       const wrapHeight = stoneDimsFor('player').height * 1.1;
       const wallHalfHeight = Math.max(0.05, wrapHeight / 2);
+      const wallThickness = 0.05; // half-extent of wall thickness
       const wallShape = (w, h, d) => new CANNON.Box(new CANNON.Vec3(w, h, d));
       const sideOffset = params.sheetWidth / 2;
-      const lengthHalf = params.sheetLength / 2;
+      const endBuffer = wallThickness; // align ends with sheet, account for thickness
+      const lengthHalf = params.sheetLength / 2 + endBuffer;
       const side1 = new CANNON.Body({ mass: 0, material: iceMaterial, position: new CANNON.Vec3(sideOffset, wallHalfHeight, 0) });
-      side1.addShape(wallShape(0.05, wallHalfHeight, lengthHalf));
+      side1.addShape(wallShape(wallThickness, wallHalfHeight, lengthHalf));
       const side2 = new CANNON.Body({ mass: 0, material: iceMaterial, position: new CANNON.Vec3(-sideOffset, wallHalfHeight, 0) });
-      side2.addShape(wallShape(0.05, wallHalfHeight, lengthHalf));
+      side2.addShape(wallShape(wallThickness, wallHalfHeight, lengthHalf));
       const back = new CANNON.Body({ mass: 0, material: iceMaterial, position: new CANNON.Vec3(0, wallHalfHeight, -lengthHalf) });
-      back.addShape(wallShape(params.sheetWidth / 2, wallHalfHeight, 0.05));
+      back.addShape(wallShape(params.sheetWidth / 2, wallHalfHeight, wallThickness));
       const front = new CANNON.Body({ mass: 0, material: iceMaterial, position: new CANNON.Vec3(0, wallHalfHeight, lengthHalf) });
-      front.addShape(wallShape(params.sheetWidth / 2, wallHalfHeight, 0.05));
+      front.addShape(wallShape(params.sheetWidth / 2, wallHalfHeight, wallThickness));
+      [groundBody, side1, side2, back, front].forEach((b, idx) => {
+        b.userData = b.userData || {};
+        b.userData.type = idx === 0 ? 'ground' : 'wall';
+      });
       wallBodies.push(side1, side2, back, front);
       wallBodies.forEach(w => {
         w.collisionResponse = true;
@@ -739,8 +1082,9 @@
     function rebuildWrapHelpers(wallHalfHeight, sideOffset, lengthHalf) {
       if (!wrapHelpers) return;
       wrapHelpers.clear();
-      const hw = sideOffset;
-      const hl = lengthHalf;
+      const wallThickness = 0.05;
+      const hw = Math.max(0, sideOffset - wallThickness);
+      const hl = Math.max(0, lengthHalf - wallThickness);
       const y = wallHalfHeight * 2;
       const baseCorners = [
         new THREE.Vector3(-hw, 0.01, -hl),
@@ -758,9 +1102,9 @@
       }
       const geo = new THREE.BufferGeometry().setFromPoints(pts);
       const mat = new THREE.LineBasicMaterial({
-        color: 0x4de1ff,
+        color: 0xff4da6,
         transparent: true,
-        opacity: 0.7,
+        opacity: 0.9,
         depthTest: false
       });
       const lines = new THREE.LineSegments(geo, mat);
@@ -782,6 +1126,7 @@
           }
         });
       });
+      stonesReady = true;
     }
 
     function cloneWithTint(root, tint) {
@@ -844,8 +1189,8 @@
       body.linearFactor.set(1, 0, 1); // lock vertical translation
       const shape = new CANNON.Cylinder(dims.radius, dims.radius, dims.height, 20);
       body.addShape(shape);
-      body.sleepSpeedLimit = 0.05;
-      body.sleepTimeLimit = 1.2;
+      body.allowSleep = false;
+      body.userData = body.userData || {};
       return body;
     }
 
@@ -862,7 +1207,8 @@
       body.position.set(0, dims.height / 2, spawnZ);
       mesh.position.copy(body.position);
       mesh.castShadow = true;
-      const stone = { team, mesh, body, spin: 0, thrown: false, debug: null };
+      const stone = { team, mesh, body, spin: 0, thrown: false, debug: null, releasePos: null, releaseTime: null };
+      stone.body.userData.stone = stone;
       stone.debug = createPhysicsDebugMesh(team);
       stone.debug.visible = false;
       scene.add(stone.debug);
@@ -959,85 +1305,190 @@
       grabState.controller = null;
     }
 
+    function stonesInHouse(team, radiusScale = 1.35) {
+      const r = params.houseRadius * radiusScale;
+      return stones.filter((s) => {
+        if (s.team !== team || !s.thrown) return false;
+        const dist = Math.hypot(s.body.position.x, s.body.position.z - housePositionZ);
+        return dist <= r;
+      });
+    }
+
+    function closestStone(team) {
+      const list = stonesInHouse(team, 1.6);
+      if (!list.length) return null;
+      return list.reduce((best, s) => {
+        const dist = Math.hypot(s.body.position.x, s.body.position.z - housePositionZ);
+        return !best || dist < best.dist ? { stone: s, dist } : best;
+      }, null);
+    }
+
+    function stonesRemaining(team) {
+      return Math.max(0, gameState.stonesPerTeam - gameState.thrown[team]);
+    }
+
+    function weightedChoice(options) {
+      const total = options.reduce((sum, o) => sum + Math.max(0, o.weight), 0);
+      if (total <= 0) return options[0]?.value;
+      let pick = Math.random() * total;
+      for (const o of options) {
+        pick -= Math.max(0, o.weight);
+        if (pick <= 0) return o.value;
+      }
+      return options[options.length - 1]?.value;
+    }
+
     function aiThrow() {
       if (!gameState.activeStone) return;
       const start = gameState.activeStone.body.position;
       const accuracy = THREE.MathUtils.clamp(params.aiAccuracy, 0, 1);
-      const center = new THREE.Vector3(0, 0, housePositionZ);
-      const opponents = stones.filter(s => s.team === 'player' && s.thrown);
-      const aiStones = stones.filter(s => s.team === 'ai' && s.thrown);
-      const opponentInHouse = opponents.filter((s) => {
-        const dist = Math.hypot(s.body.position.x - center.x, s.body.position.z - center.z);
-        return dist <= params.houseRadius * 1.25;
-      });
-      const aiInHouse = aiStones.filter((s) => {
-        const dist = Math.hypot(s.body.position.x - center.x, s.body.position.z - center.z);
-        return dist <= params.houseRadius * 1.3;
-      });
+      const rl = aiRL || loadAiRL();
+      const aiShot = closestStone('ai');
+      const oppShot = closestStone('player');
+      const scoreDiff = gameState.scores.ai - gameState.scores.player;
+      const leading = scoreDiff > 0;
+      const endsLeft = Math.max(1, gameState.totalEnds - gameState.currentEnd + 1);
+      const aiStonesLeft = stonesRemaining('ai');
+      const oppStonesLeft = stonesRemaining('player');
+      const aggression = THREE.MathUtils.clamp(params.aiAggression ?? 0.6, 0, 1);
+      const guardBias = THREE.MathUtils.clamp(params.aiGuardBias ?? 0.5, 0, 1);
 
-      const pickTargetStone = (list) => list.reduce((best, s) => {
-        const dist = Math.hypot(s.body.position.x - center.x, s.body.position.z - center.z);
-        if (!best || dist < best.dist) return { dist, stone: s };
-        return best;
-      }, null)?.stone;
+      const takeoutWeight = (oppShot ? 0.45 : 0.2)
+        + aggression * 0.4
+        + (scoreDiff < 0 ? 0.15 : 0)
+        + (aiStonesLeft <= 2 ? 0.2 : 0)
+        - (leading && aiShot ? 0.12 : 0);
+      const guardWeight = (aiShot ? 0.35 : 0.18)
+        + guardBias * 0.5
+        + (leading ? 0.18 : 0)
+        + (oppShot && leading ? 0.08 : 0);
+      const drawWeight = 0.42
+        + (scoreDiff < 0 ? 0.18 : 0)
+        + (!aiShot ? 0.1 : 0)
+        + (aiStonesLeft <= 2 ? 0.05 : 0);
 
-      let shotType = 'draw';
-      if (opponentInHouse.length && Math.random() < 0.55) {
-        shotType = 'takeout';
-      } else if (!opponentInHouse.length && (aiInHouse.length || Math.random() < 0.4)) {
-        shotType = 'guard';
+      let shotType = weightedChoice([
+        { value: 'takeout', weight: takeoutWeight },
+        { value: 'guard', weight: guardWeight },
+        { value: 'draw', weight: drawWeight }
+      ]) || 'draw';
+      if (gameState.trainMode && trainConfig.shotType) {
+        shotType = trainConfig.shotType;
+      }
+
+      let target = new THREE.Vector3(0, start.y, housePositionZ);
+      if (shotType === 'takeout' && oppShot?.stone) {
+        target = oppShot.stone.body.position.clone();
+      } else if (shotType === 'guard') {
+        const cover = aiShot?.stone || oppShot?.stone;
+        const baseX = cover ? cover.body.position.x : 0;
+        const baseZ = cover ? cover.body.position.z : housePositionZ + params.houseRadius;
+        target = new THREE.Vector3(baseX, start.y, baseZ + 2.8);
+      }
+
+      const rlPlan = maybeUseExportedRlAgent(shotType, target, aiShot, oppShot);
+      if (rlPlan) {
+        const combo = rlPlan.combo;
+        const dims = stoneDimsFor('ai');
+        const maxOffset = params.sheetWidth / 2 - dims.radius * 1.1;
+        const spawnOffset = THREE.MathUtils.clamp(combo.spawnOffsetX ?? 0, -maxOffset, maxOffset);
+        gameState.activeStone.body.position.x = spawnOffset;
+        gameState.activeStone.mesh.position.x = spawnOffset;
+        if (gameState.activeStone.debug) gameState.activeStone.debug.position.x = spawnOffset;
+        const dir = new THREE.Vector3(
+          target.x - gameState.activeStone.body.position.x,
+          0,
+          target.z - gameState.activeStone.body.position.z
+        );
+        if (dir.lengthSq() < 1e-6) dir.set(0, 0, -1);
+        dir.normalize();
+        const ang = THREE.MathUtils.degToRad(combo.launchDeg || 0);
+        if (Math.abs(ang) > 1e-5) {
+          const dx = dir.x, dz = dir.z;
+          const cos = Math.cos(ang), sin = Math.sin(ang);
+          dir.set(dx * cos - dz * sin, 0, dx * sin + dz * cos).normalize();
+        }
+        const power = combo.power ?? params.throwPower;
+        const spin = combo.pushSpin ?? 0;
+        throwStone(gameState.activeStone, dir, power, spin, { shotType, combo });
+        return;
       }
 
       const curlSign = Math.random() < 0.5 ? -1 : 1;
-      const lateralNoise = (spread) => THREE.MathUtils.randFloatSpread(spread * (1.25 - accuracy * 0.5));
-      let target = new THREE.Vector3(0, start.y, housePositionZ);
+      const lateralNoise = (spread) => THREE.MathUtils.randFloatSpread(spread * (1.25 - accuracy * 0.45) * (rl?.noiseScale || 1));
       let power = params.throwPower;
-      let spin = THREE.MathUtils.lerp(params.spinCurl * 0.22, params.spinCurl * 0.65, accuracy) * curlSign;
+      let spin = THREE.MathUtils.lerp(params.spinCurl * 0.2, params.spinCurl * 0.65, accuracy) * curlSign;
 
       if (shotType === 'guard') {
-        const cover = aiInHouse[0] || opponentInHouse[0];
-        const guardZ = housePositionZ + params.houseRadius + 2.2 + THREE.MathUtils.randFloatSpread(0.8);
+        const cover = aiShot?.stone || oppShot?.stone;
+        const baseX = cover ? cover.body.position.x : 0;
+        const baseZ = cover ? cover.body.position.z : housePositionZ + params.houseRadius;
+        const guardOffset = 2.8 + THREE.MathUtils.randFloatSpread(0.6);
         target = new THREE.Vector3(
-          (cover ? cover.body.position.x : 0) + lateralNoise(params.houseRadius * 0.35),
+          baseX + lateralNoise(params.houseRadius * 0.35),
           start.y,
-          guardZ
+          baseZ + Math.abs(guardOffset)
         );
         power *= THREE.MathUtils.lerp(0.5, 0.7, accuracy);
-      } else if (shotType === 'takeout' && opponentInHouse.length) {
-        const targetStone = pickTargetStone(opponentInHouse);
-        target = targetStone ? targetStone.body.position.clone() : target;
-        target.x += lateralNoise(params.houseRadius * 0.15);
-        spin = THREE.MathUtils.lerp(params.spinCurl * 0.1, params.spinCurl * 0.35, accuracy) * curlSign;
-        power *= THREE.MathUtils.lerp(0.82, 0.98, accuracy);
+        spin *= 0.55;
+      } else if (shotType === 'takeout' && oppShot?.stone) {
+        target = oppShot.stone.body.position.clone();
+        target.x += lateralNoise(params.houseRadius * 0.12);
+        spin = THREE.MathUtils.lerp(params.spinCurl * 0.08, params.spinCurl * 0.28, accuracy) * curlSign;
+        power *= THREE.MathUtils.lerp(0.9, 1.12, aggression);
       } else {
         target = new THREE.Vector3(
-          lateralNoise(params.houseRadius * 0.5) + curlSign * THREE.MathUtils.lerp(0.35, 0.9, accuracy),
+          lateralNoise(params.houseRadius * 0.4),
           start.y,
-          housePositionZ + THREE.MathUtils.randFloatSpread(params.houseRadius * 0.4)
+          housePositionZ + THREE.MathUtils.randFloatSpread(params.houseRadius * 0.35)
         );
-        power *= THREE.MathUtils.lerp(0.64, 0.82, accuracy);
+        power *= THREE.MathUtils.lerp(0.64, 0.86, accuracy);
       }
 
       const dist = Math.abs(start.z - target.z);
       const distanceScale = THREE.MathUtils.clamp(dist / (params.sheetLength * 0.95), 0.55, 1);
-      const weightJitter = 0.9 + (1 - accuracy) * 0.25 + THREE.MathUtils.randFloatSpread(0.12);
-      power = Math.max(3, power * params.aiWeightBias * distanceScale * weightJitter);
+      const pressure = Math.max(0, Math.min(1, (oppShot ? oppShot.dist : params.houseRadius) / (params.houseRadius * 1.4)));
+      const weightJitter = 0.9 + (1 - accuracy) * 0.22 + THREE.MathUtils.randFloatSpread(0.1);
+      power = Math.max(3, power * params.aiWeightBias * (rl?.powerScale || 1) * distanceScale * weightJitter * (shotType === 'draw' ? pressure + 0.85 : 1));
+      spin *= THREE.MathUtils.clamp(1 + (rl?.spinBias || 0) + THREE.MathUtils.randFloatSpread(0.35 * (rl?.noiseScale || 1)), 0.4, 1.6);
 
       const dir = new THREE.Vector3(target.x - start.x, 0, target.z - start.z).normalize();
-      throwStone(gameState.activeStone, dir, power, spin);
+      const angleNoise = THREE.MathUtils.degToRad(THREE.MathUtils.randFloatSpread(10 * (rl?.noiseScale || 1)));
+      dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), angleNoise);
+      const comboMeta = {
+        power,
+        pushSpin: spin,
+        aiAccuracy: params.aiAccuracy,
+        aiWeightBias: params.aiWeightBias,
+        aiAggression: aggression,
+        aiGuardBias: guardBias,
+        targetX: target.x,
+        targetZ: target.z,
+        noiseScale: rl?.noiseScale || 1,
+        powerScale: rl?.powerScale || 1,
+        angleNoise
+      };
+      throwStone(gameState.activeStone, dir, power, spin, { shotType, combo: comboMeta });
     }
 
-    function throwStone(stone, dir, power, spin) {
+    function throwStone(stone, dir, power, spin, meta = {}) {
       stone.thrown = true;
       const force = new CANNON.Vec3(dir.x, 0, dir.z).scale(power);
       stone.body.velocity.copy(force);
+      stone.releasePos = stone.body.position.clone();
+      stone.releaseTime = performance.now();
       stone.spin = spin;
+      stone.body.angularVelocity.set(0, spin, 0);
       gameState.thrown[stone.team] += 1;
       hud.status.textContent = `Stone released (${teamLabel(stone.team)})`;
+      if (stone.team === 'player') lastPlayerStone = stone;
+      startDebugTrace(stone, { releaseVel: { x: force.x, y: force.y, z: force.z }, spin, ...meta });
       drawHudCanvas();
       if (stone.team === 'player') triggerCrowdCheer(0.2);
-      startAudio(stone.team === 'player');
-      ensureSlideSound(stone.body);
+      if (!isFastTraining()) {
+        startAudio(stone.team === 'player');
+        ensureSlideSound(stone.body);
+      }
     }
 
     function releaseStone(stone, velocity, spin) {
@@ -1045,12 +1496,16 @@
       stone.body.mass = params.stoneMass;
       stone.body.updateMassProperties();
       stone.body.velocity.copy(velocity);
-      stone.body.angularVelocity.set(0, 0, 0);
+      stone.body.angularVelocity.set(0, spin || 0, 0);
       stone.body.wakeUp();
       stone.thrown = true;
       stone.spin = spin || 0;
+      stone.releasePos = stone.body.position.clone();
+      stone.releaseTime = performance.now();
       gameState.thrown[stone.team] += 1;
       hud.status.textContent = `Stone released (${teamLabel(stone.team)})`;
+      if (stone.team === 'player') lastPlayerStone = stone;
+      startDebugTrace(stone, { releaseVel: { x: velocity.x, y: velocity.y, z: velocity.z }, spin });
       drawHudCanvas();
       startAudio(true);
       ensureSlideSound(stone.body);
@@ -1095,7 +1550,7 @@
       const speed = flatVel.length();
       if (speed < 0.05) return null;
       const dir = flatVel.normalize();
-      const cappedSpeed = Math.min(speed * params.motionPowerScale, params.pushSpeed);
+      const cappedSpeed = Math.min(speed * params.motionPowerScale, params.motionMaxSpeed);
       const spin = THREE.MathUtils.clamp((state.angVel ? state.angVel.y : 0) * params.twistSpinScale, -5, 5);
       return { dir, speed: cappedSpeed, spin };
     }
@@ -1183,7 +1638,10 @@
     }
 
     function attachStoneAudio(body) {
-      body.addEventListener('collide', (e) => handleStoneCollision(e));
+      body.addEventListener('collide', (e) => {
+        handleStoneCollision(e);
+        recordDebugCollision(body, e);
+      });
       body.userData = body.userData || {};
     }
 
@@ -1237,7 +1695,7 @@
     }
 
     function updateSlideSound(body, isMoving) {
-      if (!audio.ready || !body.userData?.slide) return;
+      if (!audio.ready || !body || !body.userData?.slide) return;
       const slide = body.userData.slide;
       const speed = body.velocity.length();
       const vNorm = Math.min(1, Math.max(0, (speed - 0.05) / 5));
@@ -1389,6 +1847,9 @@
       resetEnd();
       buildCrowd();
       drawHudCanvas();
+      if (gameState.selfPlay || gameState.trainMode) {
+        startTurn('player');
+      }
     }
 
     function handleQuit() {
@@ -1407,14 +1868,34 @@
     function monitorStoneState() {
       const active = gameState.activeStone;
       if (!active || !active.thrown) return;
-      if (active.body.sleepState === CANNON.Body.SLEEPING ||
-        active.body.velocity.lengthSquared() < 0.0006) {
+      const speedSq = active.body.velocity.lengthSquared();
+      const speed = Math.sqrt(speedSq);
+      const lengthHalf = params.sheetLength / 2;
+      const z = active.body.position.z;
+      const crossedBack = z < -lengthHalf || z > lengthHalf;
+      const nearStop = speedSq < 0.00001;
+      const now = performance.now();
+      const justReleased = active.releaseTime && (now - active.releaseTime < 500);
+      if (!justReleased && (crossedBack || nearStop)) {
+        const reason = crossedBack ? 'out-of-bounds' : 'slow';
+        debugLog('stop-check', {
+          team: active.team,
+          reason,
+          speed,
+          pos: { ...active.body.position },
+          relZ: active.body.position.z - housePositionZ
+        });
+        finalizeDebugTrace(active, reason);
         advanceTurn();
       }
     }
 
     function advanceTurn() {
       gameState.activeStone = null;
+      if (gameState.trainMode) {
+        setTimeout(runTrainingThrow, 300);
+        return;
+      }
       const total = gameState.thrown.player + gameState.thrown.ai;
       if (total >= gameState.stonesPerTeam * 2) {
         evaluateScore();
@@ -1434,9 +1915,10 @@
       gameState.currentTeam = team;
       spawnStone(team);
       updateHud();
-      if (team === 'ai') {
-        hud.status.textContent = `${teamNames.ai} thinking...`;
-        setTimeout(aiThrow, 800);
+      const isAIControlled = team === 'ai' || gameState.selfPlay;
+      if (isAIControlled) {
+        hud.status.textContent = `${teamLabel(team)} thinking...`;
+        setTimeout(aiThrow, 400);
       } else {
         hud.status.textContent = 'Grip to grab, move, release to throw (trigger also works).';
       }
@@ -1456,7 +1938,15 @@
       gameState.waitingForNextEnd = true;
       gameState.inEnd = false;
       updateHud();
-      showEndOverlay(pScore, aScore);
+      if (gameState.selfPlay || gameState.trainMode) {
+        const isFinal = gameState.currentEnd >= gameState.totalEnds;
+        setTimeout(() => {
+          if (isFinal) resetGame();
+          else handleNextEnd();
+        }, 400);
+      } else {
+        showEndOverlay(pScore, aScore);
+      }
     }
 
     function clearStones() {
@@ -1584,6 +2074,367 @@
       return { winner, points: scoring.length, scoring, withinHouse };
     }
 
+    function getStoneMetrics() {
+      let s = gameState.activeStone;
+      if (!s || s.team !== 'player' || !s.thrown) {
+        s = lastPlayerStone;
+      }
+      if (!s || s.team !== 'player' || !s.thrown) return null;
+      const pos = s.body.position;
+      const rel = s.releasePos;
+      const travel = rel ? Math.hypot(pos.x - rel.x, pos.z - rel.z) : 0;
+      const houseDist = Math.hypot(pos.x, pos.z - housePositionZ);
+      return { pos, travel, houseDist };
+    }
+
+    function getStoneMetricsText() {
+      const m = getStoneMetrics();
+      if (!m) return '';
+      const fmt = (v) => v.toFixed(2);
+      const zRel = m.pos.z - housePositionZ;
+      return `Pos x:${fmt(m.pos.x)} y:${fmt(m.pos.y)} z:${fmt(m.pos.z)} (relZ:${fmt(zRel)}) | Travel:${fmt(m.travel)}m | To house:${fmt(m.houseDist)}m`;
+    }
+
+    function updateStoneInfo() {
+      const text = getStoneMetricsText();
+      if (text) lastMetricsText = text;
+      if (hud.metrics && lastMetricsText) hud.metrics.textContent = lastMetricsText;
+    }
+
+    function debugLog(...args) {
+      if (!debugConfig.enabled) return;
+      console.log('[stone-debug]', ...args);
+    }
+
+    function findStoneByBody(body) {
+      return stones.find(s => s.body === body);
+    }
+
+    function startDebugTrace(stone, meta = {}) {
+      if (!debugConfig.enabled || !stone) return;
+      const trace = {
+        stone,
+        meta,
+        releaseTime: performance.now(),
+        lastSample: 0,
+        samples: [],
+        collisions: [],
+        done: false
+      };
+      debugTraces.set(stone, trace);
+      debugLog('release', {
+        team: stone.team,
+        pos: { ...stone.body.position },
+        vel: { ...stone.body.velocity },
+        spin: stone.spin,
+        meta
+      });
+    }
+
+    function recordDebugCollision(body, e) {
+      if (!debugConfig.enabled) return;
+      const stone = findStoneByBody(body);
+      if (!stone) return;
+      const trace = debugTraces.get(stone);
+      if (!trace || trace.done) return;
+      const contact = e.contact || {};
+      const normal = contact.ni ? { x: contact.ni.x, y: contact.ni.y, z: contact.ni.z } : null;
+      const other = e.body ? (e.body.userData?.type || e.body.material?.name || 'unknown') : 'unknown';
+      const impact = contact.getImpactVelocityAlongNormal ? contact.getImpactVelocityAlongNormal() : (contact.impactVelocity || 0);
+      trace.collisions.push({
+        t: performance.now(),
+        at: { x: body.position.x, y: body.position.y, z: body.position.z },
+        other,
+        normal,
+        impact
+      });
+    }
+
+    function recordDebugSamples() {
+      if (!debugConfig.enabled) return;
+      const now = performance.now();
+      debugTraces.forEach((trace, stone) => {
+        if (trace.done) return;
+        const body = stone.body;
+        const t = (now - trace.releaseTime) / 1000;
+        if (trace.samples.length >= debugConfig.maxSamples) return;
+        if (trace.lastSample && (now - trace.lastSample) < debugConfig.sampleInterval * 1000) return;
+        trace.lastSample = now;
+        const pos = body.position;
+        const vel = body.velocity;
+        const speed = vel.length();
+        const ang = body.angularVelocity;
+        trace.samples.push({
+          t,
+          pos: { x: pos.x, y: pos.y, z: pos.z, relZ: pos.z - housePositionZ },
+          vel: { x: vel.x, y: vel.y, z: vel.z },
+          speed,
+          spin: stone.spin,
+          angVel: { x: ang.x, y: ang.y, z: ang.z }
+        });
+      });
+    }
+
+    function finalizeDebugTrace(stone, reason = 'unknown') {
+      if (!debugConfig.enabled || !stone) return;
+      const trace = debugTraces.get(stone);
+      if (!trace || trace.done) return;
+      trace.done = true;
+      const samples = trace.samples;
+      const last = samples[samples.length - 1];
+      const first = samples[0];
+      const travel = trace.stone.releasePos ?
+        Math.hypot(stone.body.position.x - trace.stone.releasePos.x, stone.body.position.z - trace.stone.releasePos.z) : 0;
+      const endRelZ = last ? (last.pos.relZ) : null;
+      const stopReason = reason || 'slow';
+      const lastSpeed = last ? last.speed : null;
+      const stopSpeed = stone.body.velocity.length();
+      debugLog('summary', {
+        team: stone.team,
+        reason: stopReason,
+        release: {
+          pos: trace.stone.releasePos,
+          vel: trace.meta.releaseVel || null,
+          spin: trace.meta.spin || stone.spin
+        },
+        duration: last ? last.t : 0,
+        samples: samples.length,
+        travel,
+        endPos: last ? last.pos : null,
+        endSpeed: lastSpeed,
+        stopSpeed,
+        endRelZ,
+        collisions: trace.collisions
+      });
+      if (stone.team === 'ai') {
+        updateAiRLFromTrace(trace, stopReason);
+      }
+    }
+
+    window.dumpStoneDebug = () => {
+      debugTraces.forEach((trace) => {
+        if (!trace.done) return;
+        const last = trace.samples[trace.samples.length - 1];
+        console.log('debug-trace', {
+          team: trace.stone.team,
+          duration: last ? last.t : 0,
+          travel: trace.stone.releasePos ?
+            Math.hypot(trace.stone.body.position.x - trace.stone.releasePos.x, trace.stone.body.position.z - trace.stone.releasePos.z) : 0,
+          endPos: last ? last.pos : null,
+          endSpeed: last ? last.speed : null,
+          samples: trace.samples.length,
+          collisions: trace.collisions
+        });
+      });
+    };
+
+    window.exportLastStoneTrace = () => {
+      // Grabs the most recent finished trace, logs to console, and downloads JSON for offline comparison.
+      const traces = Array.from(debugTraces.values()).filter(t => t.done);
+      if (!traces.length) {
+        console.warn('No finished stone traces to export.');
+        return null;
+      }
+      const trace = traces[traces.length - 1];
+      const payload = {
+        team: trace.stone.team,
+        releaseTime: trace.releaseTime,
+        meta: trace.meta,
+        samples: trace.samples,
+        collisions: trace.collisions
+      };
+      console.log('exported-stone-trace', payload);
+      try {
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `stone-trace-${Date.now()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.warn('Failed to download trace; still logged to console.', err);
+      }
+      return payload;
+    };
+
+    function loadAiRL() {
+      if (aiRL) return aiRL;
+      try {
+        const raw = localStorage.getItem(aiRLStorageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          aiRL = parsed.state || parsed;
+          if (parsed.history && Array.isArray(parsed.history)) {
+            aiHistory.length = 0;
+            aiHistory.push(...parsed.history);
+            while (aiHistory.length > 100) aiHistory.shift();
+          }
+        }
+      } catch (err) {
+        aiRL = null;
+      }
+      if (!aiRL) aiRL = { powerScale: 1, noiseScale: 1, spinBias: 0, count: 0 };
+      updateAiStatsPanel();
+      return aiRL;
+    }
+
+    function saveAiRL() {
+      try {
+        localStorage.setItem(aiRLStorageKey, JSON.stringify({ state: aiRL, history: aiHistory.slice(-100) }));
+      } catch (err) {
+        console.warn('Unable to persist aiReinforce', err);
+      }
+    }
+
+    function resetAiRL(zeroSkill = false) {
+      aiRL = zeroSkill ? { powerScale: 0.5, noiseScale: 1.5, spinBias: 0, count: 0 } : { powerScale: 1, noiseScale: 1, spinBias: 0, count: 0 };
+      aiHistory.length = 0;
+      saveAiRL();
+      updateAiStatsPanel();
+    }
+
+    function updateAiRLFromTrace(trace, reason) {
+      const state = loadAiRL();
+      const last = trace.samples[trace.samples.length - 1];
+      if (!last) return;
+      const dist = Math.hypot(last.pos.x, last.pos.relZ);
+      const reward = Math.max(-1, Math.min(1, (2 - dist) / 2)); // closer than 2m => positive
+      const lr = 0.05;
+      state.count += 1;
+      // If long or weak, adjust powerScale; if overshoot/fast, damp power
+      const tooFar = dist > params.houseRadius * 1.5;
+      state.powerScale += lr * (tooFar ? -0.1 : 0.05 * reward);
+      state.powerScale = THREE.MathUtils.clamp(state.powerScale, 0.7, 1.3);
+      // If wide, reduce noise
+      const lateral = Math.abs(last.pos.x);
+      if (lateral > params.houseRadius * 0.6) {
+        state.noiseScale -= lr * 0.1;
+      } else {
+        state.noiseScale += lr * 0.02 * reward;
+      }
+      state.noiseScale = THREE.MathUtils.clamp(state.noiseScale, 0.6, 1.4);
+      // Spin bias nudges curl strength slightly
+      state.spinBias += lr * 0.05 * reward;
+      state.spinBias = THREE.MathUtils.clamp(state.spinBias, -0.3, 0.3);
+      saveAiRL();
+      debugLog('ai-rl-update', { reward, dist, lateral, powerScale: state.powerScale, noiseScale: state.noiseScale, spinBias: state.spinBias, reason });
+      pushAiThrowLog(trace);
+      updateAiStatsPanel();
+    }
+
+    function toggleSelfPlay(force) {
+      const next = typeof force === 'boolean' ? force : !gameState.selfPlay;
+      gameState.selfPlay = next;
+      hud.status.textContent = next ? 'Self-play enabled (AI controls both teams).' : 'Player turn.';
+      if (autoHelper) {
+        autoHelper.style.display = 'block';
+        autoHelper.innerHTML = `<strong>Self-play:</strong> ${next ? 'on' : 'off'} (press P to toggle)`;
+      }
+      if (next && gameState.currentTeam === 'player' && gameState.activeStone && !gameState.activeStone.thrown) {
+        setTimeout(aiThrow, 200);
+      }
+      updateAiStatsPanel();
+      drawHudCanvas();
+    }
+
+    function toggleTrainMode(force, shotType = null) {
+      const next = typeof force === 'boolean' ? force : !gameState.trainMode;
+      gameState.trainMode = next;
+      gameState.selfPlay = false;
+      if (next) resetAiRL(true);
+      if (shotType) trainConfig.shotType = shotType;
+      if (!trainConfig.shotType) trainConfig.shotType = 'draw';
+      hud.status.textContent = next ? 'Training mode: AI self-throws for learning.' : 'Training off.';
+      if (autoHelper) {
+        autoHelper.style.display = 'block';
+        autoHelper.innerHTML = `<strong>Training:</strong> ${next ? 'on' : 'off'} (press L to toggle)<br>Shot: ${trainConfig.shotType}${trainConfig.shotType ? ' (press 1/2/3 or setTrainingShot to change)' : ''}<br>Fast: ${fastTrainConfig.enabled ? 'on' : 'off'} (press F to toggle)`;
+      }
+      updateAiStatsPanel();
+      drawHudCanvas();
+      if (next) {
+        gameState.waitingForNextEnd = false;
+        gameState.gameOver = false;
+        runTrainingThrow();
+      }
+    }
+
+    function toggleFastTrain(force) {
+      const next = typeof force === 'boolean' ? force : !fastTrainConfig.enabled;
+      fastTrainConfig.enabled = next;
+      fastTrainConfig.delayMs = next ? 0 : 200;
+      if (autoHelper) {
+        autoHelper.style.display = 'block';
+        autoHelper.innerHTML = `<strong>Training:</strong> ${gameState.trainMode ? 'on' : 'off'}${trainConfig.shotType ? `<br>Shot: ${trainConfig.shotType}` : ''}<br>Fast: ${fastTrainConfig.enabled ? 'on' : 'off'} (press F to toggle)`;
+      }
+      updateAiStatsPanel();
+    }
+
+    function isFastTraining() {
+      return gameState.trainMode && fastTrainConfig.enabled;
+    }
+
+    function runTrainingThrow() {
+      if (!gameState.trainMode) return;
+      clearStones();
+      gameState.thrown.player = 0;
+      gameState.thrown.ai = 0;
+      gameState.waitingForNextEnd = false;
+      gameState.gameOver = false;
+      gameState.currentTeam = 'ai';
+      spawnStone('ai');
+      updateHud();
+      updateAiStatsPanel();
+      if (!isFastTraining()) fastRenderThrowCounter = 0;
+      const delay = fastTrainConfig.enabled ? fastTrainConfig.delayMs : 200;
+      setTimeout(aiThrow, delay);
+    }
+
+    // Expose a helper to set training shot type from console or UI hooks
+    window.setTrainingShot = (shotType) => {
+      trainConfig.shotType = shotType;
+      if (autoHelper) {
+        autoHelper.style.display = 'block';
+        autoHelper.innerHTML = `<strong>Training:</strong> ${gameState.trainMode ? 'on' : 'off'}<br>Shot: ${trainConfig.shotType || 'auto'}`;
+      }
+      updateAiStatsPanel();
+    };
+
+    function pushAiThrowLog(trace) {
+      const last = trace.samples[trace.samples.length - 1];
+      if (!last) return;
+      const dist = Math.hypot(last.pos.x, last.pos.relZ);
+      const entry = {
+        shotType: trace.meta?.shotType || 'ai',
+        combo: trace.meta?.combo || null,
+        dist: dist,
+        relZ: last.pos.relZ,
+        lateral: last.pos.x,
+        endSpeed: last.speed,
+        reward: Math.max(-1, Math.min(1, (2 - dist) / 2))
+      };
+      aiThrowLog.push(entry);
+      aiHistory.push(entry);
+      while (aiThrowLog.length > 5) aiThrowLog.shift();
+      saveAiRL();
+      if (isFastTraining()) fastRenderThrowCounter += 1;
+    }
+
+    function resetStones() {
+      stones.forEach((s) => {
+        scene.remove(s.mesh);
+        scene.remove(s.debug);
+        world.removeBody(s.body);
+      });
+      stones.length = 0;
+      gameState.activeStone = null;
+      gameState.thrown.player = 0;
+      gameState.thrown.ai = 0;
+    }
+
+
     function createAimArrow() {
       const geo = new THREE.CylinderGeometry(0, 0.04, 0.3, 8, 1);
       const mat = new THREE.MeshBasicMaterial({ color: '#ffdd55' });
@@ -1616,14 +2467,41 @@
       return null;
     }
 
-    function applySpinCurve(list = stones) {
+    function speedCurlFactor(speed) {
+      // Phase-like curl: low at high speed, ramp mid-speed, ease when crawling.
+      if (speed >= 3.2) return 0.15;
+      if (speed >= 2.0) {
+        const t = (3.2 - speed) / (3.2 - 2.0);
+        return 0.15 + t * 0.75; // up to ~0.9
+      }
+      if (speed >= 0.8) {
+        const t = (speed - 0.8) / (2.0 - 0.8);
+        return 0.6 + t * 0.35;
+      }
+      return 0.45;
+    }
+
+    function frictionMultiplier(speed) {
+      if (speed > 3.0) return 0.7;
+      if (speed > 2.0) return 0.85;
+      if (speed > 1.0) return 1.0;
+      if (speed > 0.5) return 1.25;
+      return 1.6;
+    }
+
+    function applySpinCurve(delta, list = stones) {
+      const decayRate = Math.max(0, params.spinDrag + params.spinCurl * 0.28);
       list.forEach((s) => {
-        if (!s.thrown || s.body.sleepState === CANNON.Body.SLEEPING) return;
+        if (!s.thrown) return;
         const vel = s.body.velocity;
         const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-        if (speed < 0.01 || Math.abs(s.spin) < 0.01) return;
+        s.spin *= Math.max(0, 1 - decayRate * delta * (1 + speed * 0.05));
+        s.body.angularVelocity.y = s.spin;
+        if (speed < 1e-6 || Math.abs(s.spin) < 0.00001) return;
         const dir = new CANNON.Vec3(vel.x / speed, 0, vel.z / speed);
-        const sideways = new CANNON.Vec3(-dir.z, 0, dir.x).scale(s.spin * params.iceCurl);
+        const curlScale = speedCurlFactor(speed) * 0.75;
+        const sideways = new CANNON.Vec3(-dir.z, 0, dir.x).scale(s.spin * params.iceCurl * curlScale);
+        sideways.x += Math.sign(s.spin) * 0.012 * 0.1 * curlScale;
         s.body.applyForce(sideways, s.body.position);
       });
     }
@@ -1684,7 +2562,15 @@
       });
       wrap.appendChild(title);
       wrap.appendChild(input);
+      controlBindings.set(key, { input, valueEl: value });
       return wrap;
+    }
+
+    function syncControlBinding(key, val) {
+      const binding = controlBindings.get(key);
+      if (!binding) return;
+      binding.input.value = val;
+      binding.valueEl.textContent = val;
     }
 
     function buildButton(label, onClick) {
@@ -1703,7 +2589,155 @@
       return btn;
     }
 
+    const presets = {
+      realisticDraw: {
+        friction: 0.0003,
+        restitution: 0.08,
+        iceDrag: 0.00005,
+        spinDrag: 0.01,
+        iceCurl: 0.045,
+        spinCurl: 0.12,
+        stoneMass: 19.96,
+        throwPower: 5.5,
+        pushSpeed: 5.5,
+      motionPowerScale: 1.25,
+      motionMaxSpeed: 14,
+      twistSpinScale: 0.32,
+      pushSpin: 0,
+      aiAccuracy: 0.65,
+      aiWeightBias: 0.9
+    },
+      clubSlowIce: {
+        friction: 0.0005,
+        restitution: 0.07,
+        iceDrag: 0.00008,
+        spinDrag: 0.02,
+        iceCurl: 0.035,
+        spinCurl: 0.1,
+        stoneMass: 19.96,
+        throwPower: 4.8,
+        pushSpeed: 4.8,
+        motionPowerScale: 1.1,
+        motionMaxSpeed: 12,
+        twistSpinScale: 0.22,
+        pushSpin: 0,
+        aiAccuracy: 0.55,
+        aiWeightBias: 0.95
+      },
+      fastProIce: {
+        friction: 0.0003,
+        restitution: 0.08,
+        iceDrag: 0.00004,
+        spinDrag: 0.008,
+        iceCurl: 0.055,
+        spinCurl: 0.14,
+        stoneMass: 19.96,
+        throwPower: 6.2,
+        pushSpeed: 6.2,
+        motionPowerScale: 1.35,
+        motionMaxSpeed: 16,
+        twistSpinScale: 0.36,
+        pushSpin: 0,
+        aiAccuracy: 0.78,
+        aiWeightBias: 0.9
+      },
+      takeoutPower: {
+        friction: 0.0004,
+        restitution: 0.14,
+        iceDrag: 0.00006,
+        spinDrag: 0.015,
+        iceCurl: 0.03,
+        spinCurl: 0.08,
+        stoneMass: 19.96,
+        throwPower: 7.2,
+        pushSpeed: 7.0,
+        motionPowerScale: 1.45,
+        motionMaxSpeed: 18,
+        twistSpinScale: 0.2,
+        pushSpin: 0,
+        aiAccuracy: 0.6,
+        aiWeightBias: 1.05
+      }
+    };
+
+    function applyPreset(name) {
+      const preset = presets[name];
+      if (!preset) return;
+      Object.entries(preset).forEach(([key, val]) => {
+        params[key] = val;
+        syncControlBinding(key, val);
+        applyParamChange(key);
+      });
+      drawHudCanvas();
+    }
+
+    function initPresetDock() {
+      if (!presetDock) return;
+      presetDock.innerHTML = '';
+      const title = document.createElement('h4');
+      title.textContent = 'Quick presets';
+      presetDock.appendChild(title);
+      const hint = document.createElement('div');
+      hint.className = 'preset-hint';
+      hint.textContent = 'Applies physics/AI tuning (stone scale unchanged).';
+      presetDock.appendChild(hint);
+      const wrap = document.createElement('div');
+      wrap.className = 'preset-buttons';
+      const addBtn = (label, key, handler) => {
+        const btn = document.createElement('button');
+        btn.className = 'preset-btn';
+        btn.textContent = label;
+        if (handler) {
+          btn.addEventListener('click', handler);
+          btn.addEventListener('pointerdown', handler);
+        } else {
+          btn.addEventListener('click', () => applyPreset(key));
+          btn.addEventListener('pointerdown', () => applyPreset(key));
+        }
+        wrap.appendChild(btn);
+      };
+      addBtn('Realistic draw', 'realisticDraw');
+      addBtn('Club slow ice', 'clubSlowIce');
+      addBtn('Fast pro sheet', 'fastProIce');
+      addBtn('Takeout / power', 'takeoutPower');
+      presetDock.appendChild(wrap);
+    }
+
     function initUI() {
+      initPresetDock();
+      const presetSection = document.createElement('div');
+      presetSection.className = 'section';
+      const presetHeader = document.createElement('h3');
+      presetHeader.textContent = 'Presets';
+      presetSection.appendChild(presetHeader);
+      const presetHint = document.createElement('div');
+      presetHint.textContent = 'Quick play styles (does not change stone scale).';
+      presetHint.className = 'muted';
+      presetHint.style.fontSize = '12px';
+      presetHint.style.marginBottom = '6px';
+      presetSection.appendChild(presetHint);
+      presetSection.appendChild(buildButton('Realistic draw', () => applyPreset('realisticDraw')));
+      presetSection.appendChild(buildButton('Club slow ice', () => applyPreset('clubSlowIce')));
+      presetSection.appendChild(buildButton('Fast pro sheet', () => applyPreset('fastProIce')));
+      presetSection.appendChild(buildButton('Takeout / power', () => applyPreset('takeoutPower')));
+      uiPanel.appendChild(presetSection);
+
+      const aiSection = document.createElement('div');
+      aiSection.className = 'section';
+      const aiHeader = document.createElement('h3');
+      aiHeader.textContent = 'AI Difficulty';
+      aiSection.appendChild(aiHeader);
+      aiSection.appendChild(buildButton('Easy', () => applyAIDifficulty('easy')));
+      aiSection.appendChild(buildButton('Medium', () => applyAIDifficulty('medium')));
+      aiSection.appendChild(buildButton('Hard', () => applyAIDifficulty('hard')));
+      aiSection.appendChild(buildButton('Pro', () => applyAIDifficulty('pro')));
+      const aiHint = document.createElement('div');
+      aiHint.className = 'muted';
+      aiHint.style.fontSize = '12px';
+      aiHint.textContent = 'Sets AI power/accuracy/weight bias. Physics stay unchanged.';
+      aiSection.appendChild(aiHint);
+      uiPanel.appendChild(aiSection);
+
       const groups = [
         {
           title: 'Sheet',
@@ -1746,13 +2780,14 @@
         {
           title: 'Push controls (all throws)',
           controls: [
-            ['Push speed', 'pushSpeed', 0.5, 48, 0.1],
-            ['Direction deg', 'pushDirectionDeg', -180, 180, 1],
-            ['Spin (signed)', 'pushSpin', -2, 2, 0.05],
-            ['Motion power scale', 'motionPowerScale', 0.2, 3, 0.05],
-            ['Twist spin scale', 'twistSpinScale', 0, 3, 0.05]
-          ]
-        }
+        ['Push speed', 'pushSpeed', 0.5, 48, 0.1],
+        ['Direction deg', 'pushDirectionDeg', -180, 180, 1],
+        ['Spin (signed)', 'pushSpin', -2, 2, 0.05],
+        ['Motion power scale', 'motionPowerScale', 0.2, 3, 0.05],
+        ['Motion max speed', 'motionMaxSpeed', 2, 32, 0.25],
+        ['Twist spin scale', 'twistSpinScale', 0, 3, 0.05]
+      ]
+    }
       ];
 
       groups.forEach(section => {
@@ -1848,6 +2883,60 @@
       }
     }
 
+    function applyParamsFromObject(obj, sourceLabel = 'Loaded physics') {
+      const keys = ['friction', 'restitution', 'iceDrag', 'spinDrag', 'iceCurl', 'spinCurl', 'throwPower', 'pushSpeed', 'pushSpin', 'motionPowerScale', 'motionMaxSpeed', 'twistSpinScale', 'pushDirectionDeg', 'aiAccuracy', 'aiWeightBias', 'aiAggression', 'aiGuardBias'];
+      const appliedKeys = [];
+      keys.forEach((k) => {
+        if (typeof obj[k] === 'number' && Number.isFinite(obj[k])) {
+          params[k] = obj[k];
+          applyParamChange(k);
+          syncControlBinding(k, params[k]);
+          appliedKeys.push(k);
+        }
+      });
+      if (!appliedKeys.length) return false;
+      retuneAllStones();
+      repositionWaitingStone();
+      updateHud();
+      drawHudCanvas();
+      if (autoHelper) {
+        autoHelper.style.display = 'block';
+        autoHelper.innerHTML = `
+          <strong>${sourceLabel}</strong><br>
+          Friction: ${params.friction} | Ice drag: ${params.iceDrag} | Spin drag: ${params.spinDrag} | Restitution: ${params.restitution}<br>
+          Throw power: ${params.throwPower} | Push speed: ${params.pushSpeed} | Push spin: ${params.pushSpin}
+        `;
+        if (obj.meta && typeof obj.meta.score === 'number') {
+          const scoreLabel = obj.meta.score.toFixed ? obj.meta.score.toFixed(3) : obj.meta.score;
+          autoHelper.innerHTML += `<br><em>Score: ${scoreLabel}</em>`;
+        }
+      }
+      return true;
+    }
+
+    async function loadAutoPhysicsFromStorage() {
+      loadAiRL();
+      try {
+        const raw = localStorage.getItem('curlingAutoPhysics');
+        if (raw) {
+          const data = JSON.parse(raw);
+          if (applyParamsFromObject(data, 'Auto physics (localStorage)')) return true;
+        }
+      } catch (err) {
+        console.warn('No valid auto physics in storage', err);
+      }
+      try {
+        const res = await fetch('auto-physics.json', { cache: 'no-cache' });
+        if (res && res.ok) {
+          const data = await res.json();
+          if (applyParamsFromObject(data, 'Auto physics (auto-physics.json)')) return true;
+        }
+      } catch (err) {
+        console.warn('Auto physics file not loaded', err);
+      }
+      return false;
+    }
+
     function setEnvironmentTheme(theme) {
       params.environmentTheme = theme;
       buildEnvironment();
@@ -1860,6 +2949,26 @@
         environmentModeIndex = idx;
         applyEnvironment(mode);
       }
+    }
+
+    function applyAIDifficulty(level) {
+      const presets = {
+        easy:   { throwPower: 5.5, aiAccuracy: 0.4, aiWeightBias: 0.75, aiAggression: 0.35, aiGuardBias: 0.65 },
+        medium: { throwPower: 6.5, aiAccuracy: 0.65, aiWeightBias: 0.9, aiAggression: 0.55, aiGuardBias: 0.5 },
+        hard:   { throwPower: 7.5, aiAccuracy: 0.82, aiWeightBias: 1.05, aiAggression: 0.72, aiGuardBias: 0.42 },
+        pro:    { throwPower: 8.5, aiAccuracy: 0.94, aiWeightBias: 1.15, aiAggression: 0.88, aiGuardBias: 0.35 }
+      };
+      const pick = presets[level] || presets.medium;
+      ['throwPower', 'aiAccuracy', 'aiWeightBias', 'aiAggression', 'aiGuardBias'].forEach((k) => {
+        params[k] = pick[k];
+        applyParamChange(k);
+      });
+      updateHud();
+      if (autoHelper) {
+        autoHelper.style.display = 'block';
+        autoHelper.innerHTML = `<strong>AI difficulty:</strong> ${level} (power ${pick.throwPower}, acc ${pick.aiAccuracy}, bias ${pick.aiWeightBias}, aggro ${pick.aiAggression}, guard ${pick.aiGuardBias})`;
+      }
+      resetAiRL(); // new difficulty -> reset learning
     }
 
     function retuneStonePhysics(stone) {
@@ -1878,6 +2987,7 @@
       stone.body.angularDamping = spinDamping;
       stone.body.angularFactor.set(0, 1, 0);
       stone.body.linearFactor.set(1, 0, 1);
+      stone.body.allowSleep = false;
       if (stone.debug) {
         scene.remove(stone.debug);
         stone.debug.geometry.dispose();
@@ -1889,6 +2999,10 @@
       if (!stone.thrown) {
         stone.body.position.y = dims.height / 2;
       }
+    }
+
+    function retuneAllStones() {
+      stones.forEach((s) => retuneStonePhysics(s));
     }
 
     function createPhysicsDebugMesh(team) {
@@ -2267,11 +3381,18 @@
       const isInstruction = /grip|press|controller|toggle|trigger/i.test(statusText);
       const status = gameState.waitingForNextEnd ? 'End complete - use UI to advance' :
         (isInstruction ? '' : statusText);
+      const metrics = getStoneMetricsText() || lastMetricsText;
       hudCtx.textAlign = 'right';
       hudCtx.textBaseline = 'alphabetic';
       hudCtx.fillStyle = '#9fb4cc';
       hudCtx.font = '13px "Inter", "Segoe UI", sans-serif';
-      hudCtx.fillText(status, w - pad, h - 14);
+      const bottomY = h - 14;
+      if (metrics) {
+        hudCtx.fillText(metrics, w - pad, bottomY - 14);
+        hudCtx.fillText(status, w - pad, bottomY);
+      } else {
+        hudCtx.fillText(status, w - pad, bottomY);
+      }
       hudCtx.strokeStyle = '#234';
       hudCtx.strokeRect(0.5, 0.5, w - 1, h - 1);
       if (hudTexture) hudTexture.needsUpdate = true;
@@ -2411,7 +3532,7 @@
     function setupPointerLines() {
       [controller1, controller2].forEach((c, i) => {
         if (pointerLines[i]) panelGroup.remove(pointerLines[i]);
-        const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -2)]);
+        const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -pointerReach)]);
         const mat = new THREE.LineBasicMaterial({ color: 0x4de1ff });
         const line = new THREE.Line(geo, mat);
         line.visible = false;
@@ -2426,12 +3547,12 @@
       [controller1, controller2].forEach((c, i) => {
         if (!c) return;
         pointerLines[i].visible = promptActive;
-        if (!promptActive) return;
+        if (!pointerLines[i].visible) return;
         const rc = raycasters[i];
         tempMatrix.identity().extractRotation(c.matrixWorld);
         rc.ray.origin.setFromMatrixPosition(c.matrixWorld);
         rc.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-        pointerLines[i].geometry.attributes.position.setXYZ(1, 0, 0, -2);
+        pointerLines[i].geometry.attributes.position.setXYZ(1, 0, 0, -pointerReach);
         pointerLines[i].geometry.attributes.position.needsUpdate = true;
       });
     }
@@ -2439,10 +3560,10 @@
     const tempMatrix = new THREE.Matrix4();
 
     function tryPromptClick(controller) {
-      if (!vrPrompt.group) return;
+      if (!vrPrompt.group) return false;
       const index = controller === controller1 ? 0 : 1;
       const rc = raycasters[index];
-      if (!rc) return;
+      if (!rc) return false;
       const hits = rc.intersectObjects(vrPrompt.buttons, false);
       if (hits.length) {
         const target = hits[0].object.userData.action;
@@ -2450,6 +3571,12 @@
         if (target === 'play') resetGame();
         if (target === 'quit') handleQuit();
       }
+      return hits.length > 0;
+    }
+
+    function handleControllerSelect(controller) {
+      if (tryPromptClick(controller)) return;
+      handlePlayerThrow(controller);
     }
 
     function updateCrowd(dt) {
@@ -2597,24 +3724,25 @@
     }
 
     function applyCurlDrag(delta) {
-      const applyList = (list) => {
-        list.forEach((s) => {
-          if (!s.thrown) return;
-          s.body.velocity.scale(Math.max(0, 1 - params.iceDrag * delta), s.body.velocity);
-          updateSlideSound(s.body, s.thrown);
-        });
-      };
-      applyList(stones);
+      const drag = Math.max(0, params.iceDrag || 0);
+      const friction = Math.max(0, params.friction || 0);
+      stones.forEach((s) => {
+        if (!s.thrown) return;
+        const vel = s.body.velocity;
+        const speed = vel.length();
+        if (speed <= 0) return;
+        if (drag > 0) vel.scale(Math.max(0, 1 - drag * delta), vel);
+        if (friction > 0) {
+          const decel = friction * frictionMultiplier(speed) * 9.81 * delta;
+          const newSpeed = Math.max(0, speed - decel);
+          if (newSpeed < speed) vel.scale(newSpeed / speed, vel);
+        }
+        if (!isFastTraining()) updateSlideSound(s.body, true);
+      });
     }
 
     function applyExtraSpinDamping(delta) {
-      const extra = extraSpinDrag(params.spinDrag);
-      if (extra <= 0) return;
-      const factor = Math.max(0, 1 - extra * delta);
-      stones.forEach((s) => {
-        if (!s.thrown || s.body.sleepState === CANNON.Body.SLEEPING) return;
-        s.body.angularVelocity.scale(factor, s.body.angularVelocity);
-      });
+      // Disabled: no extra spin damping.
     }
 
     function animate() {
@@ -2632,16 +3760,26 @@
       world.step(1 / 60, dt);
       keepStonesUpright(stones);
       applyCurlDrag(dt);
-      applySpinCurve(stones);
+      applySpinCurve(dt, stones);
       applyExtraSpinDamping(dt);
       updateStoneMeshes();
       updateMiniMap();
       updateAimIndicator();
+      updateStoneInfo();
+      recordDebugSamples();
       monitorStoneState();
       pollButtons();
-      updateCrowd(dt);
-      updatePointers();
-      renderer.render(scene, camera);
+      if (!isFastTraining()) {
+        updateCrowd(dt);
+        updatePointers();
+        renderer.render(scene, camera);
+      } else {
+        const shouldRender = fastRenderThrowCounter > 0 && (fastRenderThrowCounter % 20 === 0);
+        if (shouldRender) {
+          renderer.render(scene, camera);
+          fastRenderThrowCounter = 0;
+        }
+      }
     }
 
     animate();

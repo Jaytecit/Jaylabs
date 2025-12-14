@@ -1,0 +1,1885 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Curling Physics Auto Tuner (PPO Enhanced)</title>
+  <style>
+    body { margin: 0; background: #0b192d; color: #e9f2ff; font-family: "Segoe UI", sans-serif; }
+    header { padding: 12px 16px; background: #0f243a; box-shadow: 0 2px 8px rgba(0,0,0,0.4); position: sticky; top: 0; z-index: 10; }
+    h1 { margin: 0; font-size: 20px; letter-spacing: 0.04em; }
+    main { padding: 16px; display: grid; gap: 12px; width: 100%; max-width: none; box-sizing: border-box; }
+    .grid-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 12px; align-items: start; }
+    .stacked { display: flex; flex-direction: column; gap: 12px; }
+    button { padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: #1f7fff; color: #fff; cursor: pointer; font-weight: 600; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    select { padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color: #e9f2ff; font-weight: 600; }
+    .control-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; align-items: center; }
+    .control-row .muted { margin-left: 4px; }
+    .panel { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .muted { color: #9fb4cc; font-size: 13px; }
+    .log { max-height: 320px; overflow: auto; font-size: 13px; line-height: 1.5; }
+    .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+    code { background: rgba(255,255,255,0.08); padding: 2px 4px; border-radius: 4px; }
+    canvas#houseMap { width: 520px; height: 520px; max-width: 100%; background: #071423; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; }
+    canvas#sheetMap { width: 100%; height: 220px; background: #071423; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; }
+    .map-row { display: flex; gap: 12px; align-items: center; justify-content: center; width: 100%; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Curling Physics Auto Tuner (PPO)</h1>
+    <div class="muted">Runs isolated Cannon simulations. Enhanced with Adam Optimizer & PPO Clipping.</div>
+  </header>
+  <main>
+    <div class="grid-two">
+      <div class="stacked">
+        <div class="panel">
+          <div class="control-row">
+            <button id="overallBtn">Run overall tuner</button>
+            <span id="status" class="muted"></span>
+          </div>
+          <div class="control-row">
+            <label class="muted" for="paramSelect">Single-parameter tuner</label>
+            <select id="paramSelect" aria-label="Parameter to tune"></select>
+            <button id="paramBtn">Tune selected</button>
+          </div>
+          <div class="control-row">
+            <button id="diagBtn">Run diagnostics</button>
+            <span id="diagStatus" class="muted"></span>
+          </div>
+          <div class="control-row">
+            <button id="testsBtn">Run throw tests</button>
+            <span id="testsStatus" class="muted"></span>
+          </div>
+        </div>
+        <div class="panel">
+          <strong>Best Result</strong>
+          <div id="best" class="muted">Not run yet.</div>
+        </div>
+        <div class="panel">
+          <div class="map-row">
+            <canvas id="houseMap" width="520" height="520"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="stacked">
+        <div class="panel">
+          <strong>PPO Curriculum Trainer</strong>
+          <div class="muted">Batched learning (30 throws/batch). Updates via Adam optimizer.</div>
+          <div class="control-row">
+            <button id="rlStartBtn">Start training</button>
+            <button id="rlStopBtn">Stop</button>
+            <button id="rlResetBtn">Reset policy</button>
+          </div>
+          <div class="control-row">
+            <button id="rlEvalBtn">Eval current policy</button>
+            <button id="rlNextBtn" disabled>Next skill</button>
+            <button id="rlContinueBtn" disabled>Continue stage</button>
+            <button id="rlWatchBtn" disabled>Watch tuned env</button>
+            <button id="rlTestMasteryBtn">Test mastery</button>
+            <span id="rlStatus" class="muted"></span>
+          </div>
+          <div class="control-row">
+            <button id="rlExportBtn">Export RL agent</button>
+            <span class="muted">Saves to localStorage + rl-agent.json</span>
+          </div>
+          <div id="rlStats" class="muted">Idle.</div>
+          <div id="rlStreak" class="muted">Best streak: 0</div>
+        </div>
+        <div class="panel">
+          <strong>Sheet View</strong>
+          <div class="muted">Full sheet landing view (left-to-right motion).</div>
+          <div class="map-row">
+            <canvas id="sheetMap" width="520" height="220"></canvas>
+          </div>
+        </div>
+        <div class="panel">
+          <strong>Log</strong>
+          <div id="log" class="log"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    // Robust loader with cache-bust and CDN fallback to avoid cached failures
+    const cannonUrls = [
+      'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js',
+      'https://unpkg.com/cannon-es@0.20.0/dist/cannon-es.js'
+    ];
+    let CANNON;
+    async function loadCannon() {
+      let lastErr = null;
+      for (const url of cannonUrls) {
+        const bust = `${url}?cache-bust=${Date.now()}`;
+        try {
+          const mod = await import(bust);
+          CANNON = mod;
+          console.info('Loaded cannon-es from', url);
+          return;
+        } catch (err) {
+          lastErr = err;
+          console.warn('Failed to load cannon-es from', url, err);
+        }
+      }
+      throw lastErr || new Error('Unable to load cannon-es');
+    }
+    try {
+      await loadCannon();
+    } catch (err) {
+      console.error('cannon-es failed to load', err);
+      const statusNode = document.getElementById('status');
+      if (statusNode) statusNode.textContent = 'Physics library failed to load. Check network/cache.';
+      throw err;
+    }
+
+    const overallBtn = document.getElementById('overallBtn');
+    const paramBtn = document.getElementById('paramBtn');
+    const paramSelect = document.getElementById('paramSelect');
+    const statusEl = document.getElementById('status');
+    const diagBtn = document.getElementById('diagBtn');
+    const diagStatus = document.getElementById('diagStatus');
+    const testsBtn = document.getElementById('testsBtn');
+    const testsStatus = document.getElementById('testsStatus');
+    const rlStartBtn = document.getElementById('rlStartBtn');
+    const rlStopBtn = document.getElementById('rlStopBtn');
+    const rlResetBtn = document.getElementById('rlResetBtn');
+    const rlEvalBtn = document.getElementById('rlEvalBtn');
+    const rlNextBtn = document.getElementById('rlNextBtn');
+    const rlContinueBtn = document.getElementById('rlContinueBtn');
+    const rlWatchBtn = document.getElementById('rlWatchBtn');
+    const rlTestMasteryBtn = document.getElementById('rlTestMasteryBtn');
+    const rlExportBtn = document.getElementById('rlExportBtn');
+    const rlStatus = document.getElementById('rlStatus');
+    const rlStats = document.getElementById('rlStats');
+    const rlStreak = document.getElementById('rlStreak');
+    const logEl = document.getElementById('log');
+    const bestEl = document.getElementById('best');
+    const houseMap = document.getElementById('houseMap');
+    const houseCtx = houseMap.getContext('2d');
+    const sheetMap = document.getElementById('sheetMap');
+    const sheetCtx = sheetMap.getContext('2d');
+    const bestShots = [];
+    let bestShotsStage = null;
+
+    const sheetLength = 44.5;
+    const sheetWidth = 4.75;
+    const houseZ = -17.375;
+    const spawnZ = sheetLength / 2 - 2;
+    const stonePhysical = { mass: 19.96, radius: 0.145, height: 0.11 };
+    const realIceProfile = {
+      // values derived from curling stone and pebbled ice behaviour
+      friction: 0.000095,
+      iceDrag: 0.000040,
+      spinDrag: 0.011,
+      iceCurl: 0.052,
+      spinCurl: 0.160,
+      power: 8.3,
+      pushSpin: 0,
+      motionPowerScale: 1.12,
+      motionMaxSpeed: 14.2,
+      twistSpinScale: 0.2,
+      restitution: 0.08,
+      launchDeg: 0,
+      spawnOffsetX: 0
+    };
+
+    const ranges = {
+      friction: [0.00005, 0.00020],
+      iceDrag: [0.00001, 0.00008],
+      spinDrag: [0.006, 0.020],
+      iceCurl: [0.035, 0.065],
+      spinCurl: [0.080, 0.220],
+      power: [6.0, 9.5],
+      pushSpin: [-6.0, 6.0],
+      motionPowerScale: [1.0, 1.35],
+      motionMaxSpeed: [12, 18],
+      twistSpinScale: [0.2, 0.2],
+      restitution: [0.06, 0.12],
+      launchDeg: [-12, 12],
+      spawnOffsetX: [-1.0, 1.0]
+    };
+    const paramLabels = {
+      friction: 'Friction',
+      restitution: 'Restitution',
+      iceDrag: 'Ice drag',
+      spinDrag: 'Spin drag',
+      iceCurl: 'Ice curl',
+      spinCurl: 'Spin curl',
+      power: 'Release power',
+      pushSpin: 'Push spin',
+      motionPowerScale: 'Motion power scale',
+      motionMaxSpeed: 'Motion max speed',
+      twistSpinScale: 'Twist spin scale',
+      launchDeg: 'Launch angle',
+      spawnOffsetX: 'Spawn offset X'
+    };
+    const tuneKeys = Object.keys(paramLabels);
+    tuneKeys.forEach((key) => {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = paramLabels[key];
+      paramSelect.appendChild(opt);
+    });
+
+    const rand = (min, max) => min + Math.random() * (max - min);
+    const randn = () => Math.sqrt(-2 * Math.log(Math.max(1e-9, Math.random()))) * Math.cos(2 * Math.PI * Math.random());
+    const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+    const midpoint = (key) => {
+      const [min, max] = ranges[key];
+      return (min + max) / 2;
+    };
+    const expectedGameKeys = [
+      'friction', 'restitution', 'iceDrag', 'spinDrag', 'iceCurl', 'spinCurl',
+      'power', 'pushSpin', 'motionPowerScale', 'motionMaxSpeed', 'twistSpinScale',
+      'launchDeg', 'spawnOffsetX'
+    ];
+    const defaultSeedCombo = () => ({
+      friction: midpoint('friction'),
+      iceDrag: midpoint('iceDrag'),
+      spinDrag: midpoint('spinDrag'),
+      iceCurl: midpoint('iceCurl'),
+      spinCurl: midpoint('spinCurl'),
+      power: midpoint('power'),
+      pushSpin: midpoint('pushSpin'),
+      motionPowerScale: midpoint('motionPowerScale'),
+      motionMaxSpeed: midpoint('motionMaxSpeed'),
+      twistSpinScale: midpoint('twistSpinScale'),
+      restitution: midpoint('restitution'),
+      launchDeg: midpoint('launchDeg'),
+      spawnOffsetX: midpoint('spawnOffsetX')
+    });
+
+    function sampleRandom() {
+      return {
+        friction: rand(...ranges.friction),
+        iceDrag: rand(...ranges.iceDrag),
+        spinDrag: rand(...ranges.spinDrag),
+        iceCurl: rand(...ranges.iceCurl),
+        spinCurl: rand(...ranges.spinCurl),
+        power: rand(...ranges.power),
+        pushSpin: rand(...ranges.pushSpin),
+        motionPowerScale: rand(...ranges.motionPowerScale),
+        motionMaxSpeed: rand(...ranges.motionMaxSpeed),
+        twistSpinScale: rand(...ranges.twistSpinScale),
+        restitution: rand(...ranges.restitution),
+        launchDeg: rand(...ranges.launchDeg),
+        spawnOffsetX: rand(...ranges.spawnOffsetX)
+      };
+    }
+
+    function sampleAround(best, spread) {
+      const withSpread = (key) => {
+        const [min, max] = ranges[key];
+        const rangeSpan = max - min;
+        const jitter = (Math.random() * 2 - 1) * spread * rangeSpan;
+        const center = best[key];
+        return clamp(center + jitter, min, max);
+      };
+      return {
+        friction: withSpread('friction'),
+        iceDrag: withSpread('iceDrag'),
+        spinDrag: withSpread('spinDrag'),
+        iceCurl: withSpread('iceCurl'),
+        spinCurl: withSpread('spinCurl'),
+        power: withSpread('power'),
+        pushSpin: withSpread('pushSpin'),
+        motionPowerScale: withSpread('motionPowerScale'),
+        motionMaxSpeed: withSpread('motionMaxSpeed'),
+        twistSpinScale: withSpread('twistSpinScale'),
+        restitution: withSpread('restitution'),
+        launchDeg: withSpread('launchDeg'),
+        spawnOffsetX: withSpread('spawnOffsetX')
+      };
+    }
+
+    const jitterValue = (key, center, spread) => {
+      const [min, max] = ranges[key];
+      const span = max - min;
+      const jitter = (Math.random() * 2 - 1) * spread * span;
+      return clamp(center + jitter, min, max);
+    };
+
+    let latestBest = null;
+
+    function log(msg) {
+      const line = document.createElement('div');
+      line.textContent = msg;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setBusy(flag, label = '') {
+      overallBtn.disabled = flag;
+      paramBtn.disabled = flag;
+      paramSelect.disabled = flag;
+      statusEl.textContent = label;
+    }
+
+    function bestSummary(best, label = 'Overall tuner') {
+      return `
+        <em>${label}</em><br>
+        Friction: <code>${best.combo.friction.toFixed(5)}</code>,
+        Restitution: <code>${best.combo.restitution.toFixed(3)}</code>,
+        Ice drag: <code>${best.combo.iceDrag.toFixed(5)}</code>,
+        Spin drag: <code>${best.combo.spinDrag.toFixed(3)}</code>,
+        Ice curl: <code>${best.combo.iceCurl.toFixed(3)}</code>,
+        Spin curl: <code>${best.combo.spinCurl.toFixed(3)}</code><br>
+        Power: <code>${best.combo.power.toFixed(2)}</code>, Push spin: <code>${best.combo.pushSpin.toFixed(2)}</code>,
+        Motion power scale: <code>${best.combo.motionPowerScale.toFixed(2)}</code>, Motion max speed: <code>${best.combo.motionMaxSpeed.toFixed(2)}</code>, Twist spin scale: <code>${best.combo.twistSpinScale.toFixed(2)}</code><br>
+        relZ: ${best.relZ.toFixed(2)}, distToHouse: ${best.distToCenter.toFixed(2)}, endSpeed: ${best.speed.toFixed(3)}, score: ${best.score.toFixed(3)}
+      `;
+    }
+
+    function setupWorld(friction, restitution) {
+      const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
+      world.broadphase = new CANNON.SAPBroadphase(world);
+      world.allowSleep = true;
+      const ice = new CANNON.Material('ice');
+      const stoneMat = new CANNON.Material('stone');
+      const contact = new CANNON.ContactMaterial(ice, stoneMat, { friction, restitution });
+      const stoneContact = new CANNON.ContactMaterial(stoneMat, stoneMat, {
+        friction: friction * 0.8,
+        restitution: Math.max(0.02, restitution * 0.6)
+      });
+      world.defaultContactMaterial.friction = friction;
+      world.defaultContactMaterial.restitution = restitution;
+      world.addContactMaterial(contact);
+      world.addContactMaterial(stoneContact);
+
+      // ground
+      const ground = new CANNON.Body({ mass: 0, material: ice });
+      ground.addShape(new CANNON.Plane());
+      ground.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+      world.addBody(ground);
+      return { world, materials: { ice, stoneMat } };
+    }
+
+    function makeStone(world, mats, params, opts = {}) {
+      const radius = stonePhysical.radius;
+      const height = stonePhysical.height;
+      const body = new CANNON.Body({
+        mass: stonePhysical.mass,
+        material: mats.stoneMat,
+        angularDamping: params.spinDrag,
+        linearDamping: 0,
+        allowSleep: opts.allowSleep ?? true
+      });
+      body.addShape(new CANNON.Cylinder(radius, radius, height, 20));
+      body.angularFactor.set(0, 1, 0);
+      body.linearFactor.set(1, 0, 1);
+      const startX = opts.x ?? 0;
+      const startZ = opts.z ?? spawnZ;
+      body.position.set(startX, height / 2, startZ);
+      body.spin = opts.spin ?? 0;
+      body.stoneKind = opts.kind || 'shooter';
+      world.addBody(body);
+      return body;
+    }
+
+    let paramsForStep = { iceCurl: 0, spinCurl: 0, iceDrag: 0, friction: 0, spinDrag: 0 };
+
+    function speedCurlFactor(speed) {
+      // Phase-like curl: low at high speed, ramps up mid-speed, eases when crawling.
+      if (speed >= 3.2) return 0.15;
+      if (speed >= 2.0) {
+        const t = (3.2 - speed) / (3.2 - 2.0);
+        return 0.15 + t * 0.75; // up to 0.9
+      }
+      if (speed >= 0.8) {
+        const t = (speed - 0.8) / (2.0 - 0.8);
+        return 0.6 + t * 0.35; // slide into mid
+      }
+      return 0.45; // crawling: reduced curl
+    }
+
+    function applyIceForces(body, dt, isShooter = false) {
+      if (body.mass === 0) return;
+      body.velocity.scale(Math.max(0, 1 - paramsForStep.iceDrag * dt), body.velocity);
+      const vel = body.velocity;
+      const speed = vel.length();
+      if (speed > 0) {
+        const decel = paramsForStep.friction * 9.81 * dt;
+        const newSpeed = Math.max(0, speed - decel);
+        if (newSpeed < speed) vel.scale(newSpeed / speed, vel);
+      }
+      const decayRate = Math.max(0, paramsForStep.spinDrag + paramsForStep.spinCurl * 0.28 + speed * 0.004);
+      const spin = (body.spin ?? body.angularVelocity.y ?? 0);
+      const curlMultiplier = isShooter ? 1 : 0.55;
+      if (speed > 0.001 && Math.abs(spin) > 0.0001) {
+        const dir = vel.unit();
+        const curlScale = speedCurlFactor(speed) * 0.75;
+        const sideways = new CANNON.Vec3(-dir.z, 0, dir.x).scale(spin * paramsForStep.iceCurl * curlMultiplier * curlScale * dt / body.mass);
+        vel.vadd(sideways, vel);
+      }
+      const nextSpin = spin * Math.max(0, 1 - decayRate * dt);
+      body.spin = nextSpin;
+      body.angularVelocity.y = nextSpin;
+    }
+
+    function stepSimulation(world, shooterBody, maxTime = 18, trace = null) {
+      let t = 0;
+      const dt = 1 / 120;
+      let traceAcc = 0;
+      if (trace) trace.push({ x: shooterBody.position.x, z: shooterBody.position.z });
+      while (t < maxTime) {
+        for (const b of world.bodies) {
+          applyIceForces(b, dt, b === shooterBody);
+        }
+        world.step(dt);
+        t += dt;
+        traceAcc += dt;
+        if (trace && traceAcc >= 0.05) {
+          traceAcc = 0;
+          trace.push({ x: shooterBody.position.x, z: shooterBody.position.z });
+        }
+        const mainSpeed = shooterBody.velocity.length();
+        if (mainSpeed < 0.001) {
+          const moving = world.bodies.some((b) => b.mass > 0 && b.velocity.length() >= 0.0025);
+          if (!moving) break;
+        }
+      }
+      if (trace) trace.push({ x: shooterBody.position.x, z: shooterBody.position.z });
+      return t;
+    }
+
+    const targetRelZ = 0; // aim to stop at the tee (house center)
+
+    function spawnScenarioStones(world, materials, combo, scenario) {
+      if (!scenario?.stones || !scenario.stones.length) return [];
+      return scenario.stones.map((s, idx) => {
+        const body = makeStone(world, materials, combo, {
+          x: s.x ?? 0,
+          z: s.z ?? houseZ,
+          spin: s.spin ?? 0,
+          allowSleep: true,
+          kind: s.kind || 'opponent'
+        });
+        body.linearDamping = 0.002;
+        body.angularDamping = combo.spinDrag;
+        body.velocity.set(0, 0, 0);
+        body.angularVelocity.set(0, 0, 0);
+        body.stoneId = s.id || `scenario-${idx}`;
+        return { body, stoneKind: body.stoneKind, start: { x: s.x ?? 0, z: s.z ?? houseZ } };
+      });
+    }
+
+    async function runCombo(combo, opts = {}) {
+      const scenario = opts.scenario;
+      const target = opts.target || scenario?.target || { x: 0, z: houseZ };
+      const { world, materials } = setupWorld(combo.friction, combo.restitution);
+      const scenarioStones = spawnScenarioStones(world, materials, combo, scenario);
+      const stone = makeStone(world, materials, combo, { x: combo.spawnOffsetX, z: scenario?.spawnZOverride ?? spawnZ, spin: combo.pushSpin, allowSleep: false, kind: 'shooter' });
+      const yaw = combo.launchDeg * Math.PI / 180;
+      const dir = new CANNON.Vec3(Math.sin(yaw), 0, -Math.cos(yaw));
+      const speed = Math.min(combo.power * combo.motionPowerScale, combo.motionMaxSpeed);
+      stone.velocity.copy(dir.scale(speed));
+      stone.spin = combo.pushSpin;
+      const collisionLog = [];
+      stone.addEventListener('collide', (e) => {
+        if (e.body?.stoneKind) collisionLog.push(e.body.stoneKind);
+      });
+      const trace = opts.captureTrace ? [] : null;
+      paramsForStep = {
+        iceCurl: combo.iceCurl,
+        spinCurl: combo.spinCurl,
+        iceDrag: combo.iceDrag,
+        friction: combo.friction,
+        spinDrag: combo.spinDrag
+      };
+      const simTime = stepSimulation(world, stone, opts.maxTime ?? 18, trace);
+      const relZ = stone.position.z - target.z;
+      const relX = stone.position.x - target.x;
+      const distToCenter = Math.hypot(relX, relZ);
+      const speedEnd = stone.velocity.length();
+      const stopError = Math.abs(relZ);
+      const lateralError = Math.abs(relX);
+      const speedPenalty = Math.max(0, speedEnd - 0.05) * 12; // punish rolling too fast when it stops
+      const score = stopError + lateralError * 0.5 + speedPenalty;
+      const stonesAfter = scenarioStones.map((s) => {
+        const end = { x: s.body.position.x, z: s.body.position.z };
+        return { kind: s.stoneKind, start: s.start, end, moved: Math.hypot(end.x - s.start.x, end.z - s.start.z) };
+      });
+      return {
+        combo,
+        simTime,
+        relZ,
+        distToCenter,
+        speed: speedEnd,
+        score,
+        endPos: { x: stone.position.x, z: stone.position.z },
+        trace,
+        collisions: collisionLog,
+        stonesAfter,
+        target
+      };
+    }
+
+    async function runAutoTune() {
+      setBusy(true, 'Starting overall tuner');
+      logEl.innerHTML = '';
+      log('Lower score is better. Target stop = house center (relZ = 0) with near-zero speed.');
+      bestEl.textContent = 'Working...';
+      drawHouse();
+
+      const maxThrows = 10000;
+      const targetScore = 0.35; // roughly within inches of center with tiny roll speed
+      const stableNeeded = 15; // need this many consecutive wins to stop
+      let tested = 0;
+      let best = null;
+      let stableHits = 0;
+
+      const testOne = async (combo, phaseLabel) => {
+        tested += 1;
+        statusEl.textContent = `Testing ${tested} (${phaseLabel})`;
+        const res = await runCombo(combo);
+        const isBest = !best || res.score < best.score;
+        plotResult(res, isBest ? '#40ff9f' : '#ff6b6b');
+        log(`f=${combo.friction.toFixed(5)}, drag=${combo.iceDrag.toFixed(5)}, spinDrag=${combo.spinDrag.toFixed(3)}, iceCurl=${combo.iceCurl.toFixed(3)}, spinCurl=${combo.spinCurl.toFixed(3)}, power=${combo.power.toFixed(2)}, spin=${combo.pushSpin.toFixed(2)}, ang=${combo.launchDeg.toFixed(1)}, x0=${combo.spawnOffsetX.toFixed(2)} => relZ ${res.relZ.toFixed(2)}, dist ${res.distToCenter.toFixed(2)}, speed ${res.speed.toFixed(3)}, score ${res.score.toFixed(3)}`);
+        if (isBest) best = res;
+        stableHits = res.score < targetScore ? stableHits + 1 : 0;
+        await new Promise(r => requestAnimationFrame(r));
+      };
+
+      while (tested < maxThrows && stableHits < stableNeeded) {
+        const spread = best ? Math.max(0.05, 0.4 * (1 - Math.min(1, tested / maxThrows))) : null;
+        const combo = best && spread ? sampleAround(best.combo, spread) : sampleRandom();
+        await testOne(combo, spread ? `refine ${spread.toFixed(2)}` : 'broad');
+      }
+
+      if (best) {
+        bestEl.innerHTML = bestSummary(best, 'Overall tuner');
+        latestBest = best;
+        downloadBest(best, 'overall tuner');
+        updateBestShots(best, 'Overall best', '#40ff9f', 'general');
+      } else {
+        bestEl.textContent = 'No results.';
+      }
+      setBusy(false, stableHits >= stableNeeded ? 'Converged' : 'Stopped (max throws)');
+    }
+
+    async function runSingleParamTune(paramKey) {
+      const label = paramLabels[paramKey] || paramKey;
+      setBusy(true, `Tuning ${label}`);
+      logEl.innerHTML = '';
+      bestEl.textContent = 'Working...';
+      drawHouse();
+      const seed = latestBest ? { ...latestBest.combo } : defaultSeedCombo();
+      log(`Single-parameter tuning: ${label}. Others held from ${latestBest ? 'last best combo' : 'range midpoints'}.`);
+
+      const maxThrows = 800;
+      const targetScore = 0.38;
+      const stableNeeded = 10;
+      let tested = 0;
+      let best = null;
+      let stableHits = 0;
+
+      const fmtVal = (v) => {
+        if (Math.abs(v) < 0.001) return v.toExponential(2);
+        if (Math.abs(v) < 1) return v.toFixed(5);
+        if (Math.abs(v) < 10) return v.toFixed(3);
+        return v.toFixed(2);
+      };
+
+      const testOne = async (value, phaseLabel) => {
+        tested += 1;
+        statusEl.textContent = `Testing ${tested} (${phaseLabel})`;
+        const combo = { ...seed, [paramKey]: value };
+        const res = await runCombo(combo);
+        const isBest = !best || res.score < best.score;
+        plotResult(res, isBest ? '#40ff9f' : '#ff6b6b');
+        log(`${label}=${fmtVal(combo[paramKey])}, score=${res.score.toFixed(3)}, relZ=${res.relZ.toFixed(2)}, dist=${res.distToCenter.toFixed(2)}, speed=${res.speed.toFixed(3)}`);
+        if (isBest) best = res;
+        stableHits = res.score < targetScore ? stableHits + 1 : 0;
+        await new Promise(r => requestAnimationFrame(r));
+      };
+
+      while (tested < maxThrows && stableHits < stableNeeded) {
+        const spread = best ? Math.max(0.01, 0.45 * (1 - Math.min(1, tested / maxThrows))) : null;
+        const val = best && spread ? jitterValue(paramKey, best.combo[paramKey], spread) : rand(...ranges[paramKey]);
+        await testOne(val, spread ? `refine ${spread.toFixed(2)}` : 'broad');
+      }
+
+      if (best) {
+        bestEl.innerHTML = bestSummary(best, `${label} tuner`);
+        latestBest = best;
+        downloadBest(best, `${label} tuner`);
+        updateBestShots(best, `${label} best`, '#40ff9f', 'general');
+      } else {
+        bestEl.textContent = 'No results.';
+      }
+      setBusy(false, stableHits >= stableNeeded ? 'Converged' : 'Stopped (max throws)');
+    }
+
+    function buildPayload(best) {
+      return {
+        friction: best.combo.friction,
+        restitution: best.combo.restitution,
+        iceDrag: best.combo.iceDrag,
+        spinDrag: best.combo.spinDrag,
+        iceCurl: best.combo.iceCurl,
+        spinCurl: best.combo.spinCurl,
+        throwPower: best.combo.power,
+        pushSpeed: best.combo.power,
+        pushSpin: best.combo.pushSpin || 0,
+        motionPowerScale: best.combo.motionPowerScale,
+        motionMaxSpeed: best.combo.motionMaxSpeed,
+        twistSpinScale: best.combo.twistSpinScale,
+        pushDirectionDeg: 0,
+        aiAccuracy: 0.65,
+        aiWeightBias: 0.9,
+        meta: {
+          relZ: best.relZ,
+          distToHouse: best.distToCenter,
+          endSpeed: best.speed,
+          score: best.score
+        }
+      };
+    }
+
+    function downloadBest(best, label = 'auto tuning') {
+      const payload = buildPayload(best);
+      // Save to localStorage for the main game to auto-load
+      try {
+        localStorage.setItem('curlingAutoPhysics', JSON.stringify(payload));
+        log(`Stored best settings to localStorage (curlingAutoPhysics) from ${label}.`);
+      } catch (e) {
+        log('LocalStorage write failed; only downloading file.');
+      }
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'auto-physics.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      log(`Downloaded auto-physics.json from ${label}.`);
+    }
+
+    function downloadJsonFile(obj, filename) {
+      const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function mapScale() {
+      const w = houseMap.width, h = houseMap.height;
+      const span = 10 / 3; // 3x zoom into the house area (~3.3m each way)
+      return Math.min(w, h) / (span * 2);
+    }
+
+    function sheetScale() {
+      const w = sheetMap.width, h = sheetMap.height;
+      return { sx: w / sheetLength, sy: h / sheetWidth, cy: h / 2, topZ: sheetLength / 2 };
+    }
+
+    function drawSheet() {
+      const ctx = sheetCtx;
+      const w = sheetMap.width, h = sheetMap.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = '#0b192d';
+      ctx.fillRect(0, 0, w, h);
+      const { sx, sy, cy: scy, topZ } = sheetScale();
+      // center line horizontal
+      ctx.strokeStyle = '#4de1ff';
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, scy);
+      ctx.lineTo(w, scy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Tee line marker (vertical mark where house is)
+      const teeX = (topZ - houseZ) * sx;
+      ctx.strokeStyle = '#c82b41';
+      ctx.beginPath();
+      ctx.moveTo(teeX, 0);
+      ctx.lineTo(teeX, h);
+      ctx.stroke();
+    }
+
+    const bestPalette = ['#ffd84d', '#4de1ff', '#ff8ba7', '#7cffc4', '#c2b0ff'];
+    function renderBestShots() {
+      bestShots.forEach((shot, idx) => {
+        const color = shot.color || bestPalette[idx % bestPalette.length];
+        plotResult(shot, color);
+        const ctx = houseCtx;
+        const w = houseMap.width, h = houseMap.height;
+        const cx = w / 2, cy = h / 2;
+        const scale = mapScale();
+        const x = cx + shot.endPos.x * scale;
+        const y = cy - (shot.endPos.z - houseZ) * scale;
+        ctx.fillStyle = '#e9f2ff';
+        ctx.font = '12px Segoe UI';
+        ctx.fillText(`${shot.label || 'Best'}`, x + 6, y + 10);
+      });
+    }
+
+    function drawHouse() {
+      const ctx = houseCtx;
+      const w = houseMap.width, h = houseMap.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = '#0b192d';
+      ctx.fillRect(0, 0, w, h);
+      const cx = w / 2, cy = h / 2;
+      const scale = mapScale();
+      const rings = [1.83, 1.22, 0.61, 0.1525];
+      const colors = ['#1d68ff', '#ffffff', '#c82b41', '#f7d80b'];
+      rings.forEach((r, i) => {
+        ctx.beginPath();
+        ctx.strokeStyle = colors[i];
+        ctx.lineWidth = 2;
+        ctx.arc(cx, cy, r * scale, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+      ctx.strokeStyle = '#4de1ff';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(cx, 0);
+      ctx.lineTo(cx, h);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      renderBestShots();
+      drawSheet();
+    }
+
+    function plotTrace(trace, color = '#4de1ff') {
+      if (!trace || !trace.length) return;
+      const ctx = houseCtx;
+      const w = houseMap.width, h = houseMap.height;
+      const cx = w / 2, cy = h / 2;
+      const scale = mapScale();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      trace.forEach((p, idx) => {
+        const x = cx + p.x * scale;
+        const y = cy - (p.z - houseZ) * scale;
+        if (idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+
+    function plotTraceSheet(trace, color = '#4de1ff') {
+      if (!trace || !trace.length) return;
+      const ctx = sheetCtx;
+      const { sx, sy, cy: scy, topZ } = sheetScale();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      trace.forEach((p, idx) => {
+        const x = (topZ - p.z) * sx;
+        const y = scy - p.x * sy;
+        if (idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+
+    function plotResult(res, color = '#ff6b6b') {
+      const ctx = houseCtx;
+      if (!ctx) return;
+      const w = houseMap.width, h = houseMap.height;
+      const cx = w / 2, cy = h / 2;
+      const scale = mapScale();
+      const x = cx + res.endPos.x * scale;
+      const y = cy - (res.endPos.z - houseZ) * scale;
+      if (res.trace) plotTrace(res.trace, color);
+      ctx.fillStyle = color;
+      ctx.strokeStyle = '#000';
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#e9f2ff';
+      ctx.font = '12px Segoe UI';
+      ctx.fillText(`${res.distToCenter.toFixed(2)}m`, x + 6, y - 6);
+      // sheet view
+      const { sx, sy, cy: scy, topZ } = sheetScale();
+      const sxpos = (topZ - res.endPos.z) * sx;
+      const sypos = scy - res.endPos.x * sy;
+      sheetCtx.fillStyle = color;
+      sheetCtx.strokeStyle = '#000';
+      sheetCtx.beginPath();
+      sheetCtx.arc(sxpos, sypos, 3, 0, Math.PI * 2);
+      sheetCtx.fill();
+      sheetCtx.stroke();
+      if (res.trace) plotTraceSheet(res.trace, color);
+    }
+
+    drawHouse();
+
+    overallBtn.addEventListener('click', () => {
+      if (overallBtn.disabled) return;
+      runAutoTune();
+    });
+
+    paramBtn.addEventListener('click', () => {
+      if (paramBtn.disabled) return;
+      const key = paramSelect.value;
+      if (!key) return;
+      runSingleParamTune(key);
+    });
+
+    function runDiagnostics() {
+      const issues = [];
+      const note = (msg) => issues.push(msg);
+      // Check ranges coverage
+      expectedGameKeys.forEach((key) => {
+        if (!ranges[key]) note(`Missing range for ${key}`);
+      });
+      Object.entries(ranges).forEach(([key, val]) => {
+        if (!Array.isArray(val) || val.length !== 2) note(`Range malformed for ${key}`);
+      });
+      // Sample sanity
+      const sample = sampleRandom();
+      Object.entries(sample).forEach(([key, val]) => {
+        const [min, max] = ranges[key];
+        if (val < min || val > max || !Number.isFinite(val)) {
+          note(`Sample for ${key} out of range (${val})`);
+        }
+      });
+      // Payload mapping check
+      const payloadKeys = ['friction','restitution','iceDrag','spinDrag','iceCurl','spinCurl','throwPower','pushSpeed','pushSpin','motionPowerScale','motionMaxSpeed','twistSpinScale','pushDirectionDeg','aiAccuracy','aiWeightBias'];
+      const dummyBest = { combo: defaultSeedCombo(), relZ:0, distToCenter:0, speed:0, score:0 };
+      const payload = buildPayload(dummyBest);
+      const missingPayload = payloadKeys.filter(k => !(k in payload));
+      if (missingPayload.length) note(`Payload missing keys: ${missingPayload.join(', ')}`);
+      const msg = issues.length ? `Diagnostics: ${issues.length} issue(s) found.` : 'Diagnostics: OK (ranges, sample, payload map).';
+      log(msg);
+      issues.forEach((m) => log(` - ${m}`));
+      diagStatus.textContent = msg;
+    }
+
+    diagBtn.addEventListener('click', () => {
+      if (diagBtn.disabled) return;
+      runDiagnostics();
+    });
+
+    async function runBehaviorTests() {
+      setBusy(true, 'Running throw tests…');
+      testsStatus.textContent = 'Working…';
+      logEl.innerHTML = '';
+      drawHouse();
+      const base = latestBest ? { ...latestBest.combo } : defaultSeedCombo();
+      const tests = [
+        { label: 'Soft draw', color: '#4de1ff', overrides: { power: base.power * 0.7, motionPowerScale: base.motionPowerScale * 0.9 } },
+        { label: 'Heavy draw spin left', color: '#ff8ba7', overrides: { power: base.power, pushSpin: -3, spinCurl: base.spinCurl * 1.1 } },
+        { label: 'Takeout power', color: '#ffd84d', overrides: { power: base.power * 1.3, motionPowerScale: base.motionPowerScale * 1.05, launchDeg: base.launchDeg * 0.2 } },
+        { label: 'Guard weight', color: '#7cffc4', overrides: { power: base.power * 0.55, motionPowerScale: base.motionPowerScale * 0.85, spawnOffsetX: base.spawnOffsetX * 0.5 } }
+      ];
+      let idx = 0;
+      for (const t of tests) {
+        idx += 1;
+        const combo = { ...base, ...t.overrides };
+        // Clamp to ranges to stay valid
+        Object.keys(combo).forEach((k) => {
+          if (ranges[k]) combo[k] = clamp(combo[k], ...ranges[k]);
+        });
+        statusEl.textContent = `Test ${idx}/${tests.length}: ${t.label}`;
+        const res = await runCombo(combo, { captureTrace: true });
+        log(`${t.label}: relZ ${res.relZ.toFixed(2)}, dist ${res.distToCenter.toFixed(2)}, speed ${res.speed.toFixed(3)}, score ${res.score.toFixed(3)}, spinEnd ${combo.pushSpin.toFixed(2)}`);
+        plotResult(res, t.color);
+        updateBestShots(res, t.label, t.color);
+        await new Promise(r => requestAnimationFrame(r));
+      }
+      setBusy(false, 'Tests complete');
+      testsStatus.textContent = 'Done';
+    }
+
+    testsBtn.addEventListener('click', () => {
+      if (testsBtn.disabled) return;
+      runBehaviorTests();
+    });
+
+    // --- ENHANCED RL TRAINER (Adam + PPO Lite) ---
+    // Improved agent structure: 2 hidden layers [64, 32]
+    // Improved optimizer: Adam instead of simple SGD
+    // Improved learning: PPO-like clipping with batch updates
+
+    class AdamOptimizer {
+      constructor(learningRate = 0.002, beta1 = 0.9, beta2 = 0.999, epsilon = 1e-8) {
+        this.lr = learningRate;
+        this.beta1 = beta1;
+        this.beta2 = beta2;
+        this.epsilon = epsilon;
+        this.m = new Map();
+        this.v = new Map();
+        this.t = 0;
+      }
+      update(params, grads) {
+        this.t += 1;
+        for (let i = 0; i < params.length; i++) {
+          const p = params[i];
+          const g = grads[i];
+          if (!this.m.has(p)) {
+            this.m.set(p, new Float64Array(p.length).fill(0));
+            this.v.set(p, new Float64Array(p.length).fill(0));
+          }
+          const m = this.m.get(p);
+          const v = this.v.get(p);
+          for (let j = 0; j < p.length; j++) {
+            m[j] = this.beta1 * m[j] + (1 - this.beta1) * g[j];
+            v[j] = this.beta2 * v[j] + (1 - this.beta2) * (g[j] * g[j]);
+            const mHat = m[j] / (1 - Math.pow(this.beta1, this.t));
+            const vHat = v[j] / (1 - Math.pow(this.beta2, this.t));
+            p[j] += this.lr * mHat / (Math.sqrt(vHat) + this.epsilon);
+          }
+        }
+      }
+    }
+
+    const rlConfig = {
+      learningRate: 0.0015, // Slower LR for stability with Adam
+      batchSize: 30,        // PPO mini-batch size
+      epochs: 4,            // PPO optimization epochs per batch
+      clipEps: 0.2,         // PPO clipping range
+      successWindow: 50,
+      successThreshold: 0.72,
+      successDist: 0.35,
+      masteryCheckEvery: 60,
+      masteryRadiusDraw: 0.20,
+      masteryStreak: 10,
+      maxEpisodes: 0, 
+      skillTarget: 0.22, 
+      envTuneTrials: 120
+    };
+
+    // [Input] -> [64] -> [32] -> [Action]
+    const rlDims = { input: 10, h1: 64, h2: 32, actions: 4 }; 
+    const actionKeys = ['power', 'pushSpin', 'launchDeg', 'spawnOffsetX'];
+    const skillHistoryKey = 'curlingRlSkillHistory';
+    
+    // Scenarios...
+    const versusTemplates = [
+      { name: 'Guarded button draw', goal: 'draw', target: { x: 0, z: houseZ }, stones: [{ kind: 'guard', x: 0, z: houseZ + 2.3 }] },
+      { name: 'Corner guard left', goal: 'draw', target: { x: -0.35, z: houseZ + 0.4 }, stones: [{ kind: 'guard', x: -1.2, z: houseZ + 3.1 }] },
+      { name: 'Corner guard right', goal: 'draw', target: { x: 0.35, z: houseZ + 0.4 }, stones: [{ kind: 'guard', x: 1.2, z: houseZ + 3.1 }] },
+      { name: 'Takeout on button', goal: 'takeout', target: { x: 0, z: houseZ }, stones: [{ kind: 'opponent', x: 0, z: houseZ }] },
+      { name: 'High guard center', goal: 'draw', target: { x: 0, z: houseZ }, stones: [{ kind: 'guard', x: 0, z: houseZ + 3.7 }] }
+    ];
+    const skillStages = [
+      { id: 'draw', name: 'Tee Draw', masteryRadius: rlConfig.masteryRadiusDraw, streakNeeded: rlConfig.masteryStreak },
+      { id: 'guard', name: 'Guard', masteryRadius: 0.30, streakNeeded: rlConfig.masteryStreak },
+      { id: 'takeout', name: 'Takeout', masteryRadius: 0.35, streakNeeded: rlConfig.masteryStreak },
+      { id: 'around', name: 'Around Guard', masteryRadius: 0.30, streakNeeded: rlConfig.masteryStreak }
+    ];
+    const rlState = {
+      policy: null,
+      optimizer: null,
+      running: false,
+      episodes: 0,
+      stageIndex: 0,
+      recentRewards: [],
+      recentSuccess: [],
+      bestReward: -Infinity,
+      lastReward: null,
+      lastScenario: null,
+      pendingAdvance: false,
+      streak: 0,
+      bestStreak: 0,
+      lastSkillLog: null,
+      lastTuned: null,
+      refiningStage: false,
+      refineSkillTarget: null,
+      batchBuffer: [], // Stores experiences for PPO update
+      skillHistory: []
+    };
+    let rlEnvProfile = { ...realIceProfile };
+
+    function createPolicy() {
+      // He/Xavier initialization approximation
+      const initW = (nIn, nOut) => {
+        const d = Math.sqrt(6 / (nIn + nOut));
+        return Float64Array.from({ length: nIn * nOut }, () => (Math.random() * 2 - 1) * d);
+      };
+      return {
+        // Layer 1
+        w1: initW(rlDims.input, rlDims.h1),
+        b1: new Float64Array(rlDims.h1).fill(0),
+        // Layer 2
+        w2: initW(rlDims.h1, rlDims.h2),
+        b2: new Float64Array(rlDims.h2).fill(0),
+        // Output Layer (Mean)
+        wOut: initW(rlDims.h2, rlDims.actions),
+        bOut: new Float64Array(rlDims.actions).fill(0),
+        // Log Std Dev (Trainable parameter)
+        logStd: new Float64Array(rlDims.actions).fill(Math.log(0.4)) 
+      };
+    }
+
+    function resetRlPolicy() {
+      rlState.policy = createPolicy();
+      rlState.optimizer = new AdamOptimizer(rlConfig.learningRate);
+      rlState.episodes = 0;
+      rlState.stageIndex = 0;
+      rlState.recentRewards = [];
+      rlState.recentSuccess = [];
+      rlState.bestReward = -Infinity;
+      rlState.lastReward = null;
+      rlState.lastScenario = null;
+      rlState.pendingAdvance = false;
+      rlState.streak = 0;
+      rlState.bestStreak = 0;
+      rlState.lastTuned = null;
+      rlState.batchBuffer = [];
+      rlNextBtn.disabled = true;
+      rlContinueBtn.disabled = true;
+      rlWatchBtn.disabled = true;
+      rlState.refiningStage = false;
+      rlState.refineSkillTarget = null;
+      rlEnvProfile = { ...realIceProfile };
+      rlStats.textContent = 'Policy reset. Ready to train (PPO mode).';
+      rlStatus.textContent = '';
+      rlStreak.textContent = 'Best streak: 0';
+      bestShots.length = 0;
+      bestShotsStage = null;
+      rlState.lastSkillLog = null;
+      drawHouse();
+      loadSkillHistory();
+    }
+
+    async function evaluateAgentSkillSummary(trialsPerStage = 20) {
+      const perStage = [];
+      let totalSuccess = 0;
+      let totalTrials = 0;
+      for (const stage of skillStages) {
+        let success = 0;
+        let rewardSum = 0;
+        let distSum = 0;
+        for (let i = 0; i < trialsPerStage; i++) {
+          const scenario = sampleStageScenario(stage.id, true);
+          const stateVec = buildStateVec(scenario);
+          const { mu } = forwardPolicy(rlState.policy, stateVec);
+          const combo = actionToCombo(mu, null, stage.id);
+          const res = await runCombo(combo, { scenario, target: scenario.target, maxTime: 18 });
+          const r = computeRlReward(res, scenario);
+          const ok = rlSuccess(res, scenario, stage.masteryRadius || rlConfig.successDist);
+          success += ok ? 1 : 0;
+          rewardSum += r;
+          distSum += res.distToCenter ?? Math.hypot(res.endPos.x, res.endPos.z - houseZ);
+        }
+        totalSuccess += success;
+        totalTrials += trialsPerStage;
+        perStage.push({
+          stage: stage.id,
+          successRate: success / trialsPerStage,
+          avgReward: rewardSum / trialsPerStage,
+          avgDist: distSum / trialsPerStage
+        });
+      }
+      const overall = totalTrials > 0 ? totalSuccess / totalTrials : 0;
+      return { overallSuccess: overall, perStage };
+    }
+
+    function loadSkillHistory() {
+      try {
+        const raw = localStorage.getItem(skillHistoryKey);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) rlState.skillHistory = parsed;
+      } catch (err) {
+        rlState.skillHistory = [];
+      }
+    }
+
+    function saveSkillHistory() {
+      try {
+        localStorage.setItem(skillHistoryKey, JSON.stringify(rlState.skillHistory.slice(-25)));
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    async function recordSkillSnapshot(reason = 'stage-check', trialsPerStage = 8) {
+      const summary = await evaluateAgentSkillSummary(trialsPerStage);
+      const entry = {
+        ts: Date.now(),
+        stage: currentStage()?.id || 'unknown',
+        episodes: rlState.episodes,
+        reason,
+        summary
+      };
+      rlState.skillHistory.push(entry);
+      if (rlState.skillHistory.length > 25) rlState.skillHistory.shift();
+      saveSkillHistory();
+      log(`Skill snapshot (${reason}): overall ${(summary.overallSuccess * 100).toFixed(1)}%`);
+      summary.perStage.forEach((s) => {
+        log(`  ${s.stage}: ${(s.successRate * 100).toFixed(1)}% | r ${s.avgReward.toFixed(3)} | d ${s.avgDist.toFixed(2)}m`);
+      });
+      return entry;
+    }
+
+    async function exportRlAgent(label = 'ppo-agent') {
+      if (!rlState.policy) {
+        log('No policy to export yet.');
+        return;
+      }
+      rlStatus.textContent = 'Scoring agent...';
+      const skillSummary = await evaluateAgentSkillSummary(12);
+      const toArray = (t) => Array.from(t || []);
+      const payload = {
+        policy: {
+          w1: toArray(rlState.policy.w1),
+          b1: toArray(rlState.policy.b1),
+          w2: toArray(rlState.policy.w2),
+          b2: toArray(rlState.policy.b2),
+          wOut: toArray(rlState.policy.wOut),
+          bOut: toArray(rlState.policy.bOut),
+          logStd: toArray(rlState.policy.logStd)
+        },
+        envProfile: rlEnvProfile,
+        dims: rlDims,
+        actionKeys,
+        meta: {
+          stage: currentStage()?.id || 'unknown',
+          episodes: rlState.episodes,
+          label
+        },
+        skill: skillSummary
+      };
+      try {
+        localStorage.setItem('curlingRlAgent', JSON.stringify(payload));
+        log('Stored RL agent to localStorage (curlingRlAgent).');
+      } catch (err) {
+        log('LocalStorage write failed; continuing with download only.');
+      }
+      downloadJsonFile(payload, 'rl-agent.json');
+      log(`Downloaded rl-agent.json (${label}). Overall success ${(skillSummary.overallSuccess * 100).toFixed(1)}%.`);
+      skillSummary.perStage.forEach((s) => {
+        log(`Skill ${s.stage}: success ${(s.successRate * 100).toFixed(1)}% | avgReward ${s.avgReward.toFixed(3)} | avgDist ${s.avgDist.toFixed(2)}m`);
+      });
+      rlStatus.textContent = `Exported (${(skillSummary.overallSuccess * 100).toFixed(1)}% success)`;
+    }
+
+    function forwardPolicy(policy, stateVec) {
+      // L1
+      const h1 = new Float64Array(rlDims.h1);
+      for (let i = 0; i < rlDims.h1; i++) {
+        let s = policy.b1[i];
+        for (let j = 0; j < rlDims.input; j++) s += policy.w1[i * rlDims.input + j] * stateVec[j];
+        h1[i] = Math.tanh(s); // Tanh activation
+      }
+      // L2
+      const h2 = new Float64Array(rlDims.h2);
+      for (let i = 0; i < rlDims.h2; i++) {
+        let s = policy.b2[i];
+        for (let j = 0; j < rlDims.h1; j++) s += policy.w2[i * rlDims.h1 + j] * h1[j];
+        h2[i] = Math.tanh(s);
+      }
+      // Output
+      const mu = new Float64Array(rlDims.actions);
+      for (let k = 0; k < rlDims.actions; k++) {
+        let s = policy.bOut[k];
+        for (let i = 0; i < rlDims.h2; i++) s += policy.wOut[k * rlDims.h2 + i] * h2[i];
+        mu[k] = s;
+      }
+      // Std
+      const std = new Float64Array(rlDims.actions);
+      for (let i = 0; i < rlDims.actions; i++) std[i] = Math.exp(policy.logStd[i]);
+
+      return { mu, h1, h2, std };
+    }
+
+    function samplePolicy(policy, stateVec) {
+      const { mu, h1, h2, std } = forwardPolicy(policy, stateVec);
+      const rawAction = new Float64Array(rlDims.actions);
+      const noise = new Float64Array(rlDims.actions);
+      let logProb = 0;
+      for (let i = 0; i < rlDims.actions; i++) {
+        const n = randn();
+        noise[i] = n;
+        rawAction[i] = mu[i] + std[i] * n;
+        // Gaussian log prob: -0.5 * ((x-mu)/std)^2 - log(std) - 0.5*log(2pi)
+        logProb += -0.5 * n * n - policy.logStd[i] - 0.91893;
+      }
+      return { mu, h1, h2, std, rawAction, logProb };
+    }
+
+    function getLogProb(policy, stateVec, action) {
+      const { mu, std } = forwardPolicy(policy, stateVec);
+      let logProb = 0;
+      for (let i = 0; i < rlDims.actions; i++) {
+        const val = action[i];
+        const n = (val - mu[i]) / std[i];
+        logProb += -0.5 * n * n - policy.logStd[i] - 0.91893;
+      }
+      return logProb;
+    }
+
+    // PPO-Lite Update
+    function updatePPO(buffer) {
+      // 1. Compute Advantages (Normalized)
+      // Since these are single-step episodes, Advantage = Reward - MeanRewardOfBatch
+      const rewards = buffer.map(b => b.reward);
+      const meanR = rewards.reduce((a,b)=>a+b,0) / rewards.length;
+      const stdR = Math.sqrt(rewards.reduce((a,b)=>a + Math.pow(b-meanR, 2), 0) / rewards.length) + 1e-5;
+      const advantages = rewards.map(r => (r - meanR) / stdR);
+
+      // 2. Epochs
+      for (let ep = 0; ep < rlConfig.epochs; ep++) {
+        const grads = {
+          w1: new Float64Array(rlState.policy.w1.length).fill(0),
+          b1: new Float64Array(rlState.policy.b1.length).fill(0),
+          w2: new Float64Array(rlState.policy.w2.length).fill(0),
+          b2: new Float64Array(rlState.policy.b2.length).fill(0),
+          wOut: new Float64Array(rlState.policy.wOut.length).fill(0),
+          bOut: new Float64Array(rlState.policy.bOut.length).fill(0),
+          logStd: new Float64Array(rlState.policy.logStd.length).fill(0)
+        };
+
+        buffer.forEach((exp, idx) => {
+          const adv = advantages[idx];
+          const newLogProb = getLogProb(rlState.policy, exp.state, exp.action);
+          const ratio = Math.exp(newLogProb - exp.oldLogProb);
+          
+          // PPO Objective: min(ratio * A, clip(ratio, 1-eps, 1+eps) * A)
+          // We maximize, so we use gradient ascent.
+          
+          // Gradients logic for the neural net (manual backprop)
+          // This is a simplified backprop for the ratio * adv objective
+          
+          // Re-forward to get activations
+          const { mu, h1, h2, std } = forwardPolicy(rlState.policy, exp.state);
+          
+          // dLoss/dMu = (action - mu) / var
+          const dLogP_dMu = new Float64Array(rlDims.actions);
+          const dLogP_dLogStd = new Float64Array(rlDims.actions);
+          
+          for(let i=0; i<rlDims.actions; i++){
+             const v = std[i]*std[i];
+             dLogP_dMu[i] = (exp.action[i] - mu[i]) / v;
+             dLogP_dLogStd[i] = (Math.pow(exp.action[i] - mu[i], 2) / v) - 1.0;
+          }
+
+          // Clipped PPO Gradient Mask
+          // if (ratio*A) vs (clip*A), if clipped version is lower (worse for objective), we use that gradient (zero if clamped)
+          const clipped = clamp(ratio, 1-rlConfig.clipEps, 1+rlConfig.clipEps);
+          // Simple gradient scaler approximation for PPO:
+          // If ratio is outside clip range and sign matches advantage, kill gradient.
+          let gradScale = ratio * adv; 
+          // (Simplified PPO grad: standard PG weighted by ratio, effectively)
+
+          // Backprop Output Layer
+          const dh2 = new Float64Array(rlDims.h2);
+          for (let k = 0; k < rlDims.actions; k++) {
+            // Policy Gradient term * PPO Ratio
+            const term = gradScale * dLogP_dMu[k];
+            grads.bOut[k] += term;
+            grads.logStd[k] += gradScale * dLogP_dLogStd[k] * 0.5; // Slower learn on std
+
+            for(let i=0; i<rlDims.h2; i++) {
+              grads.wOut[k*rlDims.h2 + i] += term * h2[i];
+              dh2[i] += term * rlState.policy.wOut[k*rlDims.h2 + i];
+            }
+          }
+
+          // Backprop Hidden 2
+          const dh1 = new Float64Array(rlDims.h1);
+          for (let i=0; i<rlDims.h2; i++) {
+            const d = dh2[i] * (1 - h2[i]*h2[i]); // tanh derivative
+            grads.b2[i] += d;
+            for(let j=0; j<rlDims.h1; j++) {
+              grads.w2[i*rlDims.h1 + j] += d * h1[j];
+              dh1[j] += d * rlState.policy.w2[i*rlDims.h1 + j];
+            }
+          }
+
+          // Backprop Hidden 1
+          for (let i=0; i<rlDims.h1; i++) {
+            const d = dh1[i] * (1 - h1[i]*h1[i]);
+            grads.b1[i] += d;
+            for(let j=0; j<rlDims.input; j++) {
+              grads.w1[i*rlDims.input + j] += d * exp.state[j];
+            }
+          }
+        });
+        
+        // Normalize grads by batch size
+        const N = buffer.length;
+        const normalize = (arr) => { for(let i=0; i<arr.length; i++) arr[i] /= N; };
+        Object.values(grads).forEach(normalize);
+
+        // Adam Step
+        rlState.optimizer.update([
+          rlState.policy.w1, rlState.policy.b1,
+          rlState.policy.w2, rlState.policy.b2,
+          rlState.policy.wOut, rlState.policy.bOut,
+          rlState.policy.logStd
+        ], [
+          grads.w1, grads.b1,
+          grads.w2, grads.b2,
+          grads.wOut, grads.bOut,
+          grads.logStd
+        ]);
+      }
+    }
+
+    function openDrawScenario(opts = {}) {
+      const jitterX = opts.tight ? 0 : rand(-0.25, 0.25);
+      const jitterZ = opts.tight ? 0 : rand(-0.15, 0.15);
+      return { name: 'Open draw', goal: 'draw', target: { x: jitterX, z: houseZ + jitterZ }, stones: [] };
+    }
+
+    function guardScenario() {
+      const guardZ = houseZ + rand(1.8, 2.4);
+      const targetZ = guardZ + rand(-0.15, 0.15);
+      return { name: 'Center guard', goal: 'draw', stage: 'guard', target: { x: 0, z: targetZ }, stones: [{ kind: 'guard', x: 0, z: guardZ }] };
+    }
+
+    function takeoutScenario() {
+      return { name: 'Takeout on button', goal: 'takeout', target: { x: 0, z: houseZ }, stones: [{ kind: 'opponent', x: 0, z: houseZ }] };
+    }
+
+    function aroundGuardScenario() {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      return {
+        name: 'Around guard',
+        goal: 'draw',
+        stage: 'around',
+        target: { x: 0.4 * side, z: houseZ },
+        stones: [{ kind: 'guard', x: 0, z: houseZ + 1.9 }]
+      };
+    }
+
+    function aroundOpponentScenario() {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const oppX = rand(-0.25, 0.25);
+      const oppZ = houseZ + rand(-0.15, 0.15);
+      return {
+        name: 'Around opponent',
+        goal: 'draw',
+        stage: 'around',
+        target: { x: 0.45 * side, z: houseZ },
+        stones: [{ kind: 'opponent', x: oppX, z: oppZ }]
+      };
+    }
+
+    function pickVersusScenario() {
+      const t = versusTemplates[Math.floor(Math.random() * versusTemplates.length)];
+      // small jitter so the agent generalizes
+      const jitter = (v, span) => v + rand(-span, span);
+      return {
+        name: t.name,
+        goal: t.goal,
+        target: { x: jitter(t.target.x, 0.2), z: jitter(t.target.z, 0.25) },
+        stones: (t.stones || []).map((s) => ({
+          ...s,
+          x: jitter(s.x, 0.15),
+          z: jitter(s.z, 0.25)
+        }))
+      };
+    }
+
+    function sampleStageScenario(stageId, tight = false) {
+      switch (stageId) {
+        case 'draw': return openDrawScenario({ tight });
+        case 'guard': return guardScenario();
+        case 'takeout': return takeoutScenario();
+        case 'around': return Math.random() < 0.5 ? aroundGuardScenario() : aroundOpponentScenario();
+        default: return pickVersusScenario();
+      }
+    }
+
+    function buildStateVec(scenario) {
+      // Much richer state representation for better learning
+      const target = scenario.target || { x: 0, z: houseZ };
+      const g1 = scenario.stones?.[0];
+      const g2 = scenario.stones?.[1];
+      
+      const spawnZPos = spawnZ; 
+      // Relative values are easier for NNs to learn physics from
+      const distToTarget = Math.hypot(target.x - 0, target.z - spawnZPos); // Approx from launch
+      const angleToTarget = Math.atan2(target.x, target.z - spawnZPos);
+
+      const norm = (v, span) => clamp(v / span, -1, 1);
+      
+      return [
+        norm(target.x, sheetWidth / 2),
+        norm(target.z - houseZ, sheetLength),
+        norm(distToTarget, sheetLength),
+        angleToTarget, // Angle in radians is small
+        norm((g1?.x || 0), sheetWidth / 2),
+        norm((g1?.z || houseZ) - houseZ, sheetLength),
+        norm((g2?.x || 0), sheetWidth / 2),
+        norm((g2?.z || houseZ) - houseZ, sheetLength),
+        scenario.goal === 'takeout' ? 1 : 0,
+        scenario.stage === 'guard' ? 1 : 0 // Guard stage flag
+      ];
+    }
+
+    function actionToCombo(rawAction, baseProfile = null, stageId = null) {
+      const base = baseProfile ? { ...baseProfile } : (rlEnvProfile ? { ...rlEnvProfile } : { ...realIceProfile });
+      const combo = { ...base };
+      actionKeys.forEach((key, idx) => {
+        let [min, max] = ranges[key];
+        const refining = rlState.refiningStage && stageId && currentStage().id === stageId;
+        
+        // Dynamic Range Scaling: helps PPO converge by not searching useless space
+        if (key === 'power') {
+             // Power is critical. Shift range based on stage?
+             // Actually, letting PPO handle it is better, but we cap it to reasonable physics.
+        }
+        
+        const span = max - min;
+        // Tanh the output to ensure it stays in valid range
+        const centered = Math.tanh(rawAction[idx]); // [-1,1]
+        const val = clamp((span / 2) * centered + (min + span / 2), min, max);
+        combo[key] = val;
+      });
+      // keep physical realism from base profile
+      combo.motionPowerScale = base.motionPowerScale;
+      combo.motionMaxSpeed = base.motionMaxSpeed;
+      combo.twistSpinScale = base.twistSpinScale;
+      combo.iceCurl = base.iceCurl;
+      combo.spinCurl = base.spinCurl;
+      combo.iceDrag = base.iceDrag;
+      combo.friction = base.friction;
+      combo.spinDrag = base.spinDrag;
+      combo.restitution = base.restitution;
+      return combo;
+    }
+
+    function updateBestShots(res, label = 'Best', color = null, stageId = null) {
+      if (!res || !res.endPos) return;
+      const stage = stageId || (currentStage?.().id ?? 'general');
+      if (bestShotsStage && bestShotsStage !== stage) {
+        bestShots.length = 0;
+      }
+      bestShotsStage = stage;
+      const entry = {
+        endPos: res.endPos,
+        trace: res.trace,
+        distToCenter: res.distToCenter ?? Math.hypot(res.endPos.x, res.endPos.z - houseZ),
+        score: res.score ?? res.distToCenter,
+        label,
+        color,
+        stage
+      };
+      bestShots.push(entry);
+      bestShots.sort((a, b) => a.distToCenter - b.distToCenter);
+      if (bestShots.length > 5) bestShots.length = 5;
+      renderBestShots();
+    }
+
+    function computeRlReward(sim, scenario) {
+      // Enhanced reward shaping for "Refining"
+      const target = scenario.target || { x: 0, z: houseZ };
+      const dist = Math.hypot(sim.endPos.x - target.x, sim.endPos.z - target.z);
+      
+      // Base distance reward
+      let reward = Math.max(0, 1.5 - dist); 
+      
+      // Precision Bonus: Huge spike if very close (log scale)
+      if(dist < 0.5) {
+        reward += (0.5 - dist) * 2;
+        if(dist < 0.15) reward += 1.0; // Bullseye bonus
+      }
+
+      // Physics penalties
+      reward -= Math.max(0, sim.speed - 0.05) * 3; // Stop moving!
+
+      // Lateral penalty (hit the broom)
+      const lateralErr = Math.abs(sim.endPos.x - target.x);
+      reward -= lateralErr * (scenario.stage === 'draw' ? 1.0 : 0.4);
+
+      // Guard logic
+      const guardHit = sim.collisions?.some((c) => c === 'guard');
+      if (guardHit) reward -= 1.5; // Big penalty for hitting guard
+      
+      if (scenario.stage === 'guard') {
+        const frontEnough = sim.endPos.z > houseZ + 0.4;
+        if (!frontEnough) reward -= 1.5;
+        // Bonus for blocking line? (simplified to position)
+        if(Math.abs(sim.endPos.x - 0) < 0.2 && frontEnough) reward += 0.5;
+      }
+
+      // Takeout logic
+      if (scenario.goal === 'takeout') {
+        const opp = sim.stonesAfter?.find((s) => s.kind === 'opponent');
+        if (opp) {
+          const endDist = Math.hypot(opp.end.x, opp.end.z - houseZ);
+          reward += opp.moved * 1.5; // Reward hitting it hard
+          if (endDist > 1.9) reward += 2.0; // Cleared house
+        } else {
+            reward -= 0.5; // Missed opponent entirely
+        }
+      }
+      return reward;
+    }
+
+    function rlSuccess(sim, scenario, radiusOverride = null) {
+      const target = scenario.target || { x: 0, z: houseZ };
+      const dist = Math.hypot(sim.endPos.x - target.x, sim.endPos.z - target.z);
+      const radius = radiusOverride ?? rlConfig.successDist;
+      const base = dist < radius && sim.speed < 0.08;
+      if (scenario.goal === 'takeout') {
+        const opp = sim.stonesAfter?.find((s) => s.kind === 'opponent');
+        return base || (opp && opp.moved > 0.6);
+      }
+      if (scenario.stage === 'guard') {
+        const frontEnough = sim.endPos.z > houseZ + 0.4;
+        return base && frontEnough;
+      }
+      const hitGuard = sim.collisions?.some((c) => c === 'guard');
+      return base && !hitGuard;
+    }
+
+    async function evaluateStageMastery(stage) {
+      let streak = 0;
+      const attempts = Math.max(stage.streakNeeded * 2, 20);
+      for (let i = 0; i < attempts && streak < stage.streakNeeded; i++) {
+        const scenario = sampleStageScenario(stage.id, true);
+        const stateVec = buildStateVec(scenario);
+        const { mu } = forwardPolicy(rlState.policy, stateVec);
+        const combo = actionToCombo(mu, null, stage.id);
+        const res = await runCombo(combo, { scenario, target: scenario.target, maxTime: 18 });
+        const success = rlSuccess(res, scenario, stage.masteryRadius || rlConfig.successDist);
+        streak = success ? streak + 1 : 0;
+      }
+      return streak >= stage.streakNeeded;
+    }
+
+    function showTunedDemo(best, stage) {
+      if (!best) return;
+      drawHouse();
+      drawSheet();
+      plotResult(best, '#ffd84d');
+      const c = best.combo;
+      log(`Tuned env demo (${stage.name}): dist ${best.distToCenter.toFixed(2)}, speed ${best.speed.toFixed(3)}, score ${best.score.toFixed(3)}, power ${c.power?.toFixed(2)}, launch ${c.launchDeg?.toFixed(2)}, spin ${c.pushSpin?.toFixed(2)}, offset ${c.spawnOffsetX?.toFixed(2)}`);
+      rlStatus.textContent = `Tuned throw | power ${c.power?.toFixed(2)} | angle ${c.launchDeg?.toFixed(2)} | spin ${c.pushSpin?.toFixed(2)} | offset ${c.spawnOffsetX?.toFixed(2)}`;
+    }
+
+    async function tuneEnvironmentWithPolicy(stage) {
+      let best = null;
+      for (let i = 0; i < rlConfig.envTuneTrials; i++) {
+        const envCandidate = i === 0 ? { ...rlEnvProfile } : sampleAround(rlEnvProfile, 0.25);
+        const scenario = sampleStageScenario(stage.id, true);
+        const stateVec = buildStateVec(scenario);
+        const { mu } = forwardPolicy(rlState.policy, stateVec);
+        const combo = actionToCombo(mu, envCandidate, stage.id);
+        const res = await runCombo(combo, { scenario, target: scenario.target, maxTime: 18 });
+        const score = res.score + Math.max(0, res.speed - 0.05);
+        if (!best || score < best.score) best = { ...res, combo, score };
+      }
+      if (best) {
+        rlEnvProfile = { ...best.combo };
+        latestBest = best;
+        rlState.lastTuned = best;
+        bestEl.innerHTML = bestSummary(best, `Env tuned (${stage.name})`);
+        log(`Stage ${stage.name}: environment tuned (score ${best.score.toFixed(3)}).`);
+        downloadBest(best, `env tuned ${stage.name}`);
+        updateBestShots(best, `${stage.name} env`, '#ffd84d', stage.id);
+        showTunedDemo(best, stage);
+      }
+      return best;
+    }
+
+    async function runAgentTuner(stage) {
+      rlStatus.textContent = `Agent tuner running for ${stage.name}...`;
+      drawHouse();
+      const maxThrows = 300;
+      let best = null;
+      for (let i = 0; i < maxThrows; i++) {
+        const scenario = sampleStageScenario(stage.id, true);
+        const stateVec = buildStateVec(scenario);
+        const { mu } = forwardPolicy(rlState.policy, stateVec);
+        const noise = 0.15;
+        const raw = new Float64Array(mu.length);
+        for (let k = 0; k < mu.length; k++) raw[k] = mu[k] + noise * randn();
+        const combo = actionToCombo(raw, null, stage.id);
+        const res = await runCombo(combo, { captureTrace: i % 12 === 0, scenario, target: scenario.target, maxTime: 18 });
+        const isBest = !best || res.score < best.score;
+        if (isBest) best = res;
+        if (i % 20 === 0 || isBest) {
+          plotResult(res, isBest ? '#40ff9f' : '#ff8a7a');
+          log(`Agent tune ${i + 1}/${maxThrows}: dist ${res.distToCenter.toFixed(2)}, speed ${res.speed.toFixed(3)}, score ${res.score.toFixed(3)}, power ${combo.power.toFixed(2)}, ang ${combo.launchDeg.toFixed(2)}, spin ${combo.pushSpin.toFixed(2)}, x0 ${combo.spawnOffsetX.toFixed(2)}`);
+        }
+        await new Promise(r => requestAnimationFrame(r));
+      }
+      if (best) {
+        rlEnvProfile = { ...best.combo };
+        latestBest = best;
+        rlState.lastTuned = best;
+        bestEl.innerHTML = bestSummary(best, `Agent tuned (${stage.name})`);
+        downloadBest(best, `agent tuned ${stage.name}`);
+        updateBestShots(best, `${stage.name} agent`, '#40ff9f', stage.id);
+        showTunedDemo(best, stage);
+        await recordSkillSnapshot(`agent-tune-${stage.id}`, 8);
+      }
+      rlStatus.textContent = `Agent tuner done for ${stage.name}`;
+      return best;
+    }
+
+    async function maybeAdvanceStage(successRateHint = 0) {
+      const stage = currentStage();
+      const mastered = await evaluateStageMastery(stage);
+      if (!mastered) return;
+      const skillPercent = rlState.skillPercent ?? computeSkillPercent(successRateHint, rlState.bestStreak || 0, stage);
+      const target = rlState.refiningStage && rlState.refineSkillTarget ? rlState.refineSkillTarget * 100 : rlConfig.skillTarget * 100;
+      if (skillPercent < target) {
+        const delta = (target - skillPercent).toFixed(1);
+        if (rlState.lastSkillLog !== delta) {
+          rlState.lastSkillLog = delta;
+          log(`Mastery streak hit but stage skill ${skillPercent.toFixed(1)}% is ${delta}% below target ${target.toFixed(1)}%; keep training.`);
+        }
+        return;
+      }
+      log(`Mastered ${stage.name}: ${stage.streakNeeded} in a row within ${stage.masteryRadius || rlConfig.successDist}m (stage skill ${skillPercent.toFixed(1)}% >= target ${target.toFixed(1)}%).`);
+      rlState.lastSkillLog = null;
+      await tuneEnvironmentWithPolicy(stage);
+      await runAgentTuner(stage);
+      rlState.running = false;
+      rlState.pendingAdvance = rlState.stageIndex < skillStages.length - 1;
+      bestShots.length = 0;
+      bestShotsStage = null;
+      drawHouse();
+      rlStreak.textContent = `Best streak: ${rlState.bestStreak}`;
+      if (rlState.pendingAdvance) {
+        rlStatus.textContent = `Mastered ${stage.name}. Click Next skill or Continue stage.`;
+        rlNextBtn.disabled = false;
+        rlContinueBtn.disabled = false;
+        rlWatchBtn.disabled = rlState.lastTuned ? false : true;
+      } else {
+        rlStatus.textContent = 'All skills mastered; training paused.';
+        rlNextBtn.disabled = true;
+        rlContinueBtn.disabled = true;
+        rlWatchBtn.disabled = rlState.lastTuned ? false : true;
+      }
+    }
+
+    function currentStage() {
+      return skillStages[Math.min(skillStages.length - 1, Math.max(0, rlState.stageIndex))];
+    }
+
+    function computeSkillPercent(successRate, bestStreak, stage) {
+      const streakScore = Math.min(1, (bestStreak || 0) / (stage.streakNeeded || 1));
+      const skill = 0.6 * successRate + 0.4 * streakScore; // 0..1
+      return Math.max(0, Math.min(1, skill)) * 100;
+    }
+
+    function updateRlUi(successRate = 0) {
+      const stage = currentStage();
+      const avgReward = rlState.recentRewards.length ? (rlState.recentRewards.reduce((a, b) => a + b, 0) / rlState.recentRewards.length) : 0;
+      const best = Number.isFinite(rlState.bestReward) ? rlState.bestReward.toFixed(3) : 'n/a';
+      const skillPercent = computeSkillPercent(successRate, rlState.bestStreak || 0, stage);
+      const stageSkillShare = skillPercent * 0.25; // target per stage ~25% of overall
+      const refiningNote = rlState.refiningStage ? ' (refining)' : '';
+      rlStats.innerHTML = `Stage <strong>${stage.name}${refiningNote}</strong> | episodes ${rlState.episodes} | success ${(successRate * 100).toFixed(1)}% | reward avg ${avgReward.toFixed(3)}`;
+      rlState.skillPercent = skillPercent;
+    }
+
+    async function rlTrainStep() {
+      const stage = currentStage();
+      const scenario = sampleStageScenario(stage.id);
+      const stateVec = buildStateVec(scenario);
+      const sample = samplePolicy(rlState.policy, stateVec);
+      const combo = actionToCombo(sample.rawAction, null, stage.id);
+      const captureTrace = rlState.episodes % rlConfig.batchSize === 0;
+      
+      const res = await runCombo(combo, { captureTrace, scenario, target: scenario.target, maxTime: 18 });
+      const reward = computeRlReward(res, scenario);
+      
+      // Store in buffer
+      rlState.batchBuffer.push({
+        state: stateVec,
+        action: sample.rawAction,
+        reward: reward,
+        oldLogProb: sample.logProb
+      });
+
+      // PPO Batch Update
+      if (rlState.batchBuffer.length >= rlConfig.batchSize) {
+        updatePPO(rlState.batchBuffer);
+        rlState.batchBuffer = []; // Clear buffer
+      }
+
+      const success = rlSuccess(res, scenario);
+      rlState.streak = success ? (rlState.streak || 0) + 1 : 0;
+      if (rlState.streak > (rlState.bestStreak || 0)) rlState.bestStreak = rlState.streak;
+      rlStreak.textContent = `Best streak: ${rlState.bestStreak}`;
+      
+      rlState.recentRewards.push(reward);
+      rlState.recentSuccess.push(success);
+      if (rlState.recentRewards.length > rlConfig.successWindow) rlState.recentRewards.shift();
+      if (rlState.recentSuccess.length > rlConfig.successWindow) rlState.recentSuccess.shift();
+      
+      rlState.episodes += 1;
+      rlState.lastReward = reward;
+      rlState.lastScenario = scenario.name;
+      rlState.bestReward = Math.max(rlState.bestReward, reward);
+      
+      if (success) updateBestShots(res, `${stage.name} success`, '#55ffb0', stage.id);
+      
+      const successRate = rlState.recentSuccess.length ? rlState.recentSuccess.filter(Boolean).length / rlState.recentSuccess.length : 0;
+      
+      if (captureTrace) {
+        drawHouse();
+        plotResult(res, success ? '#55ffb0' : '#ff8a7a');
+      }
+      
+      updateRlUi(successRate);
+      
+      if (rlState.episodes % rlConfig.masteryCheckEvery === 0) await maybeAdvanceStage(successRate);
+    }
+
+    async function rlLoop() {
+      if (!rlState.running) return;
+      await rlTrainStep();
+      if (!rlState.running) return;
+      if (rlConfig.maxEpisodes > 0 && rlState.episodes >= rlConfig.maxEpisodes) {
+        rlState.running = false;
+        rlStatus.textContent = 'Stopped (max episodes reached)';
+        return;
+      }
+      requestAnimationFrame(rlLoop);
+    }
+
+    async function evalPolicy(stage = currentStage().id) {
+      rlStatus.textContent = 'Evaluating policy...';
+      const scenario = typeof stage === 'string' ? sampleStageScenario(stage, true) : sampleStageScenario(currentStage().id, true);
+      const stateVec = buildStateVec(scenario);
+      const { mu } = forwardPolicy(rlState.policy, stateVec);
+      const combo = actionToCombo(mu, null, stage);
+      const res = await runCombo(combo, { captureTrace: true, scenario, target: scenario.target, maxTime: 18 });
+      const reward = computeRlReward(res, scenario);
+      drawHouse();
+      plotResult(res, '#ffd84d');
+      rlStatus.textContent = `Eval (${scenario.name}): reward ${reward.toFixed(3)}, dist ${res.distToCenter.toFixed(2)}`;
+      log(`Eval (${scenario.name}): dist ${res.distToCenter.toFixed(2)}, speed ${res.speed.toFixed(3)}, reward ${reward.toFixed(3)}, collisions ${res.collisions?.join(',') || 'none'}`);
+    }
+
+    rlStartBtn.addEventListener('click', () => {
+      if (rlState.running) return;
+      if (rlState.pendingAdvance) {
+        rlStatus.textContent = 'Click Next skill to continue.';
+        return;
+      }
+      if (!rlState.policy) resetRlPolicy();
+      rlState.running = true;
+      rlStatus.textContent = 'Training (PPO Batch Mode)...';
+      rlLoop();
+    });
+
+    rlStopBtn.addEventListener('click', () => {
+      rlState.running = false;
+      rlStatus.textContent = 'Stopped';
+    });
+
+    rlResetBtn.addEventListener('click', () => {
+      rlState.running = false;
+      resetRlPolicy();
+    });
+
+    rlEvalBtn.addEventListener('click', () => {
+      if (!rlState.policy) resetRlPolicy();
+      evalPolicy();
+    });
+
+    rlExportBtn.addEventListener('click', () => {
+      if (!rlState.policy) resetRlPolicy();
+      const stage = currentStage();
+      exportRlAgent(stage ? stage.name : 'ppo-agent');
+    });
+
+    rlTestMasteryBtn.addEventListener('click', async () => {
+      if (!rlState.policy) resetRlPolicy();
+      if (rlState.running) {
+        rlStatus.textContent = 'Stop training before testing mastery.';
+        return;
+      }
+      const stage = currentStage();
+      rlStatus.textContent = `Running mastery demo for ${stage.name}...`;
+      drawHouse();
+      bestShots.length = 0;
+      bestShotsStage = null;
+      const attempts = 6;
+      let successCount = 0;
+      for (let i = 0; i < attempts; i++) {
+        const scenario = sampleStageScenario(stage.id, true);
+        const stateVec = buildStateVec(scenario);
+        const { mu } = forwardPolicy(rlState.policy, stateVec);
+        const combo = actionToCombo(mu, null, stage.id);
+        const res = await runCombo(combo, { captureTrace: true, scenario, target: scenario.target, maxTime: 18 });
+        const success = rlSuccess(res, scenario, stage.masteryRadius || rlConfig.successDist);
+        if (success) successCount += 1;
+        plotResult(res, success ? '#55ffb0' : '#ff8a7a');
+        log(`Demo ${i + 1}/${attempts} (${stage.name}): dist ${res.distToCenter.toFixed(2)}, speed ${res.speed.toFixed(3)}, lateral ${Math.abs(res.endPos.x).toFixed(2)}, ${success ? 'SUCCESS' : 'fail'}`);
+        await new Promise(r => requestAnimationFrame(r));
+      }
+      rlStatus.textContent = `Demo: ${successCount}/${attempts} success for ${stage.name}.`;
+      log(`Manual mastery demo (${stage.name}): ${successCount}/${attempts} successes.`);
+      await recordSkillSnapshot(`mastery-demo-${stage.id}`, 6);
+    });
+
+    rlContinueBtn.addEventListener('click', () => {
+      if (!rlState.pendingAdvance) return;
+      rlState.refiningStage = true;
+      const stage = currentStage();
+      const currentSkill = (rlState.skillPercent ?? 0) / 100;
+      rlState.refineSkillTarget = Math.min(1, Math.max(rlConfig.skillTarget, currentSkill + 0.05));
+      rlStatus.textContent = `Continuing ${stage.name} with tightened ranges (target ${(rlState.refineSkillTarget * 100).toFixed(1)}%).`;
+      rlState.pendingAdvance = false;
+      rlNextBtn.disabled = true;
+      rlContinueBtn.disabled = true;
+      rlWatchBtn.disabled = rlState.lastTuned ? false : true;
+      rlStatus.textContent = 'Training...';
+      rlState.running = true;
+      rlLoop();
+    });
+
+    rlWatchBtn.addEventListener('click', () => {
+      if (rlState.lastTuned) {
+        showTunedDemo(rlState.lastTuned, currentStage());
+        rlStatus.textContent = 'Showing tuned env.';
+      } else {
+        rlStatus.textContent = 'No tuned env to show yet.';
+      }
+    });
+
+    rlNextBtn.addEventListener('click', () => {
+      if (!rlState.pendingAdvance) return;
+      if (rlState.stageIndex < skillStages.length - 1) {
+        rlState.stageIndex += 1;
+      rlState.pendingAdvance = false;
+      rlState.recentSuccess = [];
+      rlState.recentRewards = [];
+      rlNextBtn.disabled = true;
+      rlContinueBtn.disabled = true;
+      rlWatchBtn.disabled = true;
+      rlStatus.textContent = 'Training...';
+      bestShots.length = 0;
+      bestShotsStage = null;
+      drawHouse();
+      rlState.streak = 0;
+        rlState.bestStreak = 0;
+        rlStreak.textContent = 'Best streak: 0';
+        rlState.refiningStage = false;
+        rlState.refineSkillTarget = null;
+      rlState.running = true;
+      rlLoop();
+    } else {
+      rlStatus.textContent = 'All skills mastered; nothing to advance.';
+      rlNextBtn.disabled = true;
+        rlContinueBtn.disabled = true;
+        rlWatchBtn.disabled = true;
+        rlState.pendingAdvance = false;
+        rlState.refiningStage = false;
+        rlState.refineSkillTarget = null;
+      }
+    });
+
+    // initialize
+    resetRlPolicy();
+  </script>
+</body>
+</html>

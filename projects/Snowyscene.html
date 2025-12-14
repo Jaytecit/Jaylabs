@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Christmas VR Cinema</title>
+    <title>Christmas VR Cinema Ultimate</title>
     <style>
         body { margin: 0; background-color: #000; overflow: hidden; }
         #info {
@@ -12,18 +12,26 @@
             pointer-events: none; text-shadow: 0 0 5px black; z-index: 1;
             background: rgba(0,0,0,0.5); padding: 10px;
         }
-        /* Hide the file input, we trigger it via JS */
         #video-input { display: none; }
+        #server-warning {
+            position: absolute; bottom: 14px; left: 50%;
+            transform: translateX(-50%); padding: 10px 14px;
+            background: rgba(0,0,0,0.75); color: #fff; font-family: sans-serif;
+            border: 1px solid rgba(255,255,255,0.25); border-radius: 10px;
+            z-index: 5; max-width: 90vw; text-align: center; line-height: 1.4;
+            display: none;
+        }
     </style>
 </head>
 <body>
     <div id="info">
         <b>Christmas VR Cinema</b><br/>
-        LEFT Stick: Move | TRIGGER: Click Buttons / Throw Snow<br/>
-        <i>Note: Clicking 'Load' opens the file picker on your 2D Desktop overlay.</i>
+        TRIGGER: Fire Snow Bullet | RAY: Melt Snow & Click Buttons<br/>
+        <i>"Load" opens local file picker (Exits VR on Quest to pick)</i>
     </div>
     
     <input type="file" id="video-input" accept="video/*">
+    <div id="server-warning"></div>
 
     <!-- Import Map -->
     <script type="importmap">
@@ -42,67 +50,82 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
         // --- Configuration ---
-        const SNOW_COUNT = 5000;
-        const SNOW_RANGE = 40;
+        const SNOW_COUNT = 4000;
+        const SNOW_RANGE = 50;
         
+        // Snowball "Bullet" Physics
+        const SNOWBALL_SPEED = 60.0; // Fast!
+        const SNOWBALL_GRAVITY = 9.8;
+        const SNOWBALL_RADIUS = 0.15;
+        const MAX_SNOWBALLS = 150; // Limit to prevent lag when piling
+        
+        const isFileProtocol = window.location.protocol === 'file:';
+
         // --- Globals ---
         let camera, scene, renderer;
         let controller1, controller2;
         let controllerGrip1, controllerGrip2;
         let raycaster;
         let dolly; 
+
+        // Audio
+        let listener;
+        let santaSound;
         
         // Cinema State
         let videoElement, videoTexture, tvGroup, tvMesh;
-        let isVideoPlaying = false;
         let controlPanel;
         let controlsVisible = true;
         
         // Scene State
         const snowSystem = { mesh: null, velocities: [] };
-        const thrownSnowballs = [];
-        const interactableObjects = []; // Buttons and hit children
-        const floorObjects = []; // Snowballs hit this
-        const footprints = [];
+        let thrownSnowballs = []; // Array of objects
+        const interactableObjects = []; 
+        const floorObjects = [];
         let santaGroup;
         let santaLoaded = false;
         let santaActive = false;
         let santaPassStart = 0;
-        const santaPassDuration = 20;
+        const santaPassDuration = 25;
         let santaNextPassTime = 0;
         const santaStartPos = new THREE.Vector3();
         const santaEndPos = new THREE.Vector3();
         const controllerHoverTargets = [null, null];
         let mouseHoverTarget = null;
 
-        // Sound Context
-        let audioCtx;
-
-        // Interaction
+        // Temps
+        const tempVecA = new THREE.Vector3();
+        const tempVecB = new THREE.Vector3();
         const tempMatrix = new THREE.Matrix4();
+        const tempQuat = new THREE.Quaternion();
+        const clock = new THREE.Clock();
+        const mouse = new THREE.Vector2();
+
+        // Cursor
         const cursor = new THREE.Mesh(
             new THREE.RingGeometry(0.02, 0.04, 32).rotateX(-Math.PI / 2),
-            new THREE.MeshBasicMaterial({ color: 0xffff00, opacity: 0.8, transparent: true })
+            new THREE.MeshBasicMaterial({ color: 0xff0000, opacity: 0.8, transparent: true })
         );
-        const clock = new THREE.Clock();
         
         init();
 
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x050510);
-            scene.fog = new THREE.FogExp2(0x050510, 0.02);
+            scene.background = new THREE.Color(0x020208); // Darker night
+            scene.fog = new THREE.FogExp2(0x020208, 0.015);
 
-            // Camera Rig
             dolly = new THREE.Group();
-            dolly.position.set(0, 0, 5); // Start user back a bit
+            dolly.position.set(0, 0, 5); 
             scene.add(dolly);
 
             camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
             camera.position.set(0, 1.6, 0);
             dolly.add(camera);
 
-            // Renderer
+            // Audio Listener for Santa
+            listener = new THREE.AudioListener();
+            camera.add(listener);
+
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -110,50 +133,146 @@
             renderer.xr.enabled = true;
             document.body.appendChild(renderer.domElement);
             document.body.appendChild(VRButton.createButton(renderer));
+            
+            // Events
             renderer.domElement.addEventListener('pointerdown', onPointerDown);
             renderer.domElement.addEventListener('pointermove', onPointerMove);
-            renderer.domElement.addEventListener('pointerleave', () => { mouseHoverTarget = null; });
+            window.addEventListener('resize', onWindowResize);
 
-            // --- Scene Building ---
+            if (isFileProtocol) {
+                const warn = document.getElementById('server-warning');
+                warn.style.display = 'block';
+                warn.innerHTML = "<b>Warning:</b> Running via file:// protocol.<br>Local assets (Santa/Audio) may not load.<br>Use a local web server for best experience.";
+            }
+
+            // Scene Building
             createEnvironment();
             createChristmasLights();
+            createAdditionalDecorations(); // New Candy Canes/Presents
             createSnowSystem();
-            createSanta();
+            setupSanta();
             
-            // Build the Cinema Area
-            createCinemaSystem(0, 2.9, -4); // Raised to stay above snow
+            // Cinema
+            createCinemaSystem(0, 2.9, -4);
+            setupVideoElement();
             
+            // Controllers
             setupControllers();
 
             raycaster = new THREE.Raycaster();
             scene.add(cursor);
 
-            window.addEventListener('resize', onWindowResize);
-            
-            // HTML Video Logic
-            setupVideoElement();
-
             renderer.setAnimationLoop(render);
         }
 
-        // --- CINEMA & MEDIA LOGIC ---
+        // --- ASSETS & DECOR ---
+
+        function setupSanta() {
+            // Audio
+            santaSound = new THREE.PositionalAudio(listener);
+            const audioLoader = new THREE.AudioLoader();
+            audioLoader.load('ho-ho-ho-santa-voice-430649.mp3', function(buffer) {
+                santaSound.setBuffer(buffer);
+                santaSound.setRefDistance(20);
+                santaSound.setVolume(2.0); // Louder source, fades with distance
+            }, undefined, () => console.warn("Santa audio not found."));
+
+            // Model
+            const loader = new GLTFLoader();
+            loader.load('santas_sleigh_ride.glb', (gltf) => {
+                santaGroup = gltf.scene;
+                santaGroup.scale.set(0.6, 0.6, 0.6);
+                santaGroup.add(santaSound); // Attach sound to Santa
+                santaGroup.visible = false;
+                scene.add(santaGroup);
+                santaLoaded = true;
+                scheduleNextSantaPass(10); // First pass in 10s
+            }, undefined, (err) => {
+                console.log('Santa GLB not found, using placeholder box');
+                santaGroup = new THREE.Mesh(new THREE.BoxGeometry(2,1,4), new THREE.MeshBasicMaterial({color:0xff0000}));
+                santaGroup.add(santaSound);
+                santaGroup.visible = false;
+                scene.add(santaGroup);
+                santaLoaded = true;
+                scheduleNextSantaPass(10);
+            });
+        }
+
+        function createAdditionalDecorations() {
+            // Candy Canes and Presents logic
+            const caneGeo = new THREE.TorusGeometry(0.3, 0.04, 8, 20, Math.PI);
+            const caneStaffGeo = new THREE.CylinderGeometry(0.04, 0.04, 1.5, 8);
+            const caneMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.2 });
+            const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
+
+            const boxGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+            
+            // Random placement around trees (avoid center path)
+            for(let i=0; i<20; i++) {
+                let x = (Math.random()-0.5) * 40;
+                let z = (Math.random()-0.5) * 30;
+                // Keep center clear (X: -5 to 5, Z: -10 to 5)
+                if (x > -5 && x < 5 && z > -10 && z < 5) continue;
+
+                // Candy Cane
+                const caneGroup = new THREE.Group();
+                const top = new THREE.Mesh(caneGeo, caneMat);
+                top.position.y = 1.5;
+                const staff = new THREE.Mesh(caneStaffGeo, whiteMat); // Simplified white staff
+                staff.position.y = 0.75;
+                staff.position.x = 0.3; // align with hook
+                caneGroup.add(top);
+                caneGroup.add(staff);
+                
+                // Add stripes (simple rings)
+                for(let r=0; r<5; r++) {
+                    const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.1, 8), caneMat);
+                    stripe.position.y = 0.3 + r*0.3;
+                    stripe.position.x = 0.3;
+                    caneGroup.add(stripe);
+                }
+
+                caneGroup.position.set(x, 0, z);
+                caneGroup.rotation.y = Math.random() * Math.PI * 2;
+                scene.add(caneGroup);
+            }
+
+            // Presents
+            for(let i=0; i<15; i++) {
+                let x = (Math.random()-0.5) * 30;
+                let z = (Math.random()-0.5) * 20;
+                if (x > -5 && x < 5 && z > -10 && z < 5) continue;
+
+                const color = new THREE.Color().setHSL(Math.random(), 0.8, 0.5);
+                const mat = new THREE.MeshStandardMaterial({ color: color });
+                const box = new THREE.Mesh(boxGeo, mat);
+                box.position.set(x, 0.25, z);
+                box.rotation.y = Math.random();
+                box.castShadow = true;
+                scene.add(box);
+            }
+        }
+
+        // --- CINEMA ---
 
         function setupVideoElement() {
             videoElement = document.createElement('video');
             videoElement.crossOrigin = "anonymous";
             videoElement.loop = false;
             videoElement.style.display = 'none'; 
+            // Important for Quest to allow local texture update
+            videoElement.setAttribute('webkit-playsinline', 'webkit-playsinline');
+            videoElement.setAttribute('playsinline', 'playsinline');
+
             videoElement.addEventListener('play', () => syncVideoState(true));
             videoElement.addEventListener('pause', () => syncVideoState(false));
             videoElement.addEventListener('ended', () => syncVideoState(false));
             
-            // Create texture but don't assign map yet until loaded
             videoTexture = new THREE.VideoTexture(videoElement);
             videoTexture.minFilter = THREE.LinearFilter;
             videoTexture.magFilter = THREE.LinearFilter;
             videoTexture.colorSpace = THREE.SRGBColorSpace;
 
-            // Handle File Input
             const input = document.getElementById('video-input');
             input.addEventListener('change', function(e) {
                 const file = e.target.files[0];
@@ -161,10 +280,8 @@
                     const url = URL.createObjectURL(file);
                     videoElement.src = url;
                     videoElement.load();
-                    // Play automatically on load
-                    videoElement.play().then(() => {
-                        // State handled by play event
-                    }).catch(e => console.log("Play interrupted", e));
+                    videoElement.play().catch(e => console.log("Play error:", e));
+                    // If we were in VR, we might want to ensure controls update
                     syncVideoState(false);
                 }
             });
@@ -175,104 +292,90 @@
             tvGroup.position.set(x, y, z);
             scene.add(tvGroup);
 
-            // 1. The Screen (16:9 aspect ratio start)
+            // Screen
             const geometry = new THREE.PlaneGeometry(4, 2.25);
             const material = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide });
             tvMesh = new THREE.Mesh(geometry, material);
             tvMesh.name = "tv_screen";
             tvGroup.add(tvMesh);
 
-            // 2. The Frame
+            // Frame
             const frameGeo = new THREE.BoxGeometry(4.2, 2.45, 0.1);
             const frameMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
             const frame = new THREE.Mesh(frameGeo, frameMat);
             frame.position.z = -0.06;
             tvGroup.add(frame);
 
-            // 3. Control Panel (Floating below screen)
-            const panelGroup = new THREE.Group();
-            panelGroup.position.set(0, -1.7, 0.2);
-            panelGroup.rotation.x = -Math.PI / 6; // Angled up towards user
-            tvGroup.add(panelGroup);
-            controlPanel = panelGroup;
+            // Control Panel
+            controlPanel = new THREE.Group();
+            controlPanel.position.set(0, -1.7, 0.2);
+            controlPanel.rotation.x = -Math.PI / 6;
+            tvGroup.add(controlPanel);
 
-            // Create Buttons
-            createButton(panelGroup, -2.1, 0, "LOAD", 0x4444ff, "btn_load");
-            createButton(panelGroup, -0.7, 0, "PLAY/PAUSE", 0x44ff44, "btn_play");
-            createButton(panelGroup,  0.7, 0, "SIZE -", 0xffaa00, "btn_scale_down");
-            createButton(panelGroup,  2.1, 0, "SIZE +", 0xffaa00, "btn_scale_up");
+            createButton(controlPanel, -2.1, 0, "LOAD FILE", 0x4444ff, "btn_load");
+            createButton(controlPanel, -0.7, 0, "PLAY/PAUSE", 0x44ff44, "btn_play");
+            createButton(controlPanel,  0.7, 0, "SIZE -", 0xffaa00, "btn_scale_down");
+            createButton(controlPanel,  2.1, 0, "SIZE +", 0xffaa00, "btn_scale_up");
         }
 
         function createButton(parent, x, y, text, color, name) {
-            // Button Base
             const geometry = new THREE.BoxGeometry(1.2, 0.6, 0.12);
             const material = new THREE.MeshStandardMaterial({ color: color, emissive: 0x111111, emissiveIntensity: 0.4 });
             const btn = new THREE.Mesh(geometry, material);
             btn.position.set(x, y, 0);
             btn.name = name;
-            btn.userData.baseColor = color;
-            btn.userData.baseEmissive = 0x111111;
-            btn.userData.hovered = false;
+            btn.userData = { baseColor: color, baseEmissive: 0x111111, hovered: false };
             parent.add(btn);
             interactableObjects.push(btn);
 
-            // Text Label (Canvas Texture)
             const canvas = document.createElement('canvas');
             canvas.width = 256; canvas.height = 128;
             const ctx = canvas.getContext('2d');
-            ctx.fillStyle = color === 0x111111 ? 'white' : 'black'; // contrast
-            ctx.fillRect(0,0,256,128); // bg
-            ctx.fillStyle = color === 0x111111 ? 'black' : 'white'; // text
-            ctx.font = 'bold 40px Arial';
+            ctx.fillStyle = color === 0x111111 ? 'white' : 'black';
+            ctx.fillRect(0,0,256,128);
+            ctx.fillStyle = color === 0x111111 ? 'black' : 'white';
+            ctx.font = 'bold 36px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(text, 128, 64);
             
             const tex = new THREE.CanvasTexture(canvas);
-            const labelMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
-            const label = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.45), labelMat);
-            label.position.z = 0.06;
-            label.userData.baseButton = btn;
-            label.userData.actionName = name;
+            const label = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.45), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
+            label.position.z = 0.061;
+            label.userData = { baseButton: btn, actionName: name };
             btn.add(label);
-            interactableObjects.push(label); // Make label surface clickable
-            
-            return btn;
+            interactableObjects.push(label);
         }
 
         // --- ENVIRONMENT ---
 
         function createEnvironment() {
             // Ground
-            const groundGeo = new THREE.PlaneGeometry(80, 80, 128, 128);
+            const groundGeo = new THREE.PlaneGeometry(100, 100, 128, 128);
             const pos = groundGeo.attributes.position;
             for(let i=0; i<pos.count; i++){
-                pos.setZ(i, Math.sin(pos.getX(i)*0.1)*0.5 + Math.cos(pos.getY(i)*0.1)*0.5);
+                pos.setZ(i, getGroundHeight(pos.getX(i), pos.getY(i)));
             }
             groundGeo.computeVertexNormals();
-            const groundMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.1 });
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0xeeeeff, roughness: 0.9 });
             const ground = new THREE.Mesh(groundGeo, groundMat);
             ground.rotation.x = -Math.PI / 2;
             ground.receiveShadow = true;
-            ground.name = "ground";
             scene.add(ground);
             floorObjects.push(ground);
 
-            // Trees (Avoid the center view channel)
-            for(let i=0; i<30; i++) {
-                let tx = (Math.random()-0.5)*50;
-                let tz = (Math.random()-0.5)*50;
-                
-                // CLEAR ZONE: Keep the area in front of TV clear (X: -3 to 3, Z: -10 to 5)
-                if (tx > -4 && tx < 4 && tz > -10 && tz < 5) continue; 
-
+            // Trees
+            for(let i=0; i<40; i++) {
+                let tx = (Math.random()-0.5)*70;
+                let tz = (Math.random()-0.5)*70;
+                if (tx > -6 && tx < 6 && tz > -12 && tz < 6) continue; // Clear zone
                 createTree(tx, tz);
             }
 
             // Lights
-            const ambient = new THREE.AmbientLight(0x404060, 0.4);
+            const ambient = new THREE.AmbientLight(0x404060, 0.6);
             scene.add(ambient);
-            const moonLight = new THREE.DirectionalLight(0xaaccff, 0.8);
+            const moonLight = new THREE.DirectionalLight(0xaaccff, 0.6);
             moonLight.position.set(10, 20, 10);
             moonLight.castShadow = true;
             moonLight.shadow.mapSize.width = 2048;
@@ -280,50 +383,14 @@
             scene.add(moonLight);
         }
 
-        function createSnowflakeTexture() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 32; canvas.height = 32;
-            const ctx = canvas.getContext('2d');
-            ctx.strokeStyle = 'white'; ctx.lineWidth = 2;
-            ctx.translate(16,16);
-            for(let i=0; i<6; i++) {
-                ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 14); ctx.stroke();
-                ctx.rotate(Math.PI/3);
-            }
-            return new THREE.CanvasTexture(canvas);
-        }
-
-        function createSnowSystem() {
-            const geometry = new THREE.BufferGeometry();
-            const vertices = [];
-            for (let i = 0; i < SNOW_COUNT; i++) {
-                vertices.push((Math.random() - 0.5) * SNOW_RANGE);
-                vertices.push(Math.random() * 15);
-                vertices.push((Math.random() - 0.5) * SNOW_RANGE);
-                snowSystem.velocities.push({
-                    y: -(0.02 + Math.random() * 0.03),
-                    x: (Math.random() - 0.5) * 0.02,
-                    z: (Math.random() - 0.5) * 0.02
-                });
-            }
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-            const material = new THREE.PointsMaterial({
-                color: 0xffffff, size: 0.1, map: createSnowflakeTexture(),
-                transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false
-            });
-            snowSystem.mesh = new THREE.Points(geometry, material);
-            scene.add(snowSystem.mesh);
-        }
-
         function createTree(x, z) {
             const group = new THREE.Group();
-            group.position.set(x, 0, z);
+            group.position.set(x, getGroundHeight(x,z), z);
             const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.25, 1, 8), new THREE.MeshStandardMaterial({ color: 0x3d2817 }));
             trunk.position.y = 0.5; group.add(trunk);
             const leafMat = new THREE.MeshStandardMaterial({ color: 0x0f5f13 });
             for(let i=0; i<3; i++) {
-                const s = 1.5 - (i * 0.4);
-                const cone = new THREE.Mesh(new THREE.ConeGeometry(s, 1.5, 8), leafMat);
+                const cone = new THREE.Mesh(new THREE.ConeGeometry(1.5 - (i*0.4), 1.5, 8), leafMat);
                 cone.position.y = 1.5 + (i * 0.8);
                 cone.castShadow = true;
                 group.add(cone);
@@ -331,76 +398,65 @@
             scene.add(group);
         }
 
-        function createSanta() {
-            const loader = new GLTFLoader();
-            loader.load('santas_sleigh_ride.glb', (gltf) => {
-                santaGroup = gltf.scene;
-                santaGroup.scale.set(0.6, 0.6, 0.6);
-                santaGroup.traverse(node => {
-                    if (node.isMesh) {
-                        node.castShadow = true;
-                        node.receiveShadow = true;
-                    }
+        function getGroundHeight(x, z) {
+            return Math.sin(x*0.1)*0.4 + Math.cos(z*0.15)*0.3;
+        }
+
+        function createSnowSystem() {
+            const geometry = new THREE.BufferGeometry();
+            const vertices = [];
+            for (let i = 0; i < SNOW_COUNT; i++) {
+                vertices.push((Math.random() - 0.5) * SNOW_RANGE);
+                vertices.push(Math.random() * 20);
+                vertices.push((Math.random() - 0.5) * SNOW_RANGE);
+                snowSystem.velocities.push({
+                    y: -(0.03 + Math.random() * 0.05),
+                    x: (Math.random() - 0.5) * 0.02,
+                    z: (Math.random() - 0.5) * 0.02
                 });
-                santaGroup.visible = false;
-                scene.add(santaGroup);
-                santaLoaded = true;
-                scheduleNextSantaPass();
-            }, undefined, (err) => console.log('Santa load error', err));
-        }
+            }
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            
+            const canvas = document.createElement('canvas');
+            canvas.width=32; canvas.height=32;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle='white'; ctx.beginPath(); ctx.arc(16,16,10,0,Math.PI*2); ctx.fill();
+            const tex = new THREE.CanvasTexture(canvas);
 
-        function scheduleNextSantaPass() {
-            santaActive = false;
-            const delay = 120 + Math.random() * 180; // 2–5 minutes
-            santaNextPassTime = clock.getElapsedTime() + delay;
-            if (santaGroup) santaGroup.visible = false;
-        }
-
-        function startSantaPass() {
-            if (!santaGroup) return;
-            santaActive = true;
-            santaPassStart = clock.getElapsedTime();
-            const y = 20 + Math.random() * 4;
-            const z = -40 + Math.random() * 80; // wide band across the scene
-            santaStartPos.set(-80, y, z);
-            santaEndPos.set(80, y + (Math.random()*4 - 2), z + (Math.random()*8 - 4));
-            santaGroup.position.copy(santaStartPos);
-            santaGroup.visible = true;
+            const material = new THREE.PointsMaterial({
+                color: 0xffffff, size: 0.15, map: tex,
+                transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false
+            });
+            snowSystem.mesh = new THREE.Points(geometry, material);
+            scene.add(snowSystem.mesh);
         }
 
         function createChristmasLights() {
-            // Simple string of lights around the viewing area
             const curve = new THREE.CatmullRomCurve3([
-                new THREE.Vector3(-5, 4, -5),
-                new THREE.Vector3(5, 4, -5),
-                new THREE.Vector3(5, 4, 5),
-                new THREE.Vector3(-5, 4, 5),
+                new THREE.Vector3(-5, 4, -5), new THREE.Vector3(5, 4, -5),
+                new THREE.Vector3(5, 4, 5), new THREE.Vector3(-5, 4, 5),
             ], true);
-            
-            const points = curve.getPoints(50);
+            const points = curve.getPoints(60);
             points.forEach((p, i) => {
                 if(i%2===0) {
                     const c = new THREE.Color().setHSL(Math.random(), 1, 0.5);
-                    const b = new THREE.Mesh(new THREE.SphereGeometry(0.05), new THREE.MeshStandardMaterial({ color: c, emissive: c }));
+                    const b = new THREE.Mesh(new THREE.SphereGeometry(0.05), new THREE.MeshBasicMaterial({ color: c }));
                     b.position.copy(p);
                     scene.add(b);
                 }
             });
         }
 
-        // --- CONTROLLER LOGIC ---
-        
+        // --- CONTROLS & PHYSICS ---
+
         function setupControllers() {
             controller1 = renderer.xr.getController(0);
             controller1.addEventListener('selectstart', onSelectStart);
-            controller1.addEventListener('selectend', onSelectEnd);
             dolly.add(controller1);
 
             controller2 = renderer.xr.getController(1);
             controller2.addEventListener('selectstart', onSelectStart);
-            controller2.addEventListener('selectend', onSelectEnd);
-            controller2.addEventListener('squeezestart', toggleControlPanelViaGrip);
-            controller2.addEventListener('squeeze', toggleControlPanelViaGrip);
+            controller2.addEventListener('squeezestart', () => { controlsVisible = !controlsVisible; controlPanel.visible = controlsVisible; });
             dolly.add(controller2);
 
             const factory = new XRControllerModelFactory();
@@ -413,324 +469,328 @@
             dolly.add(controllerGrip2);
 
             // Ray visual
-            const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-1)]);
-            const line = new THREE.Line(geo);
-            line.name = 'line'; line.scale.z = 5;
+            const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-1)]);
+            const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 2 }));
+            line.name = 'line'; line.scale.z = 100;
             controller1.add(line.clone()); controller2.add(line.clone());
         }
 
-        const controllerData = { 0: { obj: null, hist: [] }, 1: { obj: null, hist: [] } };
-
         function onSelectStart(event) {
             const c = event.target;
-            const idx = c === controller1 ? 0 : 1;
             
-            // Raycasting
+            // Check UI interaction first
             tempMatrix.identity().extractRotation(c.matrixWorld);
             raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);
             raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
             
             const hits = raycaster.intersectObjects(interactableObjects, true);
-            
             if (hits.length > 0) {
-                const hitObj = hits[0].object;
-                const targetName = resolveButtonName(hitObj);
-                handleButtonAction(targetName);
+                const btn = resolveButtonMesh(hits[0].object);
+                if(btn) handleButtonAction(btn.name);
                 return;
             }
 
-            // If no button clicked, Spawn Snowball
-            const sb = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 16), new THREE.MeshStandardMaterial({ color: 0xffffff }));
-            c.add(sb);
-            controllerData[idx].obj = sb;
-            controllerData[idx].hist = [];
+            // Fire Snowball Bullet
+            fireSnowball(c);
         }
 
-        function onSelectEnd(event) {
-            const c = event.target;
-            const idx = c === controller1 ? 0 : 1;
-            const data = controllerData[idx];
-
-            if (data.obj) {
-                const sb = data.obj;
-                const pos = new THREE.Vector3(); sb.getWorldPosition(pos);
-                c.remove(sb); scene.add(sb); sb.position.copy(pos);
-
-                let vel = new THREE.Vector3(0,0,-1).applyQuaternion(c.quaternion).multiplyScalar(10); // Faster throw
-                if (data.hist.length >= 2) {
-                    const last = data.hist[data.hist.length-1];
-                    const prev = data.hist[0];
-                    // Simple throw physics based on hand movement
-                    vel.subVectors(last.p, prev.p).multiplyScalar(800 / (last.t - prev.t)); 
-                }
-                thrownSnowballs.push({ mesh: sb, vel: vel, active: true });
-                data.obj = null;
+        function fireSnowball(controller) {
+            // Manage max count
+            if(thrownSnowballs.length >= MAX_SNOWBALLS) {
+                const old = thrownSnowballs.shift();
+                scene.remove(old.mesh);
             }
-        }
 
-        // Allow desktop clicking to trigger button actions (including file picker)
-        const mouse = new THREE.Vector2();
+            const snowballMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, metalness: 0.1 });
+            const snowball = new THREE.Mesh(new THREE.SphereGeometry(SNOWBALL_RADIUS, 12, 12), snowballMat);
+            snowball.castShadow = true; 
+            snowball.receiveShadow = true;
 
-        function onPointerDown(event) {
-            // Skip when in XR so we don't double-trigger
-            if (renderer.xr.isPresenting) return;
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-            const hits = raycaster.intersectObjects(interactableObjects, true);
-            if (hits.length > 0) {
-                const targetName = resolveButtonName(hits[0].object);
-                handleButtonAction(targetName);
-            }
-        }
+            controller.getWorldPosition(tempVecA);
+            controller.getWorldQuaternion(tempQuat);
+            const dir = tempVecB.set(0, 0, -1).applyQuaternion(tempQuat).normalize();
+            
+            // Start slightly in front
+            snowball.position.copy(tempVecA).addScaledVector(dir, 0.3);
+            
+            // Bullet Velocity
+            const velocity = dir.clone().multiplyScalar(SNOWBALL_SPEED);
 
-        function onPointerMove(event) {
-            // Highlight buttons when hovering on desktop
-            if (renderer.xr.isPresenting) return;
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-            const hits = raycaster.intersectObjects(interactableObjects, true);
-            mouseHoverTarget = hits.length > 0 ? resolveButtonMesh(hits[0].object) : null;
-        }
-
-        function resolveButtonMesh(obj) {
-            if(!obj) return null;
-            return obj.userData.baseButton || obj;
-        }
-
-        function resolveButtonName(obj) {
-            if(!obj) return null;
-            return obj.userData.actionName || obj.name;
+            scene.add(snowball);
+            thrownSnowballs.push({
+                mesh: snowball,
+                vel: velocity,
+                radius: SNOWBALL_RADIUS,
+                stopped: false,
+                scale: 1.0
+            });
+            
+            // "Throw" sound (re-using click generator with pitch shift)
+            playSound(600, 200, 0.05);
         }
 
         function handleButtonAction(name) {
-            if(!name) return;
+            playSound(300, 800, 0.1); // Click sound
             if(name === 'btn_load') {
-                clickSound();
-                triggerFilePicker();
-                return;
+                document.getElementById('video-input').click();
+            } else if(name === 'btn_play') {
+                if(videoElement.paused) videoElement.play(); else videoElement.pause();
+            } else if(name === 'btn_scale_up') {
+                tvGroup.scale.multiplyScalar(1.1);
+            } else if(name === 'btn_scale_down') {
+                tvGroup.scale.multiplyScalar(0.9);
             }
-            if(name === 'btn_play') {
-                clickSound();
-                if(videoElement.paused) {
-                    videoElement.play();
-                } else {
-                    videoElement.pause();
-                }
-                return;
-            }
-            if(name === 'btn_scale_up') {
-                clickSound();
-                const s = tvGroup.scale.x + 0.1;
-                tvGroup.scale.set(s,s,s);
-                return;
-            }
-            if(name === 'btn_scale_down') {
-                clickSound();
-                const s = Math.max(0.5, tvGroup.scale.x - 0.1);
-                tvGroup.scale.set(s,s,s);
-                return;
-            }
-        }
-
-        function triggerFilePicker() {
-            const input = document.getElementById('video-input');
-            // Clear to ensure consecutive identical selections still fire change
-            input.value = '';
-            input.click();
-        }
-
-        function setControlsVisibility(show) {
-            controlsVisible = show;
-            if (controlPanel) controlPanel.visible = show;
-        }
-
-        function toggleControlPanelViaGrip() {
-            setControlsVisibility(!controlsVisible);
         }
 
         function syncVideoState(playing) {
-            isVideoPlaying = playing;
-            if (playing) {
-                setControlsVisibility(false);
-                if (tvMesh) {
-                    tvMesh.material.map = videoTexture;
-                    tvMesh.material.color.set(0xffffff);
-                    tvMesh.material.needsUpdate = true;
-                }
-            } else {
-                setControlsVisibility(true);
-                if (tvMesh) {
-                    tvMesh.material.map = null;
-                    tvMesh.material.color.set(0x000000);
-                    tvMesh.material.needsUpdate = true;
-                }
+            controlsVisible = !playing;
+            controlPanel.visible = controlsVisible;
+            if (playing && tvMesh) {
+                tvMesh.material.map = videoTexture;
+                tvMesh.material.color.set(0xffffff);
+            } else if (tvMesh) {
+                tvMesh.material.map = null;
+                tvMesh.material.color.set(0x111111);
             }
-            updatePlayButtonVisuals();
+            tvMesh.material.needsUpdate = true;
         }
 
-        function updateHoverVisuals(hoverTargets) {
-            interactableObjects.forEach(obj => {
-                const btn = resolveButtonMesh(obj);
-                const isHover = hoverTargets.has(btn);
-                if(isHover && !btn.userData.hovered) {
-                    btn.userData.hovered = true;
-                    btn.material.emissive.setHex(0xffffaa);
-                    btn.material.emissiveIntensity = 0.8;
-                    btn.scale.set(1.05, 1.05, 1.05);
-                } else if(!isHover && btn.userData.hovered) {
-                    btn.userData.hovered = false;
-                    btn.material.emissive.setHex(btn.userData.baseEmissive ?? 0x111111);
-                    btn.material.emissiveIntensity = 0.4;
-                    btn.scale.set(1, 1, 1);
-                }
-            });
+        function playSound(fStart, fEnd, dur) {
+            if(!listener.context) return;
+            const osc = listener.context.createOscillator();
+            const g = listener.context.createGain();
+            osc.connect(g); g.connect(listener.context.destination);
+            osc.frequency.setValueAtTime(fStart, listener.context.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(fEnd, listener.context.currentTime + dur);
+            g.gain.setValueAtTime(0.1, listener.context.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, listener.context.currentTime + dur);
+            osc.start(); osc.stop(listener.context.currentTime + dur);
         }
 
-        function clickSound() {
-            if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = audioCtx.createOscillator();
-            const g = audioCtx.createGain();
-            osc.frequency.setValueAtTime(400, audioCtx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.1);
-            g.gain.setValueAtTime(0.1, audioCtx.currentTime);
-            g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
-            osc.connect(g); g.connect(audioCtx.destination);
-            osc.start(); osc.stop(audioCtx.currentTime+0.1);
+        function resolveButtonMesh(obj) {
+            return obj.userData.baseButton || (obj.userData.baseColor ? obj : null);
         }
 
-        function updatePlayButtonVisuals() {
-            // Visual feedback could be added here (change button color)
+        // --- LOGIC LOOP ---
+
+        function render() {
+            const dt = clock.getDelta();
+            const elapsed = clock.getElapsedTime();
+
+            handleLocomotion(dt);
+            updateSanta(elapsed);
+            updateSnowballs(dt);
+            updateSnowParticles();
+            handleInteraction();
+
+            if (videoElement && videoElement.readyState >= 2 && isVideoPlaying()) {
+                videoTexture.needsUpdate = true;
+            }
+
+            renderer.render(scene, camera);
         }
 
-        // --- LOCOMOTION ---
-        function handleMovement(dt) {
+        function isVideoPlaying() { return !videoElement.paused && !videoElement.ended; }
+
+        function handleLocomotion(dt) {
             const s = renderer.xr.getSession();
             if(!s) return;
-            for(const src of s.inputSources) {
-                if(src.handedness === 'left' && src.gamepad) {
-                    const axes = src.gamepad.axes;
-                    if(axes.length >= 4) {
-                        const x = axes[2], z = axes[3];
-                        if(Math.abs(x)>0.1 || Math.abs(z)>0.1) {
-                            const speed = 2 * dt;
-                            const dir = new THREE.Vector3(); camera.getWorldDirection(dir); dir.y=0; dir.normalize();
-                            const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0,1,0));
-                            dolly.position.addScaledVector(right, x * speed).addScaledVector(dir, z * speed);
-                            createFootprint();
+            // Simple Left Stick movement
+            const sources = s.inputSources;
+            for(let src of sources) {
+                if(src.handedness === 'left' && src.gamepad && src.gamepad.axes.length >= 4) {
+                    const x = src.gamepad.axes[2];
+                    const z = src.gamepad.axes[3];
+                    if(Math.abs(x)>0.1 || Math.abs(z)>0.1) {
+                        const dir = new THREE.Vector3(); 
+                        camera.getWorldDirection(dir); dir.y=0; dir.normalize();
+                        const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0,1,0));
+                        dolly.position.addScaledVector(right, x * 2 * dt);
+                        dolly.position.addScaledVector(dir, z * 2 * dt);
+                    }
+                }
+            }
+        }
+
+        function scheduleNextSantaPass(offset = 0) {
+            santaActive = false;
+            santaNextPassTime = clock.getElapsedTime() + (offset || (60 + Math.random() * 120));
+            if (santaGroup) santaGroup.visible = false;
+        }
+
+        function updateSanta(elapsed) {
+            if (!santaLoaded || !santaGroup) return;
+
+            if (!santaActive && elapsed >= santaNextPassTime) {
+                santaActive = true;
+                santaPassStart = elapsed;
+                
+                // Random path high in sky
+                const y = 25 + Math.random() * 5;
+                const z = -60 + Math.random() * 80; 
+                santaStartPos.set(-100, y, z);
+                santaEndPos.set(100, y, z + (Math.random()*20 - 10));
+                santaGroup.position.copy(santaStartPos);
+                santaGroup.visible = true;
+                
+                // Play sound
+                if(santaSound && !santaSound.isPlaying) santaSound.play();
+            }
+
+            if (santaActive) {
+                const t = (elapsed - santaPassStart) / santaPassDuration;
+                if (t >= 1) {
+                    scheduleNextSantaPass();
+                } else {
+                    santaGroup.position.lerpVectors(santaStartPos, santaEndPos, t);
+                    santaGroup.lookAt(santaEndPos);
+                    santaGroup.children.forEach(c => {
+                        if(c.name!=='santa_audio') c.rotation.z = Math.sin(elapsed*5)*0.1; // jiggle
+                    });
+                }
+            }
+        }
+
+        function updateSnowballs(dt) {
+            // 1. Move and Ground Check
+            for(const sb of thrownSnowballs) {
+                if(sb.stopped) continue;
+
+                sb.vel.y -= SNOWBALL_GRAVITY * dt;
+                sb.mesh.position.addScaledVector(sb.vel, dt);
+
+                const groundY = getGroundHeight(sb.mesh.position.x, sb.mesh.position.z) + sb.radius*0.8; // Sink slightly
+                if(sb.mesh.position.y <= groundY) {
+                    sb.mesh.position.y = groundY;
+                    sb.vel.set(0,0,0);
+                    sb.stopped = true;
+                }
+            }
+
+            // 2. Simple Collision (Piling)
+            // Limit checks for performance
+            const checkCount = Math.min(thrownSnowballs.length, 100);
+            for(let i=0; i<checkCount; i++) {
+                const a = thrownSnowballs[i];
+                for(let j=i+1; j<checkCount; j++) {
+                    const b = thrownSnowballs[j];
+                    
+                    const distSq = a.mesh.position.distanceToSquared(b.mesh.position);
+                    const minD = a.radius + b.radius;
+                    
+                    if(distSq < minD*minD) {
+                        // Collided
+                        const dist = Math.sqrt(distSq);
+                        const overlap = minD - dist;
+                        const normal = tempVecA.subVectors(a.mesh.position, b.mesh.position).normalize();
+                        
+                        // Push apart
+                        const adjust = normal.multiplyScalar(overlap * 0.5);
+                        a.mesh.position.add(adjust);
+                        b.mesh.position.sub(adjust);
+                        
+                        // If moving fast (bullet hit pile), stop
+                        if(!a.stopped || !b.stopped) {
+                             a.vel.multiplyScalar(0.5); b.vel.multiplyScalar(0.5);
+                             a.stopped = true; b.stopped = true;
                         }
                     }
                 }
             }
         }
 
-        let lastFootprint = 0;
-        function createFootprint() {
-            if(Date.now() - lastFootprint > 300) {
-                const fp = new THREE.Mesh(new THREE.CircleGeometry(0.1,8), new THREE.MeshBasicMaterial({color:0xddddff, transparent:true, opacity:0.3}));
-                fp.rotation.x = -Math.PI/2; 
-                fp.position.copy(dolly.position).add(camera.position); 
-                fp.position.y = 0.02;
-                scene.add(fp);
-                footprints.push({mesh:fp, age:0});
-                lastFootprint = Date.now();
+        function updateSnowParticles() {
+            if(!snowSystem.mesh) return;
+            const pos = snowSystem.mesh.geometry.attributes.position.array;
+            for(let i=0; i<SNOW_COUNT; i++) {
+                const yIdx = i*3+1;
+                pos[yIdx] += snowSystem.velocities[i].y;
+                if(pos[yIdx] < 0) pos[yIdx] = 20;
+                pos[i*3] += snowSystem.velocities[i].x;
+                pos[i*3+2] += snowSystem.velocities[i].z;
+            }
+            snowSystem.mesh.geometry.attributes.position.needsUpdate = true;
+        }
+
+        function handleInteraction() {
+            // Check Rays for 1. Buttons (UI) and 2. Snowballs (Melting)
+            [controller1, controller2].forEach(c => {
+                tempMatrix.identity().extractRotation(c.matrixWorld);
+                raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);
+                raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+                // UI Highlight
+                const uiHits = raycaster.intersectObjects(interactableObjects, true);
+                if(uiHits.length > 0) {
+                    const btn = resolveButtonMesh(uiHits[0].object);
+                    if(btn && !btn.userData.hovered) {
+                        btn.userData.hovered = true;
+                        btn.material.emissive.setHex(0xffff00);
+                    }
+                    cursor.position.copy(uiHits[0].point);
+                    cursor.visible = true;
+                    // Reset line length
+                    const line = c.getObjectByName('line');
+                    if(line) line.scale.z = uiHits[0].distance;
+                    return; 
+                } else {
+                    // Reset UI highlights
+                    interactableObjects.forEach(obj => {
+                        const b = resolveButtonMesh(obj);
+                        if(b && b.userData.hovered) {
+                            b.userData.hovered = false;
+                            b.material.emissive.setHex(b.userData.baseEmissive);
+                        }
+                    });
+                }
+
+                // Melt Snowballs (Laser Effect)
+                // Filter only snowballs for intersection
+                const snowMeshes = thrownSnowballs.map(s => s.mesh);
+                const snowHits = raycaster.intersectObjects(snowMeshes);
+                
+                const line = c.getObjectByName('line');
+
+                if(snowHits.length > 0) {
+                    const hitObj = snowHits[0].object;
+                    const sb = thrownSnowballs.find(s => s.mesh === hitObj);
+                    if(sb) {
+                        // Melt logic
+                        sb.scale -= 0.05;
+                        sb.mesh.scale.setScalar(sb.scale);
+                        if(sb.scale <= 0.1) {
+                            scene.remove(sb.mesh);
+                            thrownSnowballs = thrownSnowballs.filter(s => s !== sb);
+                        }
+                        // Visuals
+                        cursor.position.copy(snowHits[0].point);
+                        cursor.visible = true;
+                        if(line) line.scale.z = snowHits[0].distance;
+                    }
+                } else {
+                    cursor.visible = false;
+                    if(line) line.scale.z = 50; // Long laser
+                }
+            });
+        }
+
+        // Desktop interaction for testing
+        function onPointerDown(event) {
+            if(renderer.xr.isPresenting) return;
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const hits = raycaster.intersectObjects(interactableObjects, true);
+            if(hits.length > 0) {
+                const btn = resolveButtonMesh(hits[0].object);
+                if(btn) handleButtonAction(btn.name);
             }
         }
 
-        // --- GAME LOOP ---
-        function render() {
-            const dt = clock.getDelta();
-            const elapsed = clock.getElapsedTime();
-            handleMovement(dt);
-
-            // Flying Santa Animation (rare fly-bys)
-            if (santaLoaded && santaGroup) {
-                if (!santaActive && elapsed >= santaNextPassTime) {
-                    startSantaPass();
-                }
-                if (santaActive) {
-                    const passT = (elapsed - santaPassStart) / santaPassDuration;
-                    if (passT >= 1) {
-                        scheduleNextSantaPass();
-                    } else {
-                        const eased = THREE.MathUtils.smoothstep(passT, 0, 1);
-                        santaGroup.position.lerpVectors(santaStartPos, santaEndPos, eased);
-                        santaGroup.position.y += Math.sin(elapsed * 2) * 0.5;
-                        const lookAhead = new THREE.Vector3().lerpVectors(
-                            santaStartPos,
-                            santaEndPos,
-                            Math.min(1, eased + 0.02)
-                        );
-                        santaGroup.lookAt(lookAhead);
-                    }
-                }
-            }
-
-            // Snowballs Physics
-            for(const obj of thrownSnowballs) {
-                if(!obj.active) continue;
-                obj.vel.y -= 9.8 * dt; // Gravity
-                obj.mesh.position.addScaledVector(obj.vel, dt);
-                
-                // Floor Collision
-                const gy = Math.sin(obj.mesh.position.x*0.1)*0.5 + Math.cos(obj.mesh.position.z*0.1)*0.5;
-                if(obj.mesh.position.y < gy + 0.1) {
-                    obj.mesh.position.y = gy + 0.1;
-                    obj.active = false;
-                    obj.vel.set(0,0,0);
-                }
-            }
-
-            // Snow Particles
-            if(snowSystem.mesh) {
-                const pos = snowSystem.mesh.geometry.attributes.position.array;
-                for(let i=0; i<SNOW_COUNT; i++) {
-                    pos[i*3+1] += snowSystem.velocities[i].y;
-                    if(pos[i*3+1] < 0) pos[i*3+1] = 15; // Reset height
-                    pos[i*3] += snowSystem.velocities[i].x; // Wiggle
-                }
-                snowSystem.mesh.geometry.attributes.position.needsUpdate = true;
-            }
-
-            // Update Video Texture if playing
-            if ( videoElement && videoElement.readyState === videoElement.HAVE_ENOUGH_DATA ) {
-                if(videoTexture) videoTexture.needsUpdate = true;
-            }
-
-            // Controller Interaction Logic
-            let anyCursorHit = false;
-            [controller1, controller2].forEach((c, i) => {
-                // Tracking history for throw velocity
-                if(controllerData[i].obj) {
-                    controllerData[i].hist.push({p:c.position.clone(), t:performance.now()});
-                    if(controllerData[i].hist.length>5) controllerData[i].hist.shift();
-                }
-                
-                // Raycasting Visuals
-                tempMatrix.identity().extractRotation(c.matrixWorld);
-                raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);
-                raycaster.ray.direction.set(0,0,-1).applyMatrix4(tempMatrix);
-                
-                const hits = raycaster.intersectObjects(interactableObjects, true);
-                const line = c.children.find(o=>o.name==='line');
-                if(hits.length>0) {
-                    if(line) line.scale.z = hits[0].distance;
-                    cursor.visible = true; cursor.position.copy(hits[0].point);
-                    anyCursorHit = true;
-                } else {
-                    if(line) line.scale.z = 5;
-                }
-                controllerHoverTargets[i] = hits.length > 0 ? resolveButtonMesh(hits[0].object) : null;
-            });
-            if(!anyCursorHit) cursor.visible = false;
-
-            const hoverTargets = new Set();
-            controllerHoverTargets.forEach(t => { if(t) hoverTargets.add(t); });
-            if(mouseHoverTarget) hoverTargets.add(mouseHoverTarget);
-            updateHoverVisuals(hoverTargets);
-
-            renderer.render(scene, camera);
+        function onPointerMove(event) {
+            if(renderer.xr.isPresenting) return;
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
         }
 
         function onWindowResize() {
