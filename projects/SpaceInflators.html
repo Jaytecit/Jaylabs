@@ -44,7 +44,9 @@
     <button id="vr-btn">VR Mode</button>
   </div>
   <a-scene background="color: #050510" renderer="antialias: true; colorManagement: true">
-    <a-assets></a-assets>
+    <a-assets>
+      <canvas id="hud-canvas" width="1024" height="320"></canvas>
+    </a-assets>
 
     <a-sky color="#04060f"></a-sky>
 
@@ -96,22 +98,34 @@
       <a-entity id="camera" camera position="0 1.6 0"></a-entity>
 
       <a-entity id="rightHand" oculus-touch-controls="hand: right" gun="hand: right">
-        <a-entity id="gun-container-right" rotation="-40 0 0">
-          <a-box position="0 -0.02 0.08" rotation="15 0 0" depth="0.12" height="0.18" width="0.06" color="#222"></a-box>
-          <a-box position="0 -0.01 0.02" depth="0.08" height="0.12" width="0.05" color="#2a2a2a"></a-box>
-          <a-cylinder position="0 0 -0.2" radius="0.025" height="0.25" rotation="90 0 0"
-                      color="#00ff80" material="emissive: #00ff80"></a-cylinder>
-          <a-entity id="muzzle-right" position="0 0.03 -0.25"></a-entity>
+        <a-entity id="gun-container-right" rotation="-35 0 0">
+          <a-entity geometry="primitive: box; width: 0.12; height: 0.22; depth: 0.5"
+                    material="color: #00ffd5; wireframe: true; transparent: true; opacity: 0.7; emissive: #00ffd5; emissiveIntensity: 0.75"></a-entity>
+          <a-entity geometry="primitive: cylinder; radius: 0.05; height: 0.55" rotation="90 0 0" position="0 0 -0.3"
+                    material="color: #7df3ff; wireframe: true; transparent: true; opacity: 0.7; emissive: #7df3ff; emissiveIntensity: 0.8"></a-entity>
+          <a-entity geometry="primitive: torus; radius: 0.09; radiusTubular: 0.015" rotation="90 0 0" position="0 0.07 -0.05"
+                    material="color: #ffb347; wireframe: true; transparent: true; opacity: 0.6; emissive: #ffb347; emissiveIntensity: 0.7"></a-entity>
+          <a-entity geometry="primitive: octahedron; radius: 0.06" position="0 -0.06 0.1"
+                    material="color: #ff4e90; wireframe: true; transparent: true; opacity: 0.7; emissive: #ff4e90; emissiveIntensity: 0.7"></a-entity>
+          <a-entity geometry="primitive: cone; radiusBottom: 0.06; radiusTop: 0.02; height: 0.2" position="0 -0.08 0.25" rotation="-90 0 0"
+                    material="color: #7df3ff; wireframe: true; transparent: true; opacity: 0.7; emissive: #7df3ff; emissiveIntensity: 0.7"></a-entity>
+          <a-entity id="muzzle-right" position="0 0.03 -0.45"></a-entity>
         </a-entity>
       </a-entity>
 
       <a-entity id="leftHand" oculus-touch-controls="hand: left" gun="hand: left">
-        <a-entity id="gun-container-left" class="offhand-gun" rotation="-40 0 0" visible="false">
-          <a-box position="0 -0.02 0.08" rotation="15 0 0" depth="0.12" height="0.18" width="0.06" color="#222"></a-box>
-          <a-box position="0 -0.01 0.02" depth="0.08" height="0.12" width="0.05" color="#2a2a2a"></a-box>
-          <a-cylinder position="0 0 -0.2" radius="0.025" height="0.25" rotation="90 0 0"
-                      color="#00ff80" material="emissive: #00ff80"></a-cylinder>
-          <a-entity id="muzzle-left" position="0 0.03 -0.25"></a-entity>
+        <a-entity id="gun-container-left" class="offhand-gun" rotation="-30 0 0" visible="false">
+          <a-entity geometry="primitive: box; width: 0.1; height: 0.18; depth: 0.42"
+                    material="color: #9fe3ff; wireframe: true; transparent: true; opacity: 0.7; emissive: #9fe3ff; emissiveIntensity: 0.75"></a-entity>
+          <a-entity geometry="primitive: cylinder; radius: 0.045; height: 0.5" rotation="90 0 0" position="0 0 -0.28"
+                    material="color: #4df5ff; wireframe: true; transparent: true; opacity: 0.7; emissive: #4df5ff; emissiveIntensity: 0.8"></a-entity>
+          <a-entity geometry="primitive: torus; radius: 0.11; radiusTubular: 0.02" rotation="90 0 0" position="0 0.05 -0.02"
+                    material="color: #7df3ff; wireframe: true; transparent: true; opacity: 0.6; emissive: #7df3ff; emissiveIntensity: 0.7"></a-entity>
+          <a-entity geometry="primitive: octahedron; radius: 0.05" position="0 -0.05 0.12"
+                    material="color: #4dd6ff; wireframe: true; transparent: true; opacity: 0.7; emissive: #4dd6ff; emissiveIntensity: 0.7"></a-entity>
+          <a-entity geometry="primitive: cone; radiusBottom: 0.05; radiusTop: 0.02; height: 0.18" position="0 -0.06 0.22" rotation="-90 0 0"
+                    material="color: #9fe3ff; wireframe: true; transparent: true; opacity: 0.7; emissive: #9fe3ff; emissiveIntensity: 0.7"></a-entity>
+          <a-entity id="muzzle-left" position="0 0.03 -0.4"></a-entity>
         </a-entity>
       </a-entity>
 
@@ -119,6 +133,11 @@
         <a-ring id="shield-disc" radius-inner="0.82" radius-outer="0.88" position="0 0 0" rotation="0 0 0"
                 material="color: #8ad8ff; wireframe: true; opacity: 0.4; transparent: true; side: double; depthTest: false"></a-ring>
       </a-entity>
+    </a-entity>
+
+    <a-entity id="world-hud">
+      <a-plane id="hud-panel" position="0 9.4 -32" width="5.6" height="1.7"
+               material="shader: flat; transparent: true; src: #hud-canvas" look-at="#camera"></a-plane>
     </a-entity>
 
     <a-entity id="game-manager" game-manager></a-entity>
@@ -155,26 +174,95 @@
       return Math.min(max, Math.max(min, val));
     }
 
+    function cubicBezier(p0, p1, p2, p3, t) {
+      const u = 1 - t;
+      const tt = t * t;
+      const uu = u * u;
+      const uuu = uu * u;
+      const ttt = tt * t;
+      return new THREE.Vector3(
+        (uuu * p0.x) + (3 * uu * t * p1.x) + (3 * u * tt * p2.x) + (ttt * p3.x),
+        (uuu * p0.y) + (3 * uu * t * p1.y) + (3 * u * tt * p2.y) + (ttt * p3.y),
+        (uuu * p0.z) + (3 * uu * t * p1.z) + (3 * u * tt * p2.z) + (ttt * p3.z)
+      );
+    }
+
     const WEAPON_COLORS = {
       blaster: '#00ffc8',
       spread: '#ffb347',
+      nova: '#ff6470',
+      rail: '#7df3ff',
       bomb: '#ff6470',
       special: '#7df3ff'
     };
 
     function weaponLabel(type) {
       if (type === 'spread') return 'Spread';
-      if (type === 'bomb') return 'Nova';
-      if (type === 'special') return 'Homing';
+      if (type === 'nova') return 'Nova';
+      if (type === 'rail') return 'Rail';
+      if (type === 'capture') return 'Capture';
       return 'Blaster';
     }
 
+    const POWERUP_LEGEND = [
+      'weaponUp', 'spread', 'nova', 'rail', 'shield', 'shieldBoost',
+      'extraLife', 'scoreBoost', 'freeze', 'overclock', 'bulletTime', 'magnet', 'cleanse'
+    ];
+
+    const POWERUP_DEFS = {
+      weaponUp: { label: 'Weapon Up', color: '#7df3ff' },
+      spread: { label: 'Spread', color: '#ffb347', weapon: 'spread' },
+      nova: { label: 'Nova', color: '#ff6470', weapon: 'nova' },
+      rail: { label: 'Rail', color: '#7df3ff', weapon: 'rail' },
+      shield: { label: 'Shield', color: '#4dd6ff' },
+      shieldBoost: { label: 'Shield+', color: '#5effc1' },
+      extraLife: { label: 'Life', color: '#ffd24d' },
+      scoreBoost: { label: 'Score', color: '#ffe86e' },
+      freeze: { label: 'Pause', color: '#9fdcff', duration: 7000 },
+      overclock: { label: 'Overclock', color: '#ff4e90', duration: 5200 },
+      bulletTime: { label: 'Bullet Time', color: '#7bc6ff', duration: 5600 },
+      magnet: { label: 'Magnet', color: '#f5a8ff', duration: 6800 },
+      cleanse: { label: 'Cleanse', color: '#00ffd5' }
+    };
+
+    const POWERUP_POOL = [
+      { type: 'weaponUp', weight: 3 },
+      { type: 'spread', weight: 2 },
+      { type: 'nova', weight: 2 },
+      { type: 'rail', weight: 2 },
+      { type: 'shield', weight: 3 },
+      { type: 'shieldBoost', weight: 2 },
+      { type: 'extraLife', weight: 1 },
+      { type: 'scoreBoost', weight: 3 },
+      { type: 'freeze', weight: 1 },
+      { type: 'overclock', weight: 2 },
+      { type: 'bulletTime', weight: 2 },
+      { type: 'magnet', weight: 1 },
+      { type: 'cleanse', weight: 2 }
+    ];
+
+    function pickPowerupType() {
+      const total = POWERUP_POOL.reduce((sum, item) => sum + item.weight, 0);
+      let roll = Math.random() * total;
+      for (const item of POWERUP_POOL) {
+        roll -= item.weight;
+        if (roll <= 0) return item.type;
+      }
+      return POWERUP_POOL[0].type;
+    }
+
     const BOSS_REWARDS = ['dual', 'shieldBoost', 'weaponUp', 'extraLife', 'overclock'];
-    const MOTHERSHIP_THEMES = [
-      { body: '#6c3fff', emissive: '#b169ff', crown: '#0ef' },
-      { body: '#1f8b5f', emissive: '#4df5a0', crown: '#f5f56c' },
-      { body: '#a63c3c', emissive: '#ff7b5f', crown: '#8ef5ff' },
-      { body: '#2c4fa8', emissive: '#7fb4ff', crown: '#ff66cc' }
+    const BOSS_DEFS = [
+      { id: 'pulse', name: 'Pulse Warden', body: '#48c7ff', accent: '#9fe3ff', core: 'octahedron', profile: 'halo', weapon: 'burst', motion: 'sway', baseHealth: 22 },
+      { id: 'arc', name: 'Arc Tyrant', body: '#ff7ad9', accent: '#ffb347', core: 'dodecahedron', profile: 'wings', weapon: 'sweep', motion: 'wide', baseHealth: 26 },
+      { id: 'spiral', name: 'Spiral Siren', body: '#9cff57', accent: '#39ffb4', core: 'icosahedron', profile: 'spires', weapon: 'spiral', motion: 'orbit', baseHealth: 28 },
+      { id: 'ring', name: 'Ring Sovereign', body: '#ffd24d', accent: '#ff8c3b', core: 'sphere', profile: 'rings', weapon: 'ring', motion: 'hover', baseHealth: 30 },
+      { id: 'mine', name: 'Mine Weaver', body: '#a88cff', accent: '#ff6fd8', core: 'tetrahedron', profile: 'crown', weapon: 'mine', motion: 'sway', baseHealth: 34 },
+      { id: 'split', name: 'Splitclaw', body: '#5effc1', accent: '#18ffd5', core: 'octahedron', profile: 'blades', weapon: 'split', motion: 'zigzag', baseHealth: 36 },
+      { id: 'lancer', name: 'Lancer Prime', body: '#ff6b6b', accent: '#ffd2a6', core: 'dodecahedron', profile: 'spear', weapon: 'rail', motion: 'dash', baseHealth: 38 },
+      { id: 'drone', name: 'Drone Queen', body: '#7c9cff', accent: '#b86bff', core: 'icosahedron', profile: 'bulwark', weapon: 'burst', motion: 'sway', baseHealth: 42, minionBoost: 1 },
+      { id: 'storm', name: 'Storm Herald', body: '#55e7ff', accent: '#ffcc55', core: 'octahedron', profile: 'hex', weapon: 'fan', motion: 'figure8', baseHealth: 46 },
+      { id: 'overlord', name: 'Overlord Prime', body: '#ff4e90', accent: '#00ffd5', core: 'dodecahedron', profile: 'titan', weapon: 'chaos', motion: 'orbit', baseHealth: 52, chaosBoost: 1 }
     ];
 
     function spawnSparkBurst(scene, at, color = '#ffffff', count = 10, spread = 0.8, size = 0.05, life = 400) {
@@ -231,54 +319,116 @@
       return stars;
     }
 
-    function createVoxelSprite(type) {
-      const sprites = {
-        squid: [
-          '01110',
-          '11111',
-          '11011',
-          '11111',
-          '10101'
-        ],
-        crab: [
-          '10101',
-          '11111',
-          '11111',
-          '01110',
-          '01010'
-        ],
-        bug: [
-          '00100',
-          '01110',
-          '11111',
-          '10101',
-          '01010'
-        ]
+    function wireframeMaterial(color, opacity = 0.7, emissive = color) {
+      return `color: ${color}; emissive: ${emissive}; emissiveIntensity: 0.75; wireframe: true; opacity: ${opacity}; transparent: true; metalness:0.2; roughness:0.35`;
+    }
+
+    function addWireframePart(root, geometry, color, position, rotation, scale, opacity = 0.7) {
+      const part = document.createElement('a-entity');
+      part.setAttribute('geometry', geometry);
+      part.setAttribute('material', wireframeMaterial(color, opacity));
+      if (position) part.setAttribute('position', position);
+      if (rotation) part.setAttribute('rotation', rotation);
+      if (scale) part.setAttribute('scale', scale);
+      root.appendChild(part);
+      return part;
+    }
+
+    function createWireframeInvader(type) {
+      const palette = {
+        squid: { main: '#7df3ff', accent: '#1ac6ff' },
+        crab: { main: '#ff7ad9', accent: '#ffb347' },
+        bug: { main: '#9cff57', accent: '#39ffb4' }
       };
-      const colors = {
-        squid: '#ff00ff',
-        crab: '#00ffff',
-        bug: '#00ff00'
-      };
+      const theme = palette[type] || palette.crab;
       const root = document.createElement('a-entity');
       root.setAttribute('class', 'invader');
-      const pattern = sprites[type] || sprites.crab;
-      const color = colors[type] || '#00ffff';
-      const size = 0.14;
-      const half = (pattern[0].length - 1) * 0.5 * size;
-      const vHalf = (pattern.length - 1) * 0.5 * size;
-      pattern.forEach((row, r) => {
-        [...row].forEach((cell, c) => {
-          if (cell !== '1') return;
-          const box = document.createElement('a-box');
-          box.setAttribute('width', size);
-          box.setAttribute('height', size);
-          box.setAttribute('depth', size);
-          box.setAttribute('material', `color: ${color}; metalness:0.8; roughness:0.3; emissive:${color}; emissiveIntensity:0.6`);
-          box.setAttribute('position', `${(c * size) - half} ${(vHalf - r * size)} 0`);
-          root.appendChild(box);
-        });
-      });
+
+      addWireframePart(root, 'primitive: icosahedron; radius: 0.35', theme.main, '0 0 0', null, null, 0.75);
+      addWireframePart(root, 'primitive: torus; radius: 0.42; radiusTubular: 0.04', theme.accent, '0 0 0', '90 0 0', null, 0.6);
+
+      if (type === 'squid') {
+        addWireframePart(root, 'primitive: cone; radiusBottom: 0.18; radiusTop: 0.02; height: 0.5', theme.accent, '0 -0.38 0', '0 0 0');
+        addWireframePart(root, 'primitive: cone; radiusBottom: 0.14; radiusTop: 0.02; height: 0.45', theme.main, '-0.18 -0.35 0', '0 15 0');
+        addWireframePart(root, 'primitive: cone; radiusBottom: 0.14; radiusTop: 0.02; height: 0.45', theme.main, '0.18 -0.35 0', '0 -15 0');
+        addWireframePart(root, 'primitive: sphere; radius: 0.2', theme.accent, '0 0.32 0');
+      } else if (type === 'bug') {
+        addWireframePart(root, 'primitive: octahedron; radius: 0.3', theme.accent, '0 0 0.18', null, '0.8 0.8 0.8');
+        addWireframePart(root, 'primitive: cone; radiusBottom: 0.12; radiusTop: 0.02; height: 0.5', theme.main, '0 -0.18 -0.35', '90 0 0');
+        addWireframePart(root, 'primitive: torus; radius: 0.3; radiusTubular: 0.03', theme.main, '0 0.1 0.15', '0 90 0', null, 0.55);
+      } else {
+        addWireframePart(root, 'primitive: box; width: 0.8; height: 0.12; depth: 0.4', theme.main, '0 0 0', null, null, 0.6);
+        addWireframePart(root, 'primitive: box; width: 0.25; height: 0.08; depth: 0.55', theme.accent, '-0.42 0 0', '0 12 0', null, 0.55);
+        addWireframePart(root, 'primitive: box; width: 0.25; height: 0.08; depth: 0.55', theme.accent, '0.42 0 0', '0 -12 0', null, 0.55);
+        addWireframePart(root, 'primitive: sphere; radius: 0.16', theme.accent, '0 0.22 0');
+      }
+      return root;
+    }
+
+    function createEnemyProjectile(color = '#ff4e90', radius = 0.16, opacity = 0.75) {
+      const bullet = document.createElement('a-entity');
+      bullet.setAttribute('geometry', `primitive: octahedron; radius: ${radius}`);
+      bullet.setAttribute('material', wireframeMaterial(color, opacity));
+      bullet.setAttribute('rotation', `${Math.random() * 180} ${Math.random() * 180} ${Math.random() * 180}`);
+      return bullet;
+    }
+
+    function applyBossAimBias(dir, bias = 0.25) {
+      dir.y -= bias;
+      return dir.normalize();
+    }
+
+    function createWireframeBoss(def, stage) {
+      const root = document.createElement('a-entity');
+      const size = 1 + stage * 0.08;
+      const coreRadius = 1.35 + stage * 0.1;
+      addWireframePart(root, `primitive: ${def.core || 'octahedron'}; radius: ${coreRadius}`, def.body, '0 0 0', null, null, 0.6);
+      const accent = def.accent || def.body;
+      if (def.profile === 'halo') {
+        addWireframePart(root, 'primitive: torus; radius: 1.8; radiusTubular: 0.05', accent, '0 0 0', '90 0 0', `${size} ${size} ${size}`, 0.55);
+        addWireframePart(root, 'primitive: cone; radiusBottom: 0.35; radiusTop: 0.05; height: 0.9', accent, '0 0.9 0', '0 0 0', null, 0.6);
+      } else if (def.profile === 'wings') {
+        addWireframePart(root, 'primitive: box; width: 2.2; height: 0.12; depth: 0.6', accent, '0 0 0', null, `${size} 1 ${size}`, 0.55);
+        addWireframePart(root, 'primitive: box; width: 0.4; height: 0.2; depth: 1.2', accent, '-1.4 0 0', '0 12 0', null, 0.5);
+        addWireframePart(root, 'primitive: box; width: 0.4; height: 0.2; depth: 1.2', accent, '1.4 0 0', '0 -12 0', null, 0.5);
+      } else if (def.profile === 'spires') {
+        addWireframePart(root, 'primitive: cone; radiusBottom: 0.25; radiusTop: 0.02; height: 1.1', accent, '0 1 0', null, null, 0.6);
+        addWireframePart(root, 'primitive: cone; radiusBottom: 0.2; radiusTop: 0.02; height: 0.9', accent, '0 -1 0', '180 0 0', null, 0.6);
+        addWireframePart(root, 'primitive: torus; radius: 1.2; radiusTubular: 0.04', accent, '0 0 0', '0 90 0', `${size} ${size} ${size}`, 0.55);
+      } else if (def.profile === 'rings') {
+        addWireframePart(root, 'primitive: torus; radius: 1.6; radiusTubular: 0.05', accent, '0 0 0', '90 0 0', `${size} ${size} ${size}`, 0.55);
+        addWireframePart(root, 'primitive: torus; radius: 1.3; radiusTubular: 0.04', accent, '0 0 0', '0 90 0', `${size} ${size} ${size}`, 0.55);
+      } else if (def.profile === 'crown') {
+        addWireframePart(root, 'primitive: torus; radius: 1.5; radiusTubular: 0.05', accent, '0 0.2 0', '90 0 0', `${size} ${size} ${size}`, 0.55);
+        for (let i = 0; i < 6; i++) {
+          const angle = (Math.PI * 2 * i) / 6;
+          const x = Math.cos(angle) * 1.2;
+          const z = Math.sin(angle) * 1.2;
+          addWireframePart(root, 'primitive: cone; radiusBottom: 0.18; radiusTop: 0.02; height: 0.7', accent, `${x} 0.75 ${z}`, `0 ${-angle * 57.3} 0`, null, 0.55);
+        }
+      } else if (def.profile === 'blades') {
+        addWireframePart(root, 'primitive: box; width: 2.6; height: 0.1; depth: 0.4', accent, '0 0 0', '0 0 25', `${size} 1 ${size}`, 0.55);
+        addWireframePart(root, 'primitive: box; width: 2.6; height: 0.1; depth: 0.4', accent, '0 0 0', '0 0 -25', `${size} 1 ${size}`, 0.55);
+        addWireframePart(root, 'primitive: box; width: 0.4; height: 0.1; depth: 2.6', accent, '0 0 0', null, `${size} 1 ${size}`, 0.55);
+      } else if (def.profile === 'spear') {
+        addWireframePart(root, 'primitive: cone; radiusBottom: 0.35; radiusTop: 0.02; height: 1.4', accent, '0 0 -1.2', '90 0 0', null, 0.6);
+        addWireframePart(root, 'primitive: torus; radius: 1.1; radiusTubular: 0.04', accent, '0 0.2 0.2', '90 0 0', `${size} ${size} ${size}`, 0.55);
+      } else if (def.profile === 'bulwark') {
+        addWireframePart(root, 'primitive: box; width: 2.4; height: 1.1; depth: 0.4', accent, '0 0 0.8', null, `${size} ${size} ${size}`, 0.45);
+        addWireframePart(root, 'primitive: torus; radius: 1.4; radiusTubular: 0.05', accent, '0 0 0.2', '0 90 0', `${size} ${size} ${size}`, 0.55);
+      } else if (def.profile === 'hex') {
+        for (let i = 0; i < 6; i++) {
+          const angle = (Math.PI * 2 * i) / 6;
+          const x = Math.cos(angle) * 1.5;
+          const z = Math.sin(angle) * 1.5;
+          addWireframePart(root, 'primitive: box; width: 0.3; height: 0.3; depth: 0.6', accent, `${x} 0 ${z}`, `0 ${-angle * 57.3} 0`, null, 0.55);
+        }
+        addWireframePart(root, 'primitive: torus; radius: 1.7; radiusTubular: 0.05', accent, '0 0 0', '90 0 0', `${size} ${size} ${size}`, 0.55);
+      } else if (def.profile === 'titan') {
+        addWireframePart(root, 'primitive: torusKnot; radius: 1; radiusTubular: 0.08; p: 2; q: 3', accent, '0 0 0', '0 0 0', `${size} ${size} ${size}`, 0.45);
+        addWireframePart(root, 'primitive: box; width: 0.5; height: 2.2; depth: 0.5', accent, '-1.3 0 0', null, `${size} ${size} ${size}`, 0.5);
+        addWireframePart(root, 'primitive: box; width: 0.5; height: 2.2; depth: 0.5', accent, '1.3 0 0', null, `${size} ${size} ${size}`, 0.5);
+      }
       return root;
     }
 
@@ -329,10 +479,17 @@
         this.state = 'menu';
         this.score = 0;
         this.weaponLevel = 1;
+        this.weaponType = 'blaster';
+        this.collectedWeapons = ['blaster'];
+        this.collectedWeapons = ['blaster'];
         this.fireDelayBoost = 0;
+        this.freezeMovementUntil = 0;
+        this.bulletTimeUntil = 0;
+        this.overclockUntil = 0;
+        this.magnetUntil = 0;
         this.handState = {
-          right: { unlocked: true },
-          left: { unlocked: false }
+          right: { unlocked: true, weapon: 'blaster' },
+          left: { unlocked: true, weapon: 'capture' }
         };
         this.shieldHP = 6;
         this.lives = 3;
@@ -370,9 +527,9 @@
         this.enemyFireWaveStep = 40;
         this.audioCtx = null;
         this.difficulties = {
-          easy:   { moveSpeed: 0.7, dropDistance: 2.5, baseTick: 800, minTick: 520, tickStep: 40, fireChance: 0.004, fireWave: 0.0012, enemyFireInterval: 6000, enemyFireMin: 3200, enemyFireWaveStep: 35 },
-          normal: { moveSpeed: 0.85, dropDistance: 3.0, baseTick: 750, minTick: 450, tickStep: 45, fireChance: 0.008, fireWave: 0.0015, enemyFireInterval: 5000, enemyFireMin: 2600, enemyFireWaveStep: 40 },
-          hard:   { moveSpeed: 1.0, dropDistance: 3.5, baseTick: 700, minTick: 400, tickStep: 55, fireChance: 0.012, fireWave: 0.002, enemyFireInterval: 4000, enemyFireMin: 2000, enemyFireWaveStep: 45 }
+          easy:   { moveSpeed: 0.45, dropDistance: 1.2, baseTick: 880, minTick: 600, tickStep: 35, fireChance: 0.003, fireWave: 0.001, enemyFireInterval: 7500, enemyFireMin: 4200, enemyFireWaveStep: 35 },
+          normal: { moveSpeed: 0.6, dropDistance: 1.4, baseTick: 820, minTick: 520, tickStep: 40, fireChance: 0.005, fireWave: 0.0012, enemyFireInterval: 6500, enemyFireMin: 3400, enemyFireWaveStep: 40 },
+          hard:   { moveSpeed: 0.75, dropDistance: 1.6, baseTick: 780, minTick: 480, tickStep: 45, fireChance: 0.007, fireWave: 0.0014, enemyFireInterval: 5500, enemyFireMin: 2800, enemyFireWaveStep: 45 }
         };
         this.headPos = new THREE.Vector3(0, 1.6, 0);
         this.tempVec = new THREE.Vector3();
@@ -405,10 +562,19 @@
         this.pointerLocked = false;
         this.desktopYaw = 0;
         this.desktopPitch = 0;
+        this.desktopMove = { left: false, right: false, forward: false, back: false };
+        this.desktopMoveSpeed = 4.4;
+        this.desktopBounds = { x: 6, z: 2.5 };
+        this.collectedWeapons = ['blaster'];
         this.modeButtons = {
           desktop: document.getElementById('desktop-btn'),
           vr: document.getElementById('vr-btn')
         };
+        if (this.leftGunContainer) this.leftGunContainer.setAttribute('visible', true);
+        this.hudCanvas = document.getElementById('hud-canvas');
+        this.hudCtx = this.hudCanvas ? this.hudCanvas.getContext('2d') : null;
+        this.hudPlane = document.getElementById('hud-panel');
+        this.lastHudUpdate = 0;
         this.updateHUD();
         this.bindMenu();
         this.bindInputs();
@@ -427,7 +593,7 @@
         this.menuCubes.forEach(cube => {
           cube.classList.add('menu-target');
           if (!cube.querySelector('.menu-invader')) {
-            const sprite = createVoxelSprite(diffToType[cube.dataset.difficulty] || 'crab');
+            const sprite = createWireframeInvader(diffToType[cube.dataset.difficulty] || 'crab');
             sprite.classList.add('menu-invader');
             sprite.setAttribute('scale', '0.9 0.9 0.9');
             sprite.setAttribute('position', '0 0 0');
@@ -444,7 +610,26 @@
         window.addEventListener('keydown', (e) => {
           if (e.key === 'b' || e.key === 'B') this.useBomb();
           if (e.key === 'm' || e.key === 'M') this.enableDesktopMode(true);
+          this.updateDesktopMoveKey(e.key, true);
         });
+        window.addEventListener('keyup', (e) => {
+          this.updateDesktopMoveKey(e.key, false);
+        });
+        if (this.rightHand) {
+          this.rightHand.addEventListener('abuttondown', () => this.cycleWeapon('right'));
+          this.rightHand.addEventListener('bbuttondown', () => this.cycleWeapon('right'));
+        }
+        if (this.leftHand) {
+          this.leftHand.addEventListener('xbuttondown', () => this.cycleWeapon('left'));
+          this.leftHand.addEventListener('ybuttondown', () => this.cycleWeapon('left'));
+        }
+      },
+      updateDesktopMoveKey(key, isDown) {
+        if (!this.desktopMove) return;
+        if (key === 'a' || key === 'A' || key === 'ArrowLeft') this.desktopMove.left = isDown;
+        if (key === 'd' || key === 'D' || key === 'ArrowRight') this.desktopMove.right = isDown;
+        if (key === 'w' || key === 'W' || key === 'ArrowUp') this.desktopMove.forward = isDown;
+        if (key === 's' || key === 'S' || key === 'ArrowDown') this.desktopMove.back = isDown;
       },
       setupDesktopControls() {
         const prefersDesktop = !navigator.xr;
@@ -486,6 +671,17 @@
           }
         });
       },
+      updateDesktopMovement(dt) {
+        if (!this.desktopMode || !this.rig || !this.rig.object3D) return;
+        const moveX = (this.desktopMove.right ? 1 : 0) - (this.desktopMove.left ? 1 : 0);
+        const moveZ = (this.desktopMove.back ? 1 : 0) - (this.desktopMove.forward ? 1 : 0);
+        if (moveX === 0 && moveZ === 0) return;
+        const speed = this.desktopMoveSpeed || 4.2;
+        const dtSec = (dt || 0) / 1000;
+        const pos = this.rig.object3D.position;
+        pos.x = clamp(pos.x + moveX * speed * dtSec, -this.desktopBounds.x, this.desktopBounds.x);
+        pos.z = clamp(pos.z + moveZ * speed * dtSec, -this.desktopBounds.z, this.desktopBounds.z);
+      },
       bindModeButtons() {
         if (this.modeButtons.desktop) {
           this.modeButtons.desktop.addEventListener('click', () => {
@@ -523,9 +719,87 @@
       setFireHeld(hand, state) {
         this.fireHeld[hand] = state;
       },
+      cycleWeapon(hand) {
+        if (hand === 'left') {
+          if (this.handState[hand]) this.handState[hand].weapon = 'capture';
+          this.updateHUD();
+          return;
+        }
+        const weapons = this.collectedWeapons.filter(w => w !== 'capture');
+        const current = (this.handState[hand] && this.handState[hand].weapon) || 'blaster';
+        const idx = weapons.indexOf(current);
+        const next = weapons[(idx + 1) % weapons.length] || 'blaster';
+        if (this.handState[hand]) this.handState[hand].weapon = next;
+        this.updateHUD();
+      },
       updateHUD() {
         const lineEl = document.getElementById('hud-line');
         if (lineEl) lineEl.setAttribute('value', '');
+        this.renderHudCanvas();
+      },
+      refreshHudTexture(planeEl) {
+        if (!planeEl) return;
+        const mesh = planeEl.getObject3D('mesh');
+        if (mesh && mesh.material && mesh.material.map) {
+          mesh.material.map.needsUpdate = true;
+        }
+      },
+      renderHudCanvas() {
+        const ctx = this.hudCtx;
+        if (!ctx) return;
+        const w = ctx.canvas.width;
+        const h = ctx.canvas.height;
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = 'rgba(8, 16, 30, 0.75)';
+        ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = '#5ad1ff';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(8, 8, w - 16, h - 16);
+
+        ctx.fillStyle = '#d8f2ff';
+        ctx.font = 'bold 32px Trebuchet MS, Segoe UI, sans-serif';
+        ctx.fillText('SYSTEM HUD', 24, 42);
+
+        ctx.fillStyle = '#ffb347';
+        ctx.font = 'bold 44px Trebuchet MS, Segoe UI, sans-serif';
+        const scoreStr = this.score.toString().padStart(6, '0');
+        ctx.fillText(`SCORE ${scoreStr}`, 24, 96);
+        ctx.fillStyle = '#9fe3ff';
+        ctx.font = 'bold 28px Trebuchet MS, Segoe UI, sans-serif';
+        ctx.fillText(`WAVE ${this.wave || 1}`, 520, 52);
+
+        ctx.fillStyle = '#5ad1ff';
+        ctx.font = 'bold 32px Trebuchet MS, Segoe UI, sans-serif';
+        ctx.fillText(`LIVES x${this.lives}`, 24, 144);
+        ctx.fillStyle = '#7df3ff';
+        ctx.fillText(`SHIELD ${this.shieldHP}`, 24, 188);
+
+        const rightWeapon = this.handState && this.handState.right ? weaponLabel(this.handState.right.weapon) : 'Blaster';
+        const leftWeapon = this.handState && this.handState.left ? weaponLabel(this.handState.left.weapon) : 'Capture';
+        ctx.fillStyle = '#ffcc55';
+        ctx.fillText(`RIGHT: ${rightWeapon}`, 520, 96);
+        ctx.fillStyle = '#9fe3ff';
+        ctx.fillText(`LEFT: ${leftWeapon}`, 520, 144);
+
+        ctx.fillStyle = '#d8f2ff';
+        ctx.font = 'bold 24px Trebuchet MS, Segoe UI, sans-serif';
+        ctx.fillText('POWERUP LEGEND', 24, 236);
+        ctx.font = '22px Trebuchet MS, Segoe UI, sans-serif';
+        let x = 24;
+        let y = 268;
+        POWERUP_LEGEND.forEach((key, idx) => {
+          const def = POWERUP_DEFS[key];
+          if (!def) return;
+          const label = def.label || key;
+          ctx.fillStyle = def.color || '#d8f2ff';
+          ctx.fillText(label, x, y);
+          x += ctx.measureText(label).width + 24;
+          if (x > w - 180) {
+            x = 24;
+            y += 28;
+          }
+        });
+        this.refreshHudTexture(this.hudPlane);
       },
       addScore(base, reason = 'hit') {
         this.incrementCombo(reason);
@@ -567,8 +841,14 @@
         this.state = 'playing';
         this.score = 0;
         this.weaponLevel = 1;
+        this.weaponType = 'blaster';
         this.fireDelayBoost = 0;
-        this.handState = { right: { unlocked: true }, left: { unlocked: false } };
+        this.powerups = [];
+        this.freezeMovementUntil = 0;
+        this.bulletTimeUntil = 0;
+        this.overclockUntil = 0;
+        this.magnetUntil = 0;
+        this.handState = { right: { unlocked: true, weapon: 'blaster' }, left: { unlocked: true, weapon: 'capture' } };
         this.shieldHP = 6;
         this.lives = 3;
         this.comboCount = 0;
@@ -586,6 +866,7 @@
         this.enemyVolley = 1;
         this.inBossFight = false;
         this.mothership = null;
+        this.ufoSpawnedThisWave = 0;
         this.setDifficulty(defKey);
         const def = this.difficulties[defKey] || {};
         this.enemyFireInterval = def.enemyFireInterval || this.enemyFireInterval;
@@ -596,7 +877,7 @@
         this.hideMenu();
         this.nextMoveAt = performance.now() + this.baseTick;
         this.ufo = null;
-        if (this.leftGunContainer) this.leftGunContainer.setAttribute('visible', false);
+        if (this.leftGunContainer) this.leftGunContainer.setAttribute('visible', true);
         this.updateHUD();
       },
       hideMenu() {
@@ -607,6 +888,9 @@
         const menu = document.querySelector('#menu');
         if (menu) menu.setAttribute('visible', true);
       },
+      hideBossHud() {
+        return;
+      },
       clearEntities() {
         [...this.invaders, ...this.playerBullets, ...this.enemyBullets].forEach(obj => {
           if (obj.el && obj.el.parentNode) obj.el.parentNode.removeChild(obj.el);
@@ -614,6 +898,10 @@
         this.invaders = [];
         this.playerBullets = [];
         this.enemyBullets = [];
+        if (this.powerups && this.powerups.length) {
+          this.powerups.forEach(p => p.el && p.el.parentNode && p.el.parentNode.removeChild(p.el));
+        }
+        this.powerups = [];
         if (this.ufo && this.ufo.el && this.ufo.el.parentNode) {
           this.ufo.el.parentNode.removeChild(this.ufo.el);
         }
@@ -626,20 +914,29 @@
       },
       spawnFormation() {
         this.direction = 1;
+        this.ufoSpawnedThisWave = 0;
         const rows = 5;
         const cols = 8;
-        const xGap = 1.5;
-        const yGap = 1.0;
-        const startZ = -25;
-        const startY = 8;
+        const xGap = 1.6;
+        const yGap = 1.05;
+        const startZ = -24;
+        const startY = 8.2;
         this.formRows = rows;
         this.formStartY = startY;
         this.formYGap = yGap;
         const offsetX = (cols - 1) * xGap * 0.5;
+        this.formationX = 0;
+        this.formationZ = startZ;
+        this.formationDir = 1;
+        this.formationBounds = 9;
+        this.formationWavePhase = 0;
+        this.formationMinX = -offsetX;
+        this.formationMaxX = offsetX;
+        this.nextDiveAt = performance.now() + 1800;
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
             const type = r === 0 ? 'squid' : r === rows - 1 ? 'bug' : 'crab';
-            const invader = createVoxelSprite(type);
+            const invader = createWireframeInvader(type);
             invader.setAttribute('position', `${c * xGap - offsetX} ${startY - r * yGap} ${startZ}`);
             this.scene.appendChild(invader);
             this.invaders.push({
@@ -647,10 +944,11 @@
               type,
               row: r,
               col: c,
-              baseY: startY - r * yGap,
-              x: c * xGap - offsetX,
-              z: startZ,
-              bobPhase: Math.random() * Math.PI * 2
+              formX: c * xGap - offsetX,
+              formY: startY - r * yGap,
+              formZ: 0,
+              bobPhase: Math.random() * Math.PI * 2,
+              state: 'formation'
             });
           }
         }
@@ -673,7 +971,9 @@
         if (!handState) return 300;
         const lvl = this.weaponLevel || 1;
         const bonus = this.fireDelayBoost || 0;
-        return Math.max(70, 320 - lvl * 40 - bonus);
+        const now = performance.now();
+        const tempBoost = (this.overclockUntil && now < this.overclockUntil) ? 70 : 0;
+        return Math.max(70, 320 - lvl * 40 - bonus - tempBoost);
       },
       maybeAutoFire(time) {
         ['right', 'left'].forEach(hand => {
@@ -695,15 +995,42 @@
           muzzle.object3D.getWorldPosition(origin);
         }
         const lvl = this.weaponLevel || 1;
-        const speed = 20 + lvl * 3;
-        this.spawnPlayerBullet(origin, dir, { color: WEAPON_COLORS.blaster, hand, kind: 'blaster', level: lvl, speed });
+        const baseSpeed = 20 + lvl * 3;
+        const weaponType = (this.handState[hand] && this.handState[hand].weapon) || this.weaponType || 'blaster';
+        if (weaponType === 'spread') {
+          const pellets = 3 + Math.min(3, Math.floor(lvl / 1.5));
+          const spread = 0.09 + lvl * 0.01;
+          for (let i = 0; i < pellets; i++) {
+            const offset = (i - (pellets - 1) * 0.5) * spread;
+            const shotDir = dir.clone();
+            shotDir.x += offset;
+            shotDir.y += (Math.random() - 0.5) * 0.02;
+            shotDir.normalize();
+            this.spawnPlayerBullet(origin, shotDir, { color: WEAPON_COLORS.spread, hand, kind: 'spread', level: lvl, speed: baseSpeed * 0.9 });
+          }
+        } else if (weaponType === 'nova') {
+          this.spawnPlayerBullet(origin, dir, { color: WEAPON_COLORS.nova, hand, kind: 'nova', level: lvl, speed: baseSpeed * 0.7, radius: 0.08 });
+        } else if (weaponType === 'rail') {
+          const pierce = 1 + Math.floor(lvl / 2);
+          this.spawnPlayerBullet(origin, dir, { color: WEAPON_COLORS.rail, hand, kind: 'rail', level: lvl, speed: baseSpeed * 1.5, radius: 0.025, pierce });
+        } else if (weaponType === 'capture') {
+          this.spawnPlayerBullet(origin, dir, { color: '#9fe3ff', hand, kind: 'capture', level: lvl, speed: baseSpeed * 0.8, radius: 0.12 });
+        } else {
+          this.spawnPlayerBullet(origin, dir, { color: WEAPON_COLORS.blaster, hand, kind: 'blaster', level: lvl, speed: baseSpeed });
+        }
       },
       spawnPlayerBullet(origin, direction, opts = {}) {
         const speed = opts.speed || 20;
         const radius = opts.radius || 0.03;
-        const bullet = document.createElement('a-sphere');
-        bullet.setAttribute('radius', radius);
-        bullet.setAttribute('color', opts.color || '#00ffcc');
+        const bullet = document.createElement('a-entity');
+        if (opts.kind === 'capture') {
+          bullet.setAttribute('geometry', `primitive: torus; radius: ${radius}; radiusTubular: ${Math.max(0.02, radius * 0.2)}`);
+          bullet.setAttribute('rotation', '90 0 0');
+          bullet.setAttribute('material', wireframeMaterial(opts.color || '#9fe3ff', 0.7));
+        } else {
+          bullet.setAttribute('geometry', `primitive: sphere; radius: ${radius}`);
+          bullet.setAttribute('material', `color: ${opts.color || '#00ffcc'}; emissive: ${opts.color || '#00ffcc'}; emissiveIntensity: 0.6`);
+        }
         bullet.object3D.position.copy(origin);
         this.scene.appendChild(bullet);
         this.playerBullets.push({
@@ -736,6 +1063,110 @@
         setTimeout(() => wave.parentNode && wave.parentNode.removeChild(wave), dur + 60);
         this.emitSparkBurst(pos, color);
       },
+      maybeSpawnPowerup(position) {
+        return;
+      },
+      spawnPowerup(type, position, opts = {}) {
+        const def = POWERUP_DEFS[type];
+        if (!def) return;
+        const radius = opts.radius || 0.32;
+        const powerup = document.createElement('a-entity');
+        powerup.setAttribute('geometry', `primitive: dodecahedron; radius: ${radius}`);
+        powerup.setAttribute('material', wireframeMaterial(def.color, 0.95));
+        powerup.setAttribute('position', `${position.x} ${position.y} ${position.z}`);
+        const ring = document.createElement('a-ring');
+        ring.setAttribute('radius-inner', (radius * 0.75).toFixed(2));
+        ring.setAttribute('radius-outer', (radius * 1.02).toFixed(2));
+        ring.setAttribute('rotation', '90 0 0');
+        ring.setAttribute('material', `color: ${def.color}; emissive: ${def.color}; emissiveIntensity: 0.8; opacity: 0.55; transparent: true; side: double`);
+        powerup.appendChild(ring);
+        if (opts.pulse) {
+          powerup.setAttribute('animation__pulse', 'property: scale; dir: alternate; dur: 520; to: 1.2 1.2 1.2; loop: true; easing: easeInOutQuad');
+          ring.setAttribute('animation__spin', 'property: rotation; to: 90 360 0; dur: 1800; loop: true; easing: linear');
+        }
+        this.scene.appendChild(powerup);
+        const velocity = opts.velocity
+          ? opts.velocity.clone()
+          : new THREE.Vector3((Math.random() - 0.5) * 0.08, -0.12 - Math.random() * 0.18, 0.9 + Math.random() * 0.3);
+        this.powerups.push({
+          el: powerup,
+          type,
+          velocity,
+          spin: (Math.random() - 0.5) * 1.2,
+          born: performance.now()
+        });
+      },
+      updatePowerups(dt) {
+        if (!this.powerups.length) return;
+        const now = performance.now();
+        const removeIdx = [];
+        for (let i = 0; i < this.powerups.length; i++) {
+          const p = this.powerups[i];
+          if (!p.el) {
+            removeIdx.push(i);
+            continue;
+          }
+          const pos = p.el.object3D.position;
+          if (this.magnetUntil && now < this.magnetUntil) {
+            const pull = this.headPos.clone().sub(pos).multiplyScalar(0.15);
+            p.velocity.x += pull.x * (dt / 1000);
+            p.velocity.y += pull.y * (dt / 1000);
+            p.velocity.z += pull.z * (dt / 1000);
+          }
+          pos.x += p.velocity.x * (dt / 1000);
+          pos.y += p.velocity.y * (dt / 1000);
+          pos.z += p.velocity.z * (dt / 1000);
+          p.el.object3D.rotation.y += (p.spin || 0.6) * (dt / 1000);
+          if (pos.z > 10 || pos.y < -2 || Math.abs(pos.x) > 30) {
+            removeIdx.push(i);
+            continue;
+          }
+        }
+        removeIdx.sort((a, b) => b - a).forEach(idx => {
+          const p = this.powerups[idx];
+          if (p && p.el && p.el.parentNode) p.el.parentNode.removeChild(p.el);
+          this.powerups.splice(idx, 1);
+        });
+      },
+      applyPowerup(type) {
+        const def = POWERUP_DEFS[type];
+        if (!def) return;
+        const now = performance.now();
+        if (type === 'weaponUp') {
+          this.weaponLevel = clamp(this.weaponLevel + 1, 1, 7);
+        } else if (def.weapon) {
+          if (!this.collectedWeapons.includes(def.weapon)) {
+            this.collectedWeapons.push(def.weapon);
+          }
+          this.weaponType = def.weapon;
+          if (this.handState && this.handState.right) this.handState.right.weapon = def.weapon;
+          this.weaponLevel = Math.max(this.weaponLevel, 2);
+        } else if (type === 'shield') {
+          this.shieldHP = Math.max(this.shieldHP, 6);
+          if (this.shieldComp) this.shieldComp.setHealth(this.shieldHP);
+        } else if (type === 'shieldBoost') {
+          this.shieldHP = Math.min(10, this.shieldHP + 3);
+          if (this.shieldComp) this.shieldComp.setHealth(this.shieldHP);
+        } else if (type === 'extraLife') {
+          this.lives = Math.min(9, this.lives + 1);
+        } else if (type === 'scoreBoost') {
+          this.addScore(1500, 'powerup');
+        } else if (type === 'freeze') {
+          const pauseDur = def.duration || (5000 + Math.random() * 4000);
+          this.freezeMovementUntil = now + pauseDur;
+        } else if (type === 'overclock') {
+          this.overclockUntil = now + (def.duration || 5000);
+        } else if (type === 'bulletTime') {
+          this.bulletTimeUntil = now + (def.duration || 5000);
+        } else if (type === 'magnet') {
+          this.magnetUntil = now + (def.duration || 6000);
+        } else if (type === 'cleanse') {
+          this.enemyBullets.forEach(b => b.el && b.el.parentNode && b.el.parentNode.removeChild(b.el));
+          this.enemyBullets = [];
+        }
+        this.playSound('powerup');
+        this.updateHUD();
+      },
       flashShield(hitPos) {
         if (hitPos) this.spawnShockwave(hitPos, 1, '#66d6ff');
         const disc = document.querySelector('#shield-disc');
@@ -767,9 +1198,7 @@
         this.emitSparkBurst(this.headPos.clone(), '#ff4477');
       },
       spawnEnemyBullet(invader, opts = {}) {
-        const bullet = document.createElement('a-sphere');
-        bullet.setAttribute('radius', opts.radius || 0.15);
-        bullet.setAttribute('color', opts.color || '#ff0000');
+        const bullet = createEnemyProjectile(opts.color || '#ff4e90', opts.radius || 0.16, opts.opacity || 0.75);
         const pos = new THREE.Vector3();
         invader.el.object3D.getWorldPosition(pos);
         bullet.object3D.position.copy(pos);
@@ -780,28 +1209,49 @@
         dir.x += lat;
         dir.y += vert;
         dir.normalize().multiplyScalar(8 + (opts.speedBoost || 0));
-        this.enemyBullets.push({ el: bullet, velocity: dir, born: performance.now(), wobble: opts.wobble || 0, owner: opts.owner || 'invader' });
+        this.enemyBullets.push({
+          el: bullet,
+          velocity: dir,
+          born: performance.now(),
+          wobble: opts.wobble || 0,
+          owner: opts.owner || 'invader',
+          color: opts.color || '#ff4e90'
+        });
       },
       maybeSpawnUfo(time) {
         if (this.ufo || this.state !== 'playing' || this.inBossFight) return;
-        const spawnChance = (this.wave % 5 === 0) ? 0.00035 : 0.00045;
+        if (this.ufoSpawnedThisWave >= 2) return;
+        const spawnChance = (this.wave % 5 === 0) ? 0.0015 : 0.0022;
         if (Math.random() > spawnChance) return;
-        const roll = Math.random();
-        const type = roll < 0.8 ? 'level' : 'shield';
         const el = document.createElement('a-entity');
-        if (type === 'shield') {
-          el.setAttribute('geometry', 'primitive: octahedron; radius: 0.8');
-          el.setAttribute('material', 'color: #00aaff; emissive: #00aaff; metalness:0.5; roughness:0.2');
-        } else {
-          el.setAttribute('geometry', 'primitive: box; width: 1.2; height: 0.4; depth: 0.6');
-          el.setAttribute('material', 'color: #ffde59; emissive: #ffde59; metalness:0.5; roughness:0.2');
-        }
+        const hull = document.createElement('a-entity');
+        hull.setAttribute('geometry', 'primitive: box; width: 1.6; height: 0.28; depth: 0.9');
+        hull.setAttribute('material', wireframeMaterial('#8ad8ff', 0.7));
+        el.appendChild(hull);
+        const ring = document.createElement('a-entity');
+        ring.setAttribute('geometry', 'primitive: torus; radius: 0.9; radiusTubular: 0.05');
+        ring.setAttribute('rotation', '90 0 0');
+        ring.setAttribute('material', wireframeMaterial('#ffb347', 0.55));
+        el.appendChild(ring);
+        const beacon = document.createElement('a-entity');
+        beacon.setAttribute('geometry', 'primitive: octahedron; radius: 0.18');
+        beacon.setAttribute('position', '0 0.24 0');
+        beacon.setAttribute('material', wireframeMaterial('#ffd24d', 0.8));
+        el.appendChild(beacon);
         el.setAttribute('position', '-24 9 -22');
         this.scene.appendChild(el);
-        const dur = 4500;
-        const speed = 7;
-        this.ufo = { el, type, start: time, duration: dur, speed, phase: Math.random() * Math.PI * 2 };
+        const dur = 9800;
+        const speed = 3.2;
+        this.ufo = {
+          el,
+          type: 'supply',
+          start: time,
+          duration: dur,
+          speed,
+          phase: Math.random() * Math.PI * 2
+        };
         this.ufoStart = time;
+        this.ufoSpawnedThisWave += 1;
       },
       pickBossReward() {
         if (!this.availableBossRewards || !this.availableBossRewards.length) {
@@ -815,46 +1265,27 @@
       startMothershipEncounter() {
         if (this.mothership) return;
         this.inBossFight = true;
-        const stage = Math.max(1, Math.floor(this.wave / 5));
-        const health = 18 + stage * 10;
-        const width = 5.5 + stage * 0.6;
-        const depth = 3 + stage * 0.4;
-        const theme = randomChoice(MOTHERSHIP_THEMES);
+        const bossIndex = Math.min(this.bossCount, BOSS_DEFS.length - 1);
+        const def = BOSS_DEFS[bossIndex];
+        const stage = bossIndex + 1;
+        const health = (def.baseHealth || 24) + stage * 8;
+        const width = 4.8 + stage * 0.5;
+        const depth = 3 + stage * 0.35;
         const now = performance.now();
-        const el = document.createElement('a-entity');
+        const el = createWireframeBoss(def, stage);
         el.setAttribute('id', 'mothership');
-        const body = document.createElement('a-entity');
-        body.setAttribute('geometry', `primitive: box; width: ${width}; height: 1.2; depth: ${depth}`);
-        body.setAttribute('material', `color: ${theme.body}; metalness:0.45; roughness:0.25; emissive:${theme.emissive}; emissiveIntensity:0.65`);
-        body.setAttribute('position', '0 0 0');
-        el.appendChild(body);
-        const crown = document.createElement('a-entity');
-        crown.setAttribute('geometry', 'primitive: cone; radiusBottom: 1.4; radiusTop: 0.4; height: 1.2');
-        crown.setAttribute('material', `color: ${theme.crown}; emissive:${theme.crown}; metalness:0.35; roughness:0.35`);
-        crown.setAttribute('position', '0 0.9 0');
-        el.appendChild(crown);
-        const finL = document.createElement('a-entity');
-        finL.setAttribute('geometry', `primitive: box; width: ${width * 0.35}; height: 0.5; depth: ${depth * 0.8}`);
-        finL.setAttribute('material', `color:${theme.emissive}; emissive:${theme.emissive}; emissiveIntensity:0.35; opacity:0.75; transparent:true`);
-        finL.setAttribute('position', `${-width * 0.65} 0 ${-depth * 0.2}`);
-        finL.setAttribute('rotation', '0 12 0');
-        el.appendChild(finL);
-        const finR = finL.cloneNode(true);
-        finR.setAttribute('position', `${width * 0.65} 0 ${-depth * 0.2}`);
-        finR.setAttribute('rotation', '0 -12 0');
-        el.appendChild(finR);
         const baseBarWidth = 3.2 + stage * 0.6;
         const barBg = document.createElement('a-box');
         barBg.setAttribute('geometry', `primitive: box; width: ${baseBarWidth + 0.4}; height: 0.14; depth: 0.12`);
-        barBg.setAttribute('material', 'color: #1a0f2c; opacity:0.7; transparent:true; emissive:#1a0f2c');
+        barBg.setAttribute('material', 'color: #151b2c; opacity:0.7; transparent:true; emissive:#151b2c');
         barBg.setAttribute('position', '0 -1.0 0');
         el.appendChild(barBg);
         const bar = document.createElement('a-box');
         bar.setAttribute('geometry', `primitive: box; width: ${baseBarWidth}; height: 0.12; depth: 0.08`);
-        bar.setAttribute('material', `color: ${theme.emissive}; emissive:${theme.emissive}; emissiveIntensity:0.8; opacity:0.85; transparent:true`);
+        bar.setAttribute('material', `color: ${def.accent}; emissive:${def.accent}; emissiveIntensity:0.8; opacity:0.85; transparent:true`);
         bar.setAttribute('position', '0 -1.0 0.02');
         el.appendChild(bar);
-        const targets = this.buildMothershipTargets(el, width, depth, stage, theme);
+        const targets = this.buildMothershipTargets(el, width, depth, stage, def);
         el.setAttribute('position', '0 8 -22');
         this.scene.appendChild(el);
         this.mothership = {
@@ -865,23 +1296,23 @@
           targets,
           targetIndex: 0,
           nextDrop: now + 1200,
-          dropInterval: Math.max(1600, 3400 - stage * 240),
-          nextWeapon: now + 1600,
-          weaponInterval: Math.max(1200, 2600 - stage * 180),
+          dropInterval: Math.max(1200, 3200 - stage * 200 - (def.minionBoost ? 600 : 0)),
+          nextWeapon: now + 1400,
+          weaponInterval: Math.max(900, 2400 - stage * 160 - (def.chaosBoost ? 320 : 0)),
           baseBarWidth,
           bar,
           barBg,
           reward: this.pickBossReward(),
           phase: Math.random() * Math.PI * 2,
-          weaponType: randomChoice(['burst', 'sweep', 'spiral']),
-          theme
+          weaponType: def.weapon || 'burst',
+          def
         };
         this.updateMothershipHealthBar();
         this.updateMothershipTargets();
       },
-      buildMothershipTargets(el, width, depth, stage, theme) {
+      buildMothershipTargets(el, width, depth, stage, def) {
         const radius = 0.22 + stage * 0.04;
-        const glow = (theme && theme.emissive) || '#ff66cc';
+        const glow = (def && def.accent) || '#ff66cc';
         const slots = [
           { pos: [-width * 0.3, 0.45, depth * 0.32] },
           { pos: [0, 0.05, -0.2] },
@@ -913,7 +1344,7 @@
       },
       updateMothershipTargets() {
         if (!this.mothership || !this.mothership.targets) return;
-        const themeColor = (this.mothership.theme && this.mothership.theme.emissive) || '#ff66cc';
+        const themeColor = (this.mothership.def && this.mothership.def.accent) || '#ff66cc';
         this.mothership.targets.forEach((target, idx) => {
           if (!target.el) return;
           const active = idx === this.mothership.targetIndex;
@@ -958,12 +1389,12 @@
         }
       },
       finishMothership(defeated = false) {
+        const msPos = this.mothership && this.mothership.el ? this.mothership.el.object3D.position.clone() : null;
         if (this.mothership && this.mothership.el && this.mothership.el.parentNode) {
           this.mothership.el.parentNode.removeChild(this.mothership.el);
         }
         if (defeated) {
           this.bossCount += 1;
-          this.enemyVolley = (this.enemyVolley || 1) + 1;
           this.invaders.forEach(inv => inv.el && inv.el.parentNode && inv.el.parentNode.removeChild(inv.el));
           this.enemyBullets.forEach(b => b.el && b.el.parentNode && b.el.parentNode.removeChild(b.el));
           this.invaders = [];
@@ -984,24 +1415,27 @@
         if (!this.mothership) return;
         const msPos = this.mothership.el.object3D.position;
         const type = randomChoice(['squid', 'crab', 'bug']);
-        const invader = createVoxelSprite(type);
+        const invader = createWireframeInvader(type);
         const targetRow = (this.formRows || 5) - 1;
-        const baseY = (this.formStartY || 8) - targetRow * (this.formYGap || 1);
+        const baseY = (this.formStartY || 8.2) - targetRow * (this.formYGap || 1.05);
         const x = msPos.x + (Math.random() - 0.5) * 6;
         const z = msPos.z + 1 + Math.sin(performance.now() * 0.002) * 1.2;
         invader.setAttribute('position', `${x} ${baseY} ${z}`);
         this.scene.appendChild(invader);
-        this.invaders.push({
+        const droppedInvader = {
           el: invader,
           type,
           row: targetRow,
           col: Math.floor(Math.random() * 8),
-          baseY,
-          x,
-          z,
+          formX: (Math.random() - 0.5) * 2,
+          formY: baseY,
+          formZ: 0,
           bobPhase: Math.random() * Math.PI * 2,
-          dropped: true
-        });
+          dropped: true,
+          state: 'dive'
+        };
+        this.invaders.push(droppedInvader);
+        this.startDive(droppedInvader, performance.now(), new THREE.Vector3(x, baseY, z), true);
       },
       fireMothershipWeapon(now = performance.now()) {
         if (!this.mothership) return;
@@ -1009,24 +1443,34 @@
         const stage = this.mothership.stage || 1;
         const weapon = this.mothership.weaponType || 'burst';
         const baseSpeed = 8.5 + stage * 1.2;
+        const def = this.mothership.def || {};
+        const accent = def.accent || '#ff66cc';
+        const body = def.body || '#ff44aa';
+        const spawnBullet = (pos, dir, opts = {}) => {
+          const bullet = createEnemyProjectile(opts.color || accent, opts.radius || 0.18, opts.opacity || 0.8);
+          bullet.object3D.position.copy(pos);
+          this.scene.appendChild(bullet);
+          const payload = {
+            el: bullet,
+            velocity: dir,
+            born: now,
+            wobble: opts.wobble || 0,
+            owner: 'mothership',
+            color: opts.color || accent
+          };
+          if (opts.splitAt) payload.splitAt = opts.splitAt;
+          if (opts.splitCount) payload.splitCount = opts.splitCount;
+          if (opts.mine) payload.mine = true;
+          this.enemyBullets.push(payload);
+        };
         if (weapon === 'sweep') {
           const lanes = 7;
           const dirSign = this.mothership.sweepDir || 1;
           for (let i = 0; i < lanes; i++) {
             const offset = (i - (lanes - 1) * 0.5) * 0.8 * dirSign;
-            const bullet = document.createElement('a-sphere');
-            bullet.setAttribute('radius', 0.16);
-            bullet.setAttribute('color', '#ffcc55');
-            bullet.object3D.position.copy(msPos.clone().add(new THREE.Vector3(offset, -0.3, 0)));
-            this.scene.appendChild(bullet);
-            const dir = new THREE.Vector3(dirSign * 0.6, -0.05, 1).normalize().multiplyScalar(baseSpeed * 0.9);
-            this.enemyBullets.push({
-              el: bullet,
-              velocity: dir,
-              born: now,
-              wobble: 0.0025 + stage * 0.0008,
-              owner: 'mothership'
-            });
+            const pos = msPos.clone().add(new THREE.Vector3(offset, -0.3, 0));
+            const dir = applyBossAimBias(new THREE.Vector3(dirSign * 0.6, -0.05, 1)).multiplyScalar(baseSpeed * 0.9);
+            spawnBullet(pos, dir, { color: accent, radius: 0.16, wobble: 0.0025 + stage * 0.0008 });
           }
           this.mothership.sweepDir = -dirSign;
         } else if (weapon === 'spiral') {
@@ -1035,48 +1479,120 @@
           this.mothership.weaponPhase = baseAngle;
           for (let i = 0; i < shots; i++) {
             const angle = baseAngle + (Math.PI * 2 * i) / shots;
-            const dir = new THREE.Vector3(Math.cos(angle), Math.sin(angle) * 0.3, 1).normalize().multiplyScalar(baseSpeed * 0.85);
-            const bullet = document.createElement('a-sphere');
-            bullet.setAttribute('radius', 0.18);
-            bullet.setAttribute('color', '#88ddff');
-            bullet.object3D.position.copy(msPos.clone().add(new THREE.Vector3(0, 0.1, 0)));
-            this.scene.appendChild(bullet);
-            this.enemyBullets.push({
-              el: bullet,
-              velocity: dir,
-              born: now,
-              wobble: 0.004 + stage * 0.0008,
-              owner: 'mothership'
-            });
+            const dir = applyBossAimBias(new THREE.Vector3(Math.cos(angle), Math.sin(angle) * 0.3, 1)).multiplyScalar(baseSpeed * 0.85);
+            spawnBullet(msPos.clone(), dir, { color: accent, radius: 0.18, wobble: 0.004 + stage * 0.0008 });
+          }
+        } else if (weapon === 'fan') {
+          const shots = 9 + Math.min(4, stage);
+          for (let i = 0; i < shots; i++) {
+            const t = shots === 1 ? 0 : i / (shots - 1);
+            const angle = THREE.MathUtils.lerp(-0.7, 0.7, t);
+            const dir = applyBossAimBias(new THREE.Vector3(Math.sin(angle), Math.sin(angle * 0.5) * 0.2, 1)).multiplyScalar(baseSpeed * 0.95);
+            spawnBullet(msPos.clone(), dir, { color: accent, radius: 0.16, wobble: 0.003 + stage * 0.0006 });
+          }
+        } else if (weapon === 'ring') {
+          const shots = 12 + stage;
+          for (let i = 0; i < shots; i++) {
+            const angle = (Math.PI * 2 * i) / shots;
+            const dir = applyBossAimBias(new THREE.Vector3(Math.cos(angle), Math.sin(angle) * 0.35, 1)).multiplyScalar(baseSpeed * 0.75);
+            spawnBullet(msPos.clone(), dir, { color: accent, radius: 0.17, wobble: 0.002 + stage * 0.0005 });
+          }
+        } else if (weapon === 'mine') {
+          const mines = 4 + Math.min(3, stage);
+          for (let i = 0; i < mines; i++) {
+            const offset = (i - (mines - 1) * 0.5) * 0.8;
+            const pos = msPos.clone().add(new THREE.Vector3(offset, -0.5, 0));
+            const dir = new THREE.Vector3(0, -0.1 - Math.random() * 0.2, 1).normalize().multiplyScalar(2.8 + stage * 0.2);
+            spawnBullet(pos, dir, { color: body, radius: 0.22, wobble: 0.001, mine: true, opacity: 0.7 });
+          }
+        } else if (weapon === 'split') {
+          const shots = 3 + Math.min(2, stage);
+          for (let i = 0; i < shots; i++) {
+            const offset = (i - (shots - 1) * 0.5) * 0.4;
+            const pos = msPos.clone().add(new THREE.Vector3(offset, -0.4, 0));
+            const dir = applyBossAimBias(this.headPos.clone().sub(pos).normalize()).multiplyScalar(baseSpeed * 0.9);
+            dir.x += (Math.random() - 0.5) * 0.2;
+            spawnBullet(pos, dir, { color: accent, radius: 0.17, splitAt: now + 700, splitCount: 3, wobble: 0.003 + stage * 0.0005 });
+          }
+        } else if (weapon === 'rail') {
+          const shots = 1 + Math.min(1, Math.floor(stage / 3));
+          for (let i = 0; i < shots; i++) {
+            const offset = (i - (shots - 1) * 0.5) * 0.5;
+            const pos = msPos.clone().add(new THREE.Vector3(offset, -0.2, 0));
+            const dir = applyBossAimBias(this.headPos.clone().sub(pos).normalize()).multiplyScalar(baseSpeed * 1.7);
+            spawnBullet(pos, dir, { color: accent, radius: 0.14, wobble: 0.001 + stage * 0.0004 });
+          }
+        } else if (weapon === 'chaos') {
+          const burstShots = 4 + Math.min(4, stage);
+          for (let i = 0; i < burstShots; i++) {
+            const pos = msPos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.8, -0.3, 0));
+            const dir = applyBossAimBias(this.headPos.clone().sub(pos).normalize());
+            dir.x += (Math.random() - 0.5) * 0.6;
+            dir.y += (Math.random() - 0.5) * 0.4;
+            dir.normalize().multiplyScalar(baseSpeed * 1.05);
+            spawnBullet(pos, dir, { color: accent, radius: 0.18, wobble: 0.004 + stage * 0.0007 });
+          }
+          const ringShots = 8 + stage;
+          for (let i = 0; i < ringShots; i++) {
+            const angle = (Math.PI * 2 * i) / ringShots;
+            const dir = applyBossAimBias(new THREE.Vector3(Math.cos(angle), Math.sin(angle) * 0.3, 1)).multiplyScalar(baseSpeed * 0.8);
+            spawnBullet(msPos.clone(), dir, { color: body, radius: 0.15, wobble: 0.0025 });
           }
         } else {
           const volleys = 2 + stage;
           for (let i = 0; i < volleys; i++) {
-            const bullet = document.createElement('a-sphere');
-            bullet.setAttribute('radius', 0.2);
-            bullet.setAttribute('color', '#ff44aa');
-            bullet.object3D.position.copy(msPos.clone().add(new THREE.Vector3((i - (volleys - 1) * 0.5) * 0.6, -0.4, 0)));
-            this.scene.appendChild(bullet);
-            const dir = this.headPos.clone().sub(bullet.object3D.position).normalize();
+            const pos = msPos.clone().add(new THREE.Vector3((i - (volleys - 1) * 0.5) * 0.6, -0.4, 0));
+            const dir = applyBossAimBias(this.headPos.clone().sub(pos).normalize());
             dir.x += (Math.random() - 0.5) * 0.4 * (1 + stage * 0.25);
             dir.y += (Math.random() - 0.5) * 0.3;
             dir.normalize().multiplyScalar(baseSpeed);
-            this.enemyBullets.push({
-              el: bullet,
-              velocity: dir,
-              born: now,
-              wobble: 0.003 + stage * 0.001,
-              owner: 'mothership'
-            });
+            spawnBullet(pos, dir, { color: accent, radius: 0.2, wobble: 0.003 + stage * 0.001 });
           }
         }
       },
       updateMothership(time, dt) {
         if (!this.mothership || !this.mothership.el) return;
         const now = performance.now();
-        const sway = Math.sin(time * 0.0011 + this.mothership.phase) * (2 + this.mothership.stage * 0.2);
-        const bob = Math.sin(time * 0.0008 + this.mothership.phase * 0.8) * 0.8;
-        this.mothership.el.object3D.position.set(sway, 8 + bob, -19 + Math.sin(time * 0.0009) * 1.5);
+        const def = this.mothership.def || {};
+        const baseY = 8 + this.mothership.stage * 0.12;
+        const baseZ = -20;
+        const phase = this.mothership.phase || 0;
+        let x = 0;
+        let y = baseY;
+        let z = baseZ;
+        if (def.motion === 'wide') {
+          x = Math.sin(time * 0.0011 + phase) * (3.4 + this.mothership.stage * 0.25);
+          z = baseZ + Math.sin(time * 0.0009 + phase) * 2.2;
+          y = baseY + Math.sin(time * 0.0008 + phase) * 0.7;
+        } else if (def.motion === 'orbit') {
+          const radius = 2.4 + this.mothership.stage * 0.2;
+          x = Math.cos(time * 0.0009 + phase) * radius;
+          z = baseZ + Math.sin(time * 0.0009 + phase) * radius;
+          y = baseY + Math.sin(time * 0.0012 + phase) * 0.8;
+        } else if (def.motion === 'hover') {
+          x = Math.sin(time * 0.0014 + phase) * 1.6;
+          y = baseY + Math.sin(time * 0.0011 + phase) * 1.0;
+          z = baseZ + Math.sin(time * 0.0007 + phase) * 1.2;
+        } else if (def.motion === 'zigzag') {
+          x = Math.sin(time * 0.0017 + phase) * (2.6 + this.mothership.stage * 0.2);
+          z = baseZ + Math.sign(Math.sin(time * 0.0011 + phase)) * 1.6;
+          y = baseY + Math.cos(time * 0.0013 + phase) * 0.6;
+        } else if (def.motion === 'dash') {
+          x = Math.sin(time * 0.0022 + phase) * (3.2 + this.mothership.stage * 0.25);
+          z = baseZ + Math.sin(time * 0.0016 + phase * 1.3) * 2.8;
+          y = baseY + Math.cos(time * 0.0018 + phase) * 0.7;
+        } else if (def.motion === 'figure8') {
+          const a = Math.sin(time * 0.0014 + phase);
+          const b = Math.sin(time * 0.0007 + phase);
+          x = a * (3.1 + this.mothership.stage * 0.2);
+          z = baseZ + b * a * 3;
+          y = baseY + Math.cos(time * 0.001 + phase) * 0.6;
+        } else {
+          x = Math.sin(time * 0.0011 + phase) * (2 + this.mothership.stage * 0.2);
+          y = baseY + Math.sin(time * 0.0008 + phase * 0.8) * 0.8;
+          z = baseZ + Math.sin(time * 0.0009 + phase) * 1.5;
+        }
+        this.mothership.el.object3D.position.set(x, y, z);
         if (now >= this.mothership.nextDrop) {
           this.dropInvaderFromMothership();
           this.mothership.nextDrop = now + this.mothership.dropInterval + Math.random() * 500;
@@ -1142,6 +1658,7 @@
       removeInvader(idx) {
         const inv = this.invaders[idx];
         if (!inv) return;
+        const dropPos = inv.el ? inv.el.object3D.position.clone() : null;
         if (inv.el && inv.el.parentNode) inv.el.parentNode.removeChild(inv.el);
         this.invaders.splice(idx, 1);
         this.addScore(100, 'invader');
@@ -1161,13 +1678,94 @@
             if (newRow !== i) {
               rows[i].forEach(inv => {
                 inv.row = newRow;
-                inv.baseY = this.formStartY - newRow * this.formYGap;
-                inv.el.object3D.position.y = inv.baseY;
+                inv.formY = this.formStartY - newRow * this.formYGap;
+                inv.el.object3D.position.y = inv.formY;
               });
             }
             target--;
           }
         }
+      },
+      getFormationPosition(inv, time) {
+        const waveX = Math.sin(time * 0.0014 + inv.col * 0.6) * 0.35;
+        const waveY = Math.cos(time * 0.0016 + inv.row * 0.7) * 0.25;
+        const waveZ = Math.sin(time * 0.0012 + inv.col * 0.4) * 0.4;
+        return new THREE.Vector3(
+          inv.formX + this.formationX + waveX,
+          inv.formY + waveY + Math.sin(time * 0.002 + inv.bobPhase) * 0.15,
+          this.formationZ + inv.formZ + waveZ
+        );
+      },
+      startDive(inv, time, startPos, aggressive = false) {
+        const origin = startPos ? startPos.clone() : this.getFormationPosition(inv, time);
+        const spread = aggressive ? 3.2 : 2.2;
+        const targetX = clamp(this.headPos.x + (Math.random() - 0.5) * spread, -7, 7);
+        const target = new THREE.Vector3(targetX, 1.2 + Math.random() * 0.6, aggressive ? 2.2 : 1.2);
+        const ctrl1 = origin.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2.4, -2.2, 5.2));
+        const ctrl2 = target.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2.0, 2.0, -3.8));
+        const baseDur = 3200 + Math.random() * 900;
+        const speedup = Math.min(500, Math.max(0, (this.wave - 1) * 40));
+        const elite = aggressive || inv.row === 0 || inv.type === 'squid';
+        inv.state = 'dive';
+        inv.dive = {
+          start: origin,
+          ctrl1,
+          ctrl2,
+          target,
+          startTime: time,
+          duration: Math.max(2200, baseDur - speedup),
+          returnDuration: 2200 + Math.random() * 700,
+          canShoot: elite,
+          nextShot: time + (elite ? 500 : 900) + Math.random() * 400,
+          shotsRemaining: elite ? 3 : 1
+        };
+      },
+      updateDive(inv, time) {
+        if (!inv.dive || !inv.el) return false;
+        if (inv.state === 'dive') {
+          const t = clamp((time - inv.dive.startTime) / inv.dive.duration, 0, 1);
+          const pos = cubicBezier(inv.dive.start, inv.dive.ctrl1, inv.dive.ctrl2, inv.dive.target, t);
+          inv.el.object3D.position.copy(pos);
+          if (inv.dive.canShoot && inv.dive.shotsRemaining > 0 && time >= inv.dive.nextShot) {
+            this.spawnEnemyBullet(inv, { speedBoost: 2.2, vertical: -0.2, wobble: 0.002 });
+            inv.dive.shotsRemaining -= 1;
+            inv.dive.nextShot = time + 520 + Math.random() * 320;
+          }
+          if (t >= 1) {
+            inv.state = 'return';
+            inv.returnStart = time;
+            inv.returnFrom = pos.clone();
+          }
+          return true;
+        }
+        if (inv.state === 'return') {
+          const t = clamp((time - inv.returnStart) / inv.dive.returnDuration, 0, 1);
+          const formationPos = this.getFormationPosition(inv, time);
+          const pos = inv.returnFrom.clone().lerp(formationPos, t);
+          inv.el.object3D.position.copy(pos);
+          if (t >= 1) {
+            inv.state = 'formation';
+            inv.dive = null;
+            inv.returnFrom = null;
+          }
+          return true;
+        }
+        return false;
+      },
+      maybeLaunchDive(time) {
+        if (this.inBossFight || !this.invaders.length) return;
+        if (time < this.nextDiveAt) return;
+        const active = this.invaders.filter(inv => inv.state === 'dive' || inv.state === 'return').length;
+        const maxDives = Math.min(4, 1 + Math.floor(this.wave / 3));
+        if (active >= maxDives) {
+          this.nextDiveAt = time + 700;
+          return;
+        }
+        const candidates = this.invaders.filter(inv => inv.state === 'formation' && !inv.dropped && inv.row <= 2);
+        if (!candidates.length) return;
+        const inv = randomChoice(candidates);
+        this.startDive(inv, time);
+        this.nextDiveAt = time + Math.max(600, 1800 - this.wave * 80);
       },
       handlePlayerHit() {
         if (this.state !== 'playing') return;
@@ -1175,6 +1773,12 @@
         this.resetCombo();
         this.shieldHP = 0;
         if (this.shieldComp) this.shieldComp.setHealth(this.shieldHP);
+        this.weaponLevel = 1;
+        this.weaponType = 'blaster';
+        this.collectedWeapons = ['blaster'];
+        this.fireDelayBoost = 0;
+        if (this.handState && this.handState.right) this.handState.right.weapon = 'blaster';
+        if (this.handState && this.handState.left) this.handState.left.weapon = 'capture';
         this.enemyBullets.forEach(b => {
           if (b.el && b.el.parentNode) b.el.parentNode.removeChild(b.el);
         });
@@ -1193,6 +1797,12 @@
         this.clearEntities();
         this.showMenu();
         this.resetCombo();
+        this.weaponLevel = 1;
+        this.weaponType = 'blaster';
+        this.collectedWeapons = ['blaster'];
+        this.fireDelayBoost = 0;
+        if (this.handState && this.handState.right) this.handState.right.weapon = 'blaster';
+        if (this.handState && this.handState.left) this.handState.left.weapon = 'capture';
         this.updateHUD();
         console.warn('Game Over:', reason);
       },
@@ -1218,6 +1828,7 @@
           return;
         }
         this.maybeAutoFire(time);
+        this.updateDesktopMovement(timeDelta);
         if (this.cameraEl && this.cameraEl.object3D) {
           this.cameraEl.object3D.getWorldPosition(this.headPos);
         }
@@ -1226,17 +1837,23 @@
         }
         this.maybeSpawnUfo(time);
         this.updateMothership(time, timeDelta);
-        this.updateInvaders(time);
+        this.updateInvaders(time, timeDelta);
         this.maybeEnemyFire(time);
         this.updateBullets(timeDelta, false);
         this.updateEnemyBullets(timeDelta);
+        this.updatePowerups(timeDelta);
         this.updateCrosshairs();
         this.updateSky(timeDelta);
         this.updateUfo(time);
+        if (time - this.lastHudUpdate > 300) {
+          this.renderHudCanvas();
+          this.lastHudUpdate = time;
+        }
       },
       maybeEnemyFire(time) {
         if (this.state !== 'playing') return;
         if (!this.invaders.length) return;
+        if (this.freezeMovementUntil && time < this.freezeMovementUntil) return;
         const now = performance.now();
         if (now < this.nextEnemyFire) return;
         const elapsed = this.startTime ? Math.max(0, now - this.startTime) : now;
@@ -1247,16 +1864,14 @@
           - Math.min(320, (elapsed / 60000) * 100));
         const inv = randomChoice(this.invaders);
         if (inv) {
-          const count = Math.max(1, this.enemyVolley || 1);
-          const spread = 0.14 + Math.min(0.3, this.wave * 0.01);
-          for (let i = 0; i < count; i++) {
-            const offset = (i - (count - 1) * 0.5) * spread;
-            this.spawnEnemyBullet(inv, { lateral: offset, speedBoost: this.bossCount * 0.3 });
-          }
+          const spread = 0.02 + Math.floor((this.wave - 1) / 5) * 0.01;
+          const lateral = (Math.random() - 0.5) * spread;
+          const vertical = (Math.random() - 0.5) * spread * 0.6;
+          this.spawnEnemyBullet(inv, { lateral, vertical });
         }
         this.nextEnemyFire = now + interval + Math.random() * 140;
       },
-      updateInvaders(time) {
+      updateInvaders(time, dt) {
         if (this.invaders.length === 0) {
           if (this.state === 'playing') {
             if (!this.inBossFight && this.wave % 5 === 0) {
@@ -1271,49 +1886,40 @@
           }
           if (this.inBossFight) return;
         }
-        if (time >= this.nextMoveAt) {
-          const tickRate = Math.max(this.minTick, this.baseTick - (this.wave - 1) * this.tickStep);
-          this.nextMoveAt = time + tickRate;
-          const xs = this.invaders.map(i => i.x);
-          const minX = Math.min(...xs);
-          const maxX = Math.max(...xs);
-          const bound = 9;
-          const shift = this.moveSpeed * this.direction;
-          let dropped = false;
-          if (this.direction > 0 && maxX + shift > bound) {
-            const toEdge = bound - maxX;
-            if (toEdge !== 0) this.invaders.forEach(inv => inv.x += toEdge);
-            this.invaders.forEach(inv => inv.z += this.dropDistance);
+
+        const frozen = this.freezeMovementUntil && time < this.freezeMovementUntil;
+        if (!frozen) this.maybeLaunchDive(time);
+
+        const dtSec = (dt || 0) / 1000;
+        const leftEdge = -this.formationBounds - this.formationMinX;
+        const rightEdge = this.formationBounds - this.formationMaxX;
+        let dropped = false;
+        if (!frozen) {
+          this.formationX += this.formationDir * this.moveSpeed * dtSec * 1.2;
+          if (this.formationX > rightEdge) {
+            this.formationX = rightEdge;
+            this.formationDir = -1;
+            this.formationZ += this.dropDistance;
             dropped = true;
-            this.direction *= -1;
-          } else if (this.direction < 0 && minX + shift < -bound) {
-            const toEdge = -bound - minX;
-            if (toEdge !== 0) this.invaders.forEach(inv => inv.x += toEdge);
-            this.invaders.forEach(inv => inv.z += this.dropDistance);
+          } else if (this.formationX < leftEdge) {
+            this.formationX = leftEdge;
+            this.formationDir = 1;
+            this.formationZ += this.dropDistance;
             dropped = true;
-            this.direction *= -1;
-          } else {
-            this.invaders.forEach(inv => inv.x += shift);
           }
-          this.playSound('move');
-          // game over if any invader crosses Z > 0
-          if (dropped && this.invaders.some(inv => inv.z > 0)) {
-            this.gameOver('Invaders reached you');
-          }
+          if (dropped) this.playSound('move');
         }
-        // Animate bobbing and random fire
-        const bobTime = time * 0.002;
+
         this.invaders.forEach(inv => {
-          const bob = Math.sin(bobTime + inv.bobPhase) * 0.3;
-          const flowScale = Math.min(1, Math.max(0, (this.wave - 1) / 4));
-          const driftX = Math.sin(time * 0.001 + inv.col) * 0.4 * flowScale;
-          const driftZ = Math.cos(time * 0.0011 + inv.row) * 0.5 * flowScale;
-          const wideScale = Math.max(0, (this.wave - 6) / 6);
-          const swirlX = Math.sin(time * 0.0006 + inv.col * 0.8) * 0.6 * wideScale;
-          const swirlZ = Math.cos(time * 0.0006 + inv.col * 0.8) * 0.6 * wideScale;
-          const zPos = inv.z + driftZ + swirlZ;
-          inv.el.object3D.position.set(inv.x + driftX + swirlX, inv.baseY + bob, Math.max(-30, Math.min(2, zPos)));
+          if (!frozen && this.updateDive(inv, time)) return;
+          if (frozen) return;
+          const pos = this.getFormationPosition(inv, time);
+          inv.el.object3D.position.copy(pos);
         });
+
+        if (dropped && this.invaders.some(inv => inv.el && inv.el.object3D.position.z > 1.5)) {
+          this.gameOver('Invaders reached you');
+        }
       },
       updateBullets(dt, menuMode) {
         const removeIdx = [];
@@ -1340,13 +1946,29 @@
             removeIdx.push(i);
             continue;
           }
+          if (b.kind === 'capture') {
+            for (let p = 0; p < this.powerups.length; p++) {
+              const power = this.powerups[p];
+              if (!power || !power.el) continue;
+              const pPos = power.el.object3D.position;
+              const hitDist = (b.radius || 0.12) + 0.35;
+              if (pos.distanceTo(pPos) < hitDist) {
+                this.applyPowerup(power.type);
+                if (power.el.parentNode) power.el.parentNode.removeChild(power.el);
+                this.powerups.splice(p, 1);
+                removeIdx.push(i);
+                break;
+              }
+            }
+            if (removeIdx.includes(i)) continue;
+          }
           if (menuMode) {
             if (this.handleMenuHit(b, i)) {
               removeIdx.push(i);
             }
             continue;
           }
-          if (this.mothership && this.checkMothershipHit(pos)) {
+          if (b.kind !== 'capture' && this.mothership && this.checkMothershipHit(pos)) {
             removeIdx.push(i);
             continue;
           }
@@ -1365,12 +1987,19 @@
             }
           }
           if (removeIdx.includes(i)) continue;
+          if (b.kind === 'capture') continue;
           // UFO collision
           if (this.ufo && this.ufo.el) {
             const uPos = this.ufo.el.object3D.position;
-            if (pos.distanceTo(uPos) < 1.0) {
+            if (pos.distanceTo(uPos) < 1.1) {
               this.addScore(1000, 'ufo');
-              this.applyUfoReward(this.ufo.type || 'level');
+              const offset = new THREE.Vector3((Math.random() - 0.5) * 0.8, -0.35, (Math.random() - 0.5) * 0.3);
+              const dropPos = uPos.clone().add(offset);
+              dropPos.x = clamp(dropPos.x, -22, 22);
+              const dropVelocity = new THREE.Vector3((Math.random() - 0.5) * 0.02, -0.16, 1.4);
+              this.spawnPowerup(pickPowerupType(), dropPos, { radius: 0.4, velocity: dropVelocity, pulse: true });
+              this.spawnShockwave(uPos.clone(), 2.4, '#8ad8ff');
+              this.emitSparkBurst(uPos.clone(), '#8ad8ff');
               this.playSound('explosion');
               if (this.ufo.el.parentNode) this.ufo.el.parentNode.removeChild(this.ufo.el);
               this.ufo = null;
@@ -1380,6 +2009,7 @@
             }
           }
           // Invader collision
+          if (b.kind === 'capture') continue;
           for (let j = 0; j < this.invaders.length; j++) {
             const inv = this.invaders[j];
             const invPos = inv.el.object3D.position.clone();
@@ -1387,7 +2017,14 @@
               this.playSound('explosion');
               this.emitSparkBurst(invPos, '#ff9966');
               this.removeInvader(j);
-              removeIdx.push(i);
+              if (b.kind === 'nova') {
+                this.areaDamage(invPos, 1.8 + (b.level || 1) * 0.2, b.level || 1);
+                removeIdx.push(i);
+              } else if (b.pierce && b.pierce > 0) {
+                b.pierce -= 1;
+              } else {
+                removeIdx.push(i);
+              }
               break;
             }
           }
@@ -1407,12 +2044,39 @@
       updateEnemyBullets(dt) {
         const removes = [];
         const shieldPos = new THREE.Vector3();
+        const now = performance.now();
+        const slowFactor = (this.bulletTimeUntil && now < this.bulletTimeUntil) ? 0.45 : 1;
         if (this.shieldEntity && this.shieldEntity.object3D) {
           this.shieldEntity.object3D.getWorldPosition(shieldPos);
         }
         for (let i = 0; i < this.enemyBullets.length; i++) {
           const b = this.enemyBullets[i];
           const pos = b.el.object3D.position;
+          if (b.splitAt && now >= b.splitAt && !b.hasSplit) {
+            b.hasSplit = true;
+            const baseSpeed = b.velocity.length();
+            const baseDir = b.velocity.clone().normalize();
+            const offsets = [-0.35, 0, 0.35];
+            offsets.forEach(offset => {
+              const dir = baseDir.clone();
+              dir.x += offset;
+              dir.y += (Math.random() - 0.5) * 0.2;
+              dir.normalize().multiplyScalar(baseSpeed * 0.95);
+              const child = createEnemyProjectile(b.color || '#ff66cc', 0.13, 0.75);
+              child.object3D.position.copy(pos.clone());
+              this.scene.appendChild(child);
+              this.enemyBullets.push({
+                el: child,
+                velocity: dir,
+                born: now,
+                wobble: b.wobble || 0,
+                owner: b.owner || 'mothership',
+                color: b.color || '#ff66cc'
+              });
+            });
+            removes.push(i);
+            continue;
+          }
           if (b.wobble) {
             const wobblePhase = (performance.now() * b.wobble) + i * 0.7;
             const wobbleX = Math.sin(wobblePhase) * 0.35 * (b.owner === 'mothership' ? 1.6 : 1);
@@ -1421,9 +2085,9 @@
             b.velocity.y += wobbleY * (dt / 1000);
             b.velocity.normalize().multiplyScalar(b.velocity.length());
           }
-          pos.x += b.velocity.x * (dt / 1000);
-          pos.y += b.velocity.y * (dt / 1000);
-          pos.z += b.velocity.z * (dt / 1000);
+          pos.x += b.velocity.x * (dt / 1000) * slowFactor;
+          pos.y += b.velocity.y * (dt / 1000) * slowFactor;
+          pos.z += b.velocity.z * (dt / 1000) * slowFactor;
           // Shield interception
           if (this.shieldHP > 0 && pos.distanceTo(shieldPos) < 0.9) {
             this.shieldHP = Math.max(0, this.shieldHP - 1);
@@ -1454,10 +2118,10 @@
         if (!this.ufo || !this.ufo.el) return;
         const t = clamp((time - this.ufoStart) / this.ufo.duration, 0, 1);
         const baseX = THREE.MathUtils.lerp(-22, 22, t);
-        const sway = Math.sin(time * 0.009 + this.ufo.phase) * 2.4;
-        const bob = Math.sin(time * 0.006 + this.ufo.phase * 0.5) * 1.1;
-        const y = 9 + bob;
-        const z = -18 + sway;
+        const sway = Math.sin(time * 0.0025 + this.ufo.phase) * 0.6;
+        const bob = Math.sin(time * 0.003 + this.ufo.phase * 0.5) * 0.35;
+        const y = 8.4 + bob;
+        const z = -20 + sway;
         this.ufo.el.object3D.position.set(baseX, y, z);
         if (t >= 1) {
           if (this.ufo.el.parentNode) this.ufo.el.parentNode.removeChild(this.ufo.el);
@@ -1488,7 +2152,7 @@
           return;
         }
         const targetZ = this.invaders.length
-          ? this.invaders.reduce((s, inv) => s + inv.z, 0) / this.invaders.length
+          ? this.invaders.reduce((s, inv) => s + (inv.el ? inv.el.object3D.position.z : -20), 0) / this.invaders.length
           : -20;
         const updateForHand = (hand, crosshair, muzzle, unlocked) => {
           if (!crosshair || !muzzle || (!unlocked && hand === 'left')) {
