@@ -176,7 +176,12 @@
                let shooter = rightHand.components['laser-shooter'];
                let type = (shooter.currentWeapon || 'pulse').toUpperCase();
                let lvl = (shooter.weaponLevels && shooter.weaponLevels[shooter.currentWeapon]) || 1;
-               weaponLine = `WPN: ${type} L${lvl}`;
+               let ammoSuffix = '';
+               if (shooter.currentWeapon === 'missile') {
+                 let ammo = typeof shooter.missileAmmo === 'number' ? shooter.missileAmmo : 0;
+                 ammoSuffix = ` A:${ammo}`;
+               }
+               weaponLine = `WPN: ${type} L${lvl}${ammoSuffix}`;
             }
             let healthInt = Math.floor(this.playerHealth);
             let color = healthInt < 30 ? "#FF0000" : "#00FF00";
@@ -510,12 +515,106 @@
       AFRAME.registerComponent('drone-spawner', {
         init: function() {
           this.ship = document.querySelector('#ship-rig');
+          this.formations = ['line', 'vee', 'grid', 'ring', 'pincer', 'double-ring'];
           this.el.sceneEl.systems['game-manager'].spawnWave();
+        },
+        pickFormation: function(waveNumber) {
+          let tier = Math.floor((waveNumber - 1) / 2);
+          tier = Math.min(tier, this.formations.length - 1);
+          return this.formations[tier];
+        },
+        buildFormationPositions: function(type, count, shipPos, waveNumber) {
+          let positions = [];
+          let baseDistance = 720 + Math.random() * 140;
+          let angle = Math.random() * Math.PI * 2;
+          let dir = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+          let right = new THREE.Vector3(-dir.z, 0, dir.x);
+          let up = new THREE.Vector3(0, 1, 0);
+          let spacing = Math.max(10, 26 - waveNumber);
+          let heightSpread = 18 + waveNumber * 1.5;
+          let center = shipPos.clone().add(dir.clone().multiplyScalar(baseDistance));
+
+          if (type === 'line') {
+            for (let i = 0; i < count; i++) {
+              let offset = right.clone().multiplyScalar((i - (count - 1) / 2) * spacing);
+              let height = (Math.random() - 0.5) * heightSpread;
+              positions.push(center.clone().add(offset).add(up.clone().multiplyScalar(height)));
+            }
+            return positions;
+          }
+
+          if (type === 'vee') {
+            positions.push(center.clone());
+            for (let step = 1; positions.length < count; step++) {
+              let left = right.clone().multiplyScalar(-spacing * step);
+              let back = dir.clone().multiplyScalar(-spacing * 0.7 * step);
+              let heightLeft = (Math.random() - 0.5) * heightSpread;
+              positions.push(center.clone().add(left).add(back).add(up.clone().multiplyScalar(heightLeft)));
+              if (positions.length >= count) break;
+              let rightPos = right.clone().multiplyScalar(spacing * step);
+              let heightRight = (Math.random() - 0.5) * heightSpread;
+              positions.push(center.clone().add(rightPos).add(back).add(up.clone().multiplyScalar(heightRight)));
+            }
+            return positions;
+          }
+
+          if (type === 'grid') {
+            let rows = Math.ceil(Math.sqrt(count));
+            let cols = Math.ceil(count / rows);
+            for (let r = 0; r < rows; r++) {
+              for (let c = 0; c < cols; c++) {
+                if (positions.length >= count) break;
+                let x = (c - (cols - 1) / 2) * spacing;
+                let y = (r - (rows - 1) / 2) * (spacing * 0.7);
+                let height = (Math.random() - 0.5) * heightSpread * 0.4;
+                let offset = right.clone().multiplyScalar(x).add(up.clone().multiplyScalar(y + height));
+                positions.push(center.clone().add(offset));
+              }
+            }
+            return positions;
+          }
+
+          if (type === 'ring') {
+            let ringRadius = Math.max(280, baseDistance * 0.55);
+            for (let i = 0; i < count; i++) {
+              let theta = (i / count) * Math.PI * 2;
+              let height = (Math.random() - 0.5) * heightSpread;
+              let pos = new THREE.Vector3(Math.cos(theta) * ringRadius, height, Math.sin(theta) * ringRadius);
+              positions.push(shipPos.clone().add(pos));
+            }
+            return positions;
+          }
+
+          if (type === 'pincer') {
+            let flankOffset = spacing * 3.5;
+            for (let i = 0; i < count; i++) {
+              let lane = i % 2 === 0 ? 1 : -1;
+              let step = Math.floor(i / 2);
+              let along = dir.clone().multiplyScalar(-spacing * step);
+              let side = right.clone().multiplyScalar(flankOffset * lane);
+              let height = (Math.random() - 0.5) * heightSpread;
+              positions.push(center.clone().add(along).add(side).add(up.clone().multiplyScalar(height)));
+            }
+            return positions;
+          }
+
+          let innerRadius = Math.max(240, baseDistance * 0.45);
+          let outerRadius = innerRadius + 140;
+          for (let i = 0; i < count; i++) {
+            let theta = (i / count) * Math.PI * 2;
+            let radius = i % 2 === 0 ? innerRadius : outerRadius;
+            let height = (Math.random() - 0.5) * heightSpread;
+            let pos = new THREE.Vector3(Math.cos(theta) * radius, height, Math.sin(theta) * radius);
+            positions.push(shipPos.clone().add(pos));
+          }
+          return positions;
         },
         spawnBatch: function(count, waveNumber) {
           let scene = document.querySelector('a-scene');
-          let shipPos = this.ship.object3D.position;
-          for(let i=0; i<count; i++) {
+          let shipPos = this.ship.object3D.position.clone();
+          let formation = this.pickFormation(waveNumber);
+          let positions = this.buildFormationPositions(formation, count, shipPos, waveNumber);
+          positions.forEach(pos => {
             let parent = document.createElement('a-entity');
             parent.setAttribute('enemy-drone', `wave: ${waveNumber}`);
             let visual = document.createElement('a-entity');
@@ -529,11 +628,9 @@
             light.setAttribute('position', '0 0 1'); 
             visual.appendChild(light);
             parent.appendChild(visual);
-            let angle = Math.random() * Math.PI * 2;
-            let dist = 800 + Math.random() * 100;
-            parent.object3D.position.set(shipPos.x + Math.cos(angle) * dist, shipPos.y + (Math.random() - 0.5) * 50, shipPos.z + Math.sin(angle) * dist);
+            parent.object3D.position.copy(pos);
             scene.appendChild(parent);
-          }
+          });
         }
       });
 
@@ -544,9 +641,13 @@
         init: function () {
           this.el.addEventListener('triggerdown', this.shoot.bind(this));
           this.ship = document.querySelector('#ship-rig'); 
-          this.weaponLevels = { pulse: 1, spread: 1, mine: 1 };
+          this.weaponLevels = { pulse: 1, spread: 1, missile: 1 };
           this.currentWeapon = 'pulse';
           this.maxLevel = 5;
+          this.missileAmmo = 0;
+          this.missileMaxAmmo = 6;
+          this.missileCooldown = 2400;
+          this.nextMissileTime = 0;
           this.applyPower = this.applyPower.bind(this);
           this.el.sceneEl.addEventListener('weapon-powerup-collected', this.applyPower);
         },
@@ -557,14 +658,43 @@
         },
         shoot: function () {
           if(this.el.sceneEl.systems['game-manager'].gameOver) return;
-          if (this.currentWeapon === 'pulse') this.firePulse();
-          else if (this.currentWeapon === 'spread') this.fireSpread();
-          else if (this.currentWeapon === 'mine') this.fireMine();
-          this.el.sceneEl.systems['game-audio'].playLaser(false);
+          let fired = false;
+          if (this.currentWeapon === 'pulse') {
+            this.firePulse();
+            fired = true;
+          } else if (this.currentWeapon === 'spread') {
+            this.fireSpread();
+            fired = true;
+          } else if (this.currentWeapon === 'missile') {
+            let now = performance.now();
+            if (this.missileAmmo <= 0) {
+              this.currentWeapon = 'pulse';
+              return;
+            }
+            if (now < this.nextMissileTime) return;
+            this.nextMissileTime = now + this.missileCooldown;
+            this.fireMissile();
+            this.missileAmmo--;
+            fired = true;
+            if (this.missileAmmo <= 0) this.currentWeapon = 'pulse';
+          }
+          if (fired) this.el.sceneEl.systems['game-audio'].playLaser(false);
         },
         applyPower: function (evt) {
           let type = (evt && evt.detail && evt.detail.type) || 'pulse';
           if (!this.weaponLevels[type]) this.weaponLevels[type] = 1;
+          if (type === 'missile') {
+            if (this.currentWeapon !== type) {
+              this.currentWeapon = type;
+            } else {
+              this.weaponLevels[type] = Math.min(this.maxLevel, this.weaponLevels[type] + 1);
+            }
+            let level = this.weaponLevels[type] || 1;
+            this.missileMaxAmmo = 4 + level * 2;
+            let refill = 2 + level;
+            this.missileAmmo = Math.min(this.missileMaxAmmo, this.missileAmmo + refill);
+            return;
+          }
           if (this.currentWeapon !== type) {
             this.currentWeapon = type; // switch weapon, no upgrade
           } else {
@@ -599,29 +729,23 @@
           angles.forEach(a => this.fireLaser({ xOffset: 0, yaw: a, color: '#FF6600', radius: 0.08, height: 3.2, speed: 4.8, emissiveIntensity: 5 }));
           this.makeFlash(0, '#FF6600');
         },
-        fireMine: function() {
-          let lvl = this.weaponLevels.mine || 1;
-          let count = Math.min(lvl, 5); // 1..5
-          let baseRadius = 3 + (lvl - 1) * 1.2;
-          let spreadAngle = THREE.MathUtils.degToRad(12 + lvl * 2);
-          let angles = [];
-          for (let i = 0; i < count; i++) {
-            let t = (count === 1) ? 0 : (i / (count - 1)) * 2 - 1;
-            angles.push(t * spreadAngle * 0.5);
-          }
-          angles.forEach(a => this.fireMineEntity(a, baseRadius));
-          this.makeFlash(0, '#66CCFF');
-        },
-        fireMineEntity: function(yaw, triggerRadius) {
+        fireMissile: function() {
           let scene = document.querySelector('a-scene');
-          let mine = document.createElement('a-entity');
-          mine.setAttribute('proximity-mine', `triggerRadius: ${triggerRadius}`);
-          mine.object3D.position.copy(this.ship.object3D.position);
-          mine.object3D.quaternion.copy(this.ship.object3D.quaternion);
-          mine.object3D.rotateY(yaw || 0);
-          mine.object3D.translateZ(-2.5);
-          mine.object3D.translateY(-0.5);
-          scene.appendChild(mine);
+          let missile = document.createElement('a-entity');
+          missile.object3D.position.copy(this.ship.object3D.position);
+          missile.object3D.quaternion.copy(this.ship.object3D.quaternion);
+          missile.object3D.translateZ(-3.0);
+          missile.object3D.translateY(-0.4);
+          missile.setAttribute('homing-missile', 'speed: 2.2; turnRate: 0.08; maxDist: 1200; hitRadius: 3.5');
+
+          let body = document.createElement('a-entity');
+          body.setAttribute('geometry', 'primitive: cone; height: 0.9; radius-bottom: 0.18; radius-top: 0.02');
+          body.setAttribute('material', 'color: #FF3366; emissive: #FF3366; emissiveIntensity: 2; shader: flat');
+          body.setAttribute('rotation', '-90 0 0');
+          missile.appendChild(body);
+
+          scene.appendChild(missile);
+          this.makeFlash(0, '#FF3366');
         },
         fireLaser: function(opts) {
           let scene = document.querySelector('a-scene');
@@ -683,70 +807,59 @@
         }
       });
 
-      AFRAME.registerComponent('proximity-mine', {
+      AFRAME.registerComponent('homing-missile', {
         schema: {
-          speed: { type: 'number', default: 1.5 },
-          maxDist: { type: 'number', default: 600 },
-          triggerRadius: { type: 'number', default: 4 },
-          fuse: { type: 'number', default: 9000 }
+          speed: { type: 'number', default: 2.2 },
+          turnRate: { type: 'number', default: 0.08 },
+          maxDist: { type: 'number', default: 1200 },
+          hitRadius: { type: 'number', default: 3.5 }
         },
         init: function() {
-          this.start = performance.now();
-          this.triggered = false;
-          let core = document.createElement('a-sphere');
-          core.setAttribute('radius', 0.25);
-          core.setAttribute('color', '#66CCFF');
-          core.setAttribute('shader', 'flat');
-          core.setAttribute('emissive', '#66CCFF');
-          core.setAttribute('emissiveIntensity', 2);
-          this.el.appendChild(core);
-          let ring = document.createElement('a-torus');
-          ring.setAttribute('radius', 0.45);
-          ring.setAttribute('radius-tubular', 0.05);
-          ring.setAttribute('material', 'color: #66CCFF; emissive: #66CCFF; emissiveIntensity: 1.4; shader: flat; opacity: 0.8; transparent: true');
-          ring.setAttribute('rotation', '0 0 0');
-          this.el.appendChild(ring);
+          this.startPos = this.el.object3D.position.clone();
+          this.velocity = new THREE.Vector3(0, 0, -1);
+          this.velocity.applyQuaternion(this.el.object3D.quaternion).normalize();
         },
         tick: function(time, timeDelta) {
-          if (this.triggered) return;
-          let dt = (timeDelta || 16);
-          this.el.object3D.translateZ(-this.data.speed); // drift forward
-          if (performance.now() - this.start > this.data.fuse) {
-            this.detonate();
+          let dt = (timeDelta || 16) / 16.666;
+          let target = this.findClosestEnemy();
+          if (target) {
+            let desired = target.object3D.position.clone().sub(this.el.object3D.position).normalize();
+            this.velocity.lerp(desired, this.data.turnRate * dt).normalize();
+            let lookAtTarget = this.el.object3D.position.clone().add(this.velocity);
+            this.el.object3D.lookAt(lookAtTarget);
+          }
+          this.el.object3D.position.addScaledVector(this.velocity, this.data.speed * dt);
+
+          if (this.el.object3D.position.distanceTo(this.startPos) > this.data.maxDist) {
+            if (this.el.parentNode) this.el.parentNode.removeChild(this.el);
             return;
           }
-          let shipPos = document.querySelector('#ship-rig').object3D.position;
-          if (this.el.object3D.position.distanceTo(shipPos) > this.data.maxDist) {
-            if(this.el.parentNode) this.el.parentNode.removeChild(this.el);
-            return;
-          }
+
           let enemies = document.querySelectorAll('.enemy-hitbox');
-          let minePos = this.el.object3D.position;
+          let missilePos = this.el.object3D.position;
           for (let i = 0; i < enemies.length; i++) {
-             let enemyParent = enemies[i];
-             if (minePos.distanceTo(enemyParent.object3D.position) < this.data.triggerRadius) {
-                this.detonate();
-                return;
-             }
+            let enemyParent = enemies[i];
+            if (missilePos.distanceTo(enemyParent.object3D.position) < this.data.hitRadius) {
+              if (enemyParent.components['enemy-drone']) enemyParent.components['enemy-drone'].hit();
+              if (this.el.parentNode) this.el.parentNode.removeChild(this.el);
+              return;
+            }
           }
         },
-        detonate: function() {
-          if (this.triggered) return;
-          this.triggered = true;
-          let scene = this.el.sceneEl;
-          let minePos = this.el.object3D.position.clone();
-          let explosion = document.createElement('a-entity');
-          explosion.setAttribute('position', minePos);
-          explosion.setAttribute('explosion-effect', '');
-          scene.appendChild(explosion);
-          // damage nearby enemies
+        findClosestEnemy: function() {
           let enemies = document.querySelectorAll('.enemy-hitbox');
-          enemies.forEach(enemy => {
-            if (minePos.distanceTo(enemy.object3D.position) < this.data.triggerRadius + 0.5) {
-              enemy.components['enemy-drone'].hit();
+          let closest = null;
+          let closestDist = Infinity;
+          let myPos = this.el.object3D.position;
+          for (let i = 0; i < enemies.length; i++) {
+            let enemy = enemies[i];
+            let dist = myPos.distanceTo(enemy.object3D.position);
+            if (dist < closestDist) {
+              closest = enemy;
+              closestDist = dist;
             }
-          });
-          if(this.el.parentNode) this.el.parentNode.removeChild(this.el);
+          }
+          return closest;
         }
       });
 
@@ -829,8 +942,8 @@
           this.ship = document.querySelector('#ship-rig');
           this.el.classList.add('powerup-item');
           this.baseY = this.el.object3D.position.y;
-          let colors = { pulse: '#00FF66', spread: '#FFAA00', mine: '#66CCFF' };
-          let labels = { pulse: 'PULSE', spread: 'SPREAD', mine: 'MINE' };
+          let colors = { pulse: '#00FF66', spread: '#FFAA00', missile: '#FF3366' };
+          let labels = { pulse: 'PULSE', spread: 'SPREAD', missile: 'MISSILE' };
           let color = colors[this.data.type] || '#00FF66';
           let label = labels[this.data.type] || 'PULSE';
           let core = document.createElement('a-entity');
@@ -871,7 +984,7 @@
         spawnPowerupAt: function(position, type) {
           if (!this.ship) return;
           let scene = this.el.sceneEl;
-          let types = ['pulse', 'spread', 'mine'];
+          let types = ['pulse', 'spread', 'missile'];
           let chosen = type || types[Math.floor(Math.random() * types.length)];
           let p = document.createElement('a-entity');
           p.setAttribute('weapon-powerup', `type: ${chosen}`);
