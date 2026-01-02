@@ -60,18 +60,35 @@ let leagueState = {
     storyBeatsViewed: []
 };
 
+// Meta-Lore / Remnant State
+let bookUnlocked = localStorage.getItem('arena_bookUnlocked') === 'true';
+let remnants = JSON.parse(localStorage.getItem('arena_remnants')) || [];
+let completedLeagueCount = parseInt(localStorage.getItem('arena_completedLeagues')) || 0;
+
 // League Story Beats - triggered on specific rounds (new cosmological lore)
 const LEAGUE_STORY_BEATS = [
     {
         round: 1,
         title: "THE AWAKENING",
         text: "There was no space to expand into. So containment was invented. Energy learned it could not remain equal forever. Motion occurred before time existed to measure it.",
-        voice: null // No voiceover per spec
+        voice: null
+    },
+    {
+        round: 2,
+        title: "THE FIRST INTERACTION",
+        text: "Before stability, there was collision. Before collision, there was difference. The arena does not create difference. It reveals what was always inevitable.",
+        voice: null
     },
     {
         round: 3,
         title: "AWARENESS",
         text: "They are aware. Awareness was a side effect. Choice was tested. Choice failed. Only interactions remained.",
+        voice: null
+    },
+    {
+        round: 4,
+        title: "THE NARROW MARGIN",
+        text: "Across all scales, the universe appears finely poised. Small variations render it sterile or chaotic. The margin for complexity is narrow—narrower than chance alone seems to justify.",
         voice: null
     },
     {
@@ -81,9 +98,27 @@ const LEAGUE_STORY_BEATS = [
         voice: null
     },
     {
+        round: 6,
+        title: "RECURSION",
+        text: "In building simulations of reality, they approached something indistinguishable from the preconditions of existence itself. The observer observes itself observing.",
+        voice: null
+    },
+    {
         round: 7,
         title: "CONVERGE",
         text: "The final state approaches. What survives here will define everything. This is not a competition. It is a filter.",
+        voice: null
+    },
+    {
+        round: 8,
+        title: "THE QUESTION",
+        text: "Why does the universe permit minds at all? Not 'why' in the sense of purpose, but 'why' in the sense of constraint.",
+        voice: null
+    },
+    {
+        round: 9,
+        title: "SELECTION",
+        text: "The universe was not the result of creation, but of selection. Not designed. Refined. Not purpose. Remainder.",
         voice: null
     },
     {
@@ -100,21 +135,27 @@ const NARRATIVE_SNIPPETS = {
         "There was no space to expand into. So containment was invented.",
         "Energy learned it could not remain equal forever.",
         "Motion occurred before time existed to measure it.",
-        "The arena is not cruel. It is necessary."
+        "The arena is not cruel. It is necessary.",
+        "The laws are not chosen. They are whatever survives.",
+        "Before observation, there was only potential."
     ],
     mid: [
         "They are aware. Awareness was a side effect.",
         "Choice was tested. Choice failed.",
         "Only interactions remained.",
         "Survival does not imply virtue. Only stability.",
-        "Most configurations collapse quickly."
+        "Most configurations collapse quickly.",
+        "Complexity is a side effect.",
+        "Some configurations collapse before they can be recorded."
     ],
     late: [
         "The final state approaches. One remains.",
         "What survives here will define everything.",
         "This is not a competition. It is a filter.",
         "A configuration collapses. The baseline holds.",
-        "All laws are waiting."
+        "All laws are waiting.",
+        "This is not the end. It is the only stable beginning.",
+        "Expansion is not a reward. It is a consequence."
     ]
 };
 
@@ -125,7 +166,11 @@ const ELIMINATION_TEXT = [
     "Entropy exceeded tolerance. A configuration collapses.",
     "Proof of failure: Pattern unstable.",
     "This configuration ends here. Necessity unfulfilled.",
-    "A pattern collapses. Something that almost was… isn't."
+    "A pattern collapses. Something that almost was… isn't.",
+    "A universe where stars never formed.",
+    "Not every possibility becomes real.",
+    "Meaning was local. And now it is over.",
+    "The margin was too narrow."
 ];
 
 // Pre-singular state (approaching converge)
@@ -168,7 +213,7 @@ const META_LORE = [
 ];
 
 // Track completed leagues for meta-lore unlock
-let completedLeagueCount = parseInt(localStorage.getItem('arena_completedLeagues')) || 0;
+// (Moved to top of file)
 
 // Tiered Configuration Parameters - align based on iteration progress
 const CONDITION_PARAMETERS = {
@@ -363,13 +408,13 @@ function showBettingOverlay() {
     currentCompetitors.forEach(name => {
         draftButtons += `
             <button class="restart-btn" style="font-size: 0.65rem; background:#444; margin: 3px;" onclick="applyBuff('${name}', 'INTEGRITY')">${name}: INTEGRITY (150)</button>
-            <button class="restart-btn" style="font-size: 0.65rem; background:#444; margin: 3px;" onclick="applyBuff('${name}', 'THRUSTERS')">${name}: THRUSTERS (150)</button>
+            <button class="restart-btn" style="font-size: 0.65rem; background:#444; margin: 3px;" onclick="applyBuff('${name}', 'OVERDRIVE')">${name}: OVERDRIVE (150)</button>
         `;
     });
 
     draftArea.innerHTML = `
         <h4 style="margin-bottom: 10px; color: #bc00ff; letter-spacing: 2px;">PRIMARY OBSERVATION SELECT</h4>
-        <p style="font-size: 0.7rem; opacity: 0.6; margin-bottom: 10px;">Adjust parameters before the iteration. INTEGRITY: +200 units | THRUSTERS: -20% mass</p>
+        <p style="font-size: 0.7rem; opacity: 0.6; margin-bottom: 10px;">Adjust parameters before the iteration. INTEGRITY: +200 units | OVERDRIVE: +20% Speed</p>
         <div style="display: flex; gap: 5px; flex-wrap: wrap;">
             ${draftButtons}
         </div>
@@ -668,12 +713,18 @@ let hazards = [];
 let arenaRotation = 0;
 const arenaSpeed = 0.005;
 let gameTime = 0;
-const gameDuration = 720000; // 12 minutes for full shrink
+const gameDuration = 360000; // 6 minutes for full shrink / implosion
 
 let slowMo = 1.0;
 let cameraScale = 1.0;
 let targetCameraScale = 1.0;
+let cameraX = 0;
+let cameraY = 0;
+let targetCameraX = 0;
+let targetCameraY = 0;
+let isPanning = false;
 
+// Audio Context & NodestalemateTimer = 0;
 let stalemateTimer = 0;
 let stalemateCountdown = -1;
 let lastCountdownSecond = -1;
@@ -704,98 +755,189 @@ let selectedVoice = null;
 let screenShake = 0;
 let speechMemory = []; // Prevents Google Chrome garbage collection bug
 
-// Soundscape 1.0 + Tier 2 Dynamic OST
+// Soundscape 2.0: Generative Pentatonic System
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-// Dynamic OST State
-let musicActive = false;
-let droneOsc = null;
-let droneGain = null;
-let musicInterval = null;
-let currentBPM = 80;
+class MusicGenerator {
+    constructor() {
+        this.ctx = audioCtx;
+        this.active = false;
+        this.scale = [130.81, 155.56, 174.61, 196.00, 233.08]; // C3 Minor Pentatonic
+        // Add upper octaves
+        this.fullScale = [
+            ...this.scale,
+            ...this.scale.map(f => f * 2),
+            ...this.scale.map(f => f * 4)
+        ];
+        this.nodes = [];
+        this.masterGain = null;
+        this.filter = null;
+        this.sequenceInterval = null;
+        this.bassInterval = null;
+        this.bpm = 80;
+    }
 
-function startPulseLoop() {
-    musicInterval = setInterval(() => {
-        if (!gameActive) return;
-        const aliveCount = balls.filter(b => b.alive).length;
-        if (aliveCount === 0) return;
+    start() {
+        if (this.active) return;
+        this.active = true;
+        if (this.ctx.state === 'suspended') this.ctx.resume();
 
-        const t = audioCtx.currentTime;
-        const pulseGain = audioCtx.createGain();
-        pulseGain.connect(audioCtx.destination);
-        pulseGain.gain.setValueAtTime(0.05, t);
-        pulseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+        this.masterGain = this.ctx.createGain();
+        this.masterGain.gain.value = musicVolume * 0.3;
 
-        const pulseOsc = audioCtx.createOscillator();
-        pulseOsc.type = 'sine';
-        const freq = 60 + (6 - aliveCount) * 20;
-        pulseOsc.frequency.setValueAtTime(freq, t);
-        pulseOsc.connect(pulseGain);
-        pulseOsc.start();
-        pulseOsc.stop(t + 0.1);
-    }, (60 / currentBPM) * 1000);
+        this.filter = this.ctx.createBiquadFilter();
+        this.filter.type = 'lowpass';
+        this.filter.frequency.value = 400;
+        this.filter.Q.value = 1;
+
+        this.masterGain.connect(this.filter);
+        this.filter.connect(this.ctx.destination);
+
+        // Start generative layers
+        this.startBassDrone();
+        this.startHarmonicSwells();
+        this.startPad();
+    }
+
+    stop() {
+        this.active = false;
+        if (this.sequenceInterval) clearInterval(this.sequenceInterval);
+        if (this.bassInterval) clearInterval(this.bassInterval);
+
+        if (this.masterGain) {
+            this.masterGain.gain.setTargetAtTime(0, this.ctx.currentTime, 1);
+            setTimeout(() => {
+                this.nodes.forEach(n => {
+                    try { n.stop(); n.disconnect(); } catch (e) { }
+                });
+                this.nodes = [];
+            }, 1100);
+        }
+    }
+
+    setIntensity(level) {
+        // level 0 (calm) to 1 (intense)
+        if (!this.filter) return;
+
+        const targetFreq = 400 + (level * 2000);
+        this.filter.frequency.setTargetAtTime(targetFreq, this.ctx.currentTime, 2);
+
+        // Adjust BPM
+        const targetBPM = 80 + (level * 60);
+        if (Math.abs(targetBPM - this.bpm) > 10) {
+            this.bpm = targetBPM;
+            this.restartSequences();
+        }
+    }
+
+    startBassDrone() {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.value = 65.41; // C2
+
+        gain.gain.value = 0.3;
+        osc.connect(gain);
+        gain.connect(this.masterGain); // Bypass filter for bass presence? Or not. Let's filter it.
+
+        osc.start();
+        this.nodes.push(osc);
+
+        // Modulate bass
+        this.bassInterval = setInterval(() => {
+            if (!this.active) return;
+            // Shift root note occasionally
+            const roots = [65.41, 58.27, 77.78]; // C2, Bb1, Eb2
+            const freq = roots[Math.floor(Math.random() * roots.length)];
+            osc.frequency.setTargetAtTime(freq, this.ctx.currentTime, 0.5);
+        }, 8000);
+    }
+
+    startPad() {
+        // Two detuned saws for a pad
+        for (let i = 0; i < 2; i++) {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.value = this.scale[0] * 2; // Middle C range
+            osc.detune.value = (Math.random() - 0.5) * 20;
+
+            gain.gain.value = 0.05;
+            osc.connect(gain);
+            gain.connect(this.masterGain);
+            osc.start();
+            this.nodes.push(osc);
+
+            // Slow drift
+            setInterval(() => {
+                if (!this.active) return;
+                const note = this.scale[Math.floor(Math.random() * this.scale.length)];
+                osc.frequency.setTargetAtTime(note * (1 + i), this.ctx.currentTime, 4); // Slow glide
+            }, 5000 + i * 1000);
+        }
+    }
+
+    startHarmonicSwells() {
+        const playSwell = () => {
+            if (!this.active) return;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            // Choose harmonic intervals (3rds, 5ths) from the mid-high range
+            // Avoid highest octaves to reduce sharpness
+            const noteSet = this.fullScale.slice(2, 10);
+            const freq = noteSet[Math.floor(Math.random() * noteSet.length)];
+
+            osc.type = 'triangle'; // Softer than sine/saw combo
+            osc.frequency.value = freq;
+
+            // Slower Envelope (Swell)
+            const t = this.ctx.currentTime;
+            gain.gain.setValueAtTime(0, t);
+            gain.gain.linearRampToValueAtTime(0.08, t + 1.0); // Slow attack
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 4.0); // Long tail
+
+            osc.connect(gain);
+            gain.connect(this.masterGain);
+
+            osc.start();
+            osc.stop(t + 4.1);
+        };
+
+        this.restartSequences = () => {
+            if (this.sequenceInterval) clearInterval(this.sequenceInterval);
+            // Much slower timing
+            const intervalMs = (60 / this.bpm) * 1000 * 2; // Every 2 beats (approx)
+            this.sequenceInterval = setInterval(playSwell, intervalMs + Math.random() * 500);
+        };
+
+        this.restartSequences();
+    }
 }
+
+const musicGenerator = new MusicGenerator();
+let musicActive = false;
 
 function startOST() {
     if (musicActive) return;
     musicActive = true;
-
-    // Low Drone
-    droneOsc = audioCtx.createOscillator();
-    droneGain = audioCtx.createGain();
-    droneOsc.type = 'sawtooth';
-    droneOsc.frequency.setValueAtTime(40, audioCtx.currentTime);
-    droneGain.gain.setValueAtTime(0.05, audioCtx.currentTime);
-
-    const lpFilter = audioCtx.createBiquadFilter();
-    lpFilter.type = 'lowpass';
-    lpFilter.frequency.setValueAtTime(200, audioCtx.currentTime);
-
-    droneOsc.connect(lpFilter);
-    lpFilter.connect(droneGain);
-    droneGain.connect(audioCtx.destination);
-    droneOsc.start();
-
-    startPulseLoop();
+    musicGenerator.start();
 }
 
 function updateMusic(aliveCount) {
     if (!musicActive) return;
-
-
-    const intensity = (6 - aliveCount) / 5; // 0 to 1
-
-    if (droneOsc) {
-        droneOsc.frequency.setTargetAtTime(40 + intensity * 20, audioCtx.currentTime, 0.5);
-    }
-
-    // Volume control
-    if (droneGain) {
-        const baseVol = 0.05 * musicVolume;
-        const vol = baseVol + (intensity * 0.1 * musicVolume);
-        droneGain.gain.setTargetAtTime(vol, audioCtx.currentTime, 0.5);
-    }
-
-    const newBPM = 80 + intensity * 60;
-    if (Math.abs(newBPM - currentBPM) > 5) {
-        currentBPM = newBPM;
-        clearInterval(musicInterval);
-        startPulseLoop();
-    }
+    // Calculate intensity 0.0 to 1.0
+    // At start (5-8 balls) -> 0.0
+    // At end (2 balls) -> 1.0
+    const maxBalls = currentCompetitors.length || 8;
+    const intensity = Math.max(0, 1 - (aliveCount / maxBalls));
+    musicGenerator.setIntensity(intensity);
 }
 
 function stopOST() {
     if (!musicActive) return;
     musicActive = false;
-    clearInterval(musicInterval);
-    if (droneGain) {
-        droneGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.0);
-        setTimeout(() => {
-            if (droneOsc) {
-                try { droneOsc.stop(); } catch (e) { }
-            }
-        }, 1100);
-    }
+    musicGenerator.stop();
 }
 
 // Tier 3: Hall of Fame Persistence
@@ -882,7 +1024,13 @@ function playImpact(impactForce) {
 }
 
 function playWallHit() {
-    playSound(300, 'triangle', 0.05, 0.2);
+    let freq = 300;
+    if (typeof musicGenerator !== 'undefined' && musicGenerator.fullScale.length > 0) {
+        // Pick a random note from the full scale
+        const noteSet = musicGenerator.fullScale.slice(2, 12); // Mid range
+        freq = noteSet[Math.floor(Math.random() * noteSet.length)];
+    }
+    playSound(freq, 'triangle', 0.05, 0.2);
 }
 
 function playPowerup() {
@@ -1093,36 +1241,82 @@ class Shard {
     }
 }
 
+
+let bucketX = 0;
+window.addEventListener('mousemove', (e) => {
+    bucketX = e.clientX;
+});
+// Also support keys
+window.addEventListener('keydown', (e) => {
+    if (miniGameActive) {
+        if (e.key === 'ArrowLeft') bucketX -= 50;
+        if (e.key === 'ArrowRight') bucketX += 50;
+    }
+});
+
 function startSalvageOperation() {
-    bettingOverlay.classList.add('fade-out');
+    // Hide all other overlays explicitly
+    bettingOverlay.classList.add('hidden');
+    attractOverlay.classList.add('hidden');
+    mainMenuOverlay.classList.add('hidden');
+
     miniGame.style.display = 'block';
     miniGameActive = true;
+
+    // Stop main game loop interaction
+    gameActive = false;
+
     shards = [];
-    bank = 0;
+    bank = 0; // Reset for this run? No, we shouldn't wipe the user's bank! 
+    // Wait, the original code had bank = 0? That wipes their progress! 
+    // Let's track *session* earnings in a temp var, then add to bank.
+    let salvageEarnings = 0;
+
     miniCanvas.width = window.innerWidth;
     miniCanvas.height = window.innerHeight;
+    bucketX = miniCanvas.width / 2;
 
-    logCommentary("Salvage operation initialized. Reclaiming energy fragments.");
+    logCommentary("Salvage operation initialized. Position containment field.");
 
     let startTime = Date.now();
+
+    // Explicit Loop for Minigame to avoid conflict with main loop
     const miniLoop = () => {
         if (!miniGameActive) return;
 
-        mctx.fillStyle = '#000';
+        mctx.fillStyle = '#050505';
         mctx.fillRect(0, 0, miniCanvas.width, miniCanvas.height);
 
-        if (Math.random() < 0.1) shards.push(new Shard());
+        // Draw Bucket
+        mctx.fillStyle = '#00f2ff';
+        mctx.fillRect(bucketX - 50, miniCanvas.height - 30, 100, 20);
+        // Glow
+        mctx.shadowBlur = 20;
+        mctx.shadowColor = '#00f2ff';
+        mctx.fillRect(bucketX - 50, miniCanvas.height - 30, 100, 20);
+        mctx.shadowBlur = 0;
+
+        // Spawn Shards
+        if (Math.random() < 0.15) shards.push(new Shard());
 
         shards.forEach(s => {
             s.update();
             s.draw();
+
+            // Collision with bucket
+            if (s.alive && s.y > miniCanvas.height - 40 && s.y < miniCanvas.height &&
+                s.x > bucketX - 50 && s.x < bucketX + 50) {
+                s.alive = false;
+                salvageEarnings += 10;
+                playSound(600 + Math.random() * 200, 'sine', 0.1, 0.1);
+            }
         });
         shards = shards.filter(s => s.alive);
 
-        mctx.fillStyle = '#00f2ff';
+        mctx.fillStyle = '#fff';
         mctx.font = 'bold 30px Outfit';
         mctx.textAlign = 'center';
-        mctx.fillText(`FRAGMENTS RECLAIMED: ${bank}`, miniCanvas.width / 2, 50);
+        mctx.fillText(`YIELD: ${salvageEarnings}`, miniCanvas.width / 2, 50);
 
         const timeLeft = 20 - Math.floor((Date.now() - startTime) / 1000);
         mctx.fillText(`WINDOW: ${timeLeft}S`, miniCanvas.width / 2, 100);
@@ -1130,9 +1324,13 @@ function startSalvageOperation() {
         if (timeLeft <= 0) {
             miniGameActive = false;
             miniGame.style.display = 'none';
+
+            // Apply earnings
+            bank += salvageEarnings; // Add to existing bank
             saveBank();
+
             showBettingOverlay();
-            logCommentary(`Operation complete. ${bank} units re-integrated.`);
+            logCommentary(`Operation complete. ${salvageEarnings} units recovered.`);
         } else {
             requestAnimationFrame(miniLoop);
         }
@@ -1140,16 +1338,8 @@ function startSalvageOperation() {
     miniLoop();
 }
 
-miniGame.onclick = (e) => {
-    shards.forEach(s => {
-        const d = Math.sqrt((s.x - e.clientX) ** 2 + (s.y - e.clientY) ** 2);
-        if (d < s.size + 20 && s.alive) {
-            s.alive = false;
-            bank += 10;
-            playSound(400 + Math.random() * 200, 'sine', 0.1, 0.1);
-        }
-    });
-};
+// Remove click handler
+miniGame.onclick = null;
 
 scrapRunBtn.onclick = startSalvageOperation;
 
@@ -1173,8 +1363,9 @@ class GravitationalAnchor {
         if (Date.now() > this.nextSwitch) {
             this.polarity *= -1;
             this.nextSwitch = Date.now() + 2000 + Math.random() * 8000;
-            if (this.polarity === 1) logCommentary("Gravitational pull intensifying.");
-            else logCommentary("Gravitational repulsion active.");
+            this.polarity *= -1;
+            this.nextSwitch = Date.now() + 2000 + Math.random() * 8000;
+            // Voice lines removed per request
         }
     }
     draw() {
@@ -1401,7 +1592,7 @@ class Shockwave {
         this.maxRadius = arenaRadius;
         this.life = 1.0;
         this.strength = 15;
-        playSound(60, 'square', 1.0, 0.3); // Low hum for shockwave
+        playSound(60, 'square', 1.0, 0.3);
     }
 
     update() {
@@ -1429,6 +1620,262 @@ class Shockwave {
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
         ctx.strokeStyle = `rgba(0, 242, 255, ${this.life * 0.5})`;
         ctx.lineWidth = 5;
+        ctx.stroke();
+    }
+}
+
+// === NEW HAZARD CLASSES ===
+
+class StaticSpike { // Round 1
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.size = 20;
+    }
+    update(dt) { }
+    draw() {
+        ctx.fillStyle = '#ff3300';
+        ctx.beginPath();
+        for (let i = 0; i < 4; i++) {
+            const angle = (i / 4) * Math.PI * 2 + Date.now() / 1000;
+            const px = this.x + Math.cos(angle) * this.size;
+            const py = this.y + Math.sin(angle) * this.size;
+            ctx.lineTo(px, py);
+        }
+        ctx.fill();
+    }
+    onCollide(ball) {
+        ball.takeDamage(15, "Spike");
+        ball.vx *= -0.5;
+        ball.vy *= -0.5;
+        playWallHit();
+    }
+}
+
+class LaserBeam { // Round 4
+    constructor(angle) {
+        this.x = centerX;
+        this.y = centerY;
+        this.angle = angle;
+        this.speed = 0.01;
+    }
+    update(dt) {
+        this.angle += this.speed * dt;
+    }
+    draw() {
+        const ex = this.x + Math.cos(this.angle) * arenaRadius * 2;
+        const ey = this.y + Math.sin(this.angle) * arenaRadius * 2;
+
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(ex, ey);
+        ctx.strokeStyle = '#ff0055';
+        ctx.lineWidth = 4;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#ff0055';
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Opposite side
+        const ex2 = this.x - Math.cos(this.angle) * arenaRadius * 2;
+        const ey2 = this.y - Math.sin(this.angle) * arenaRadius * 2;
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(ex2, ey2);
+        ctx.stroke();
+    }
+    onCollide(ball) { } // handled in global check due to line geometry
+}
+
+class TeslaCoil { // Round 5
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.range = 150;
+        this.cooldown = 0;
+    }
+    update(dt) {
+        if (this.cooldown > 0) this.cooldown -= dt;
+        if (this.cooldown <= 0) {
+            // Find target
+            const target = balls.find(b => b.alive && Math.sqrt((b.x - this.x) ** 2 + (b.y - this.y) ** 2) < this.range);
+            if (target) {
+                target.takeDamage(20, "Tesla");
+                target.vx *= 0.5;
+                target.vy *= 0.5;
+                createLightning(this.x, this.y, target.x, target.y);
+                playSound(800, 'sawtooth', 0.1, 0.3);
+                this.cooldown = 120; // 2 seconds
+            }
+        }
+    }
+    draw() {
+        ctx.fillStyle = '#00f2ff';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0, 242, 255, 0.2)';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.range, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+}
+
+function createLightning(x1, y1, x2, y2) {
+    // Simple visual effect function
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    const midX = (x1 + x2) / 2 + (Math.random() - 0.5) * 20;
+    const midY = (y1 + y2) / 2 + (Math.random() - 0.5) * 20;
+    ctx.lineTo(midX, midY);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+}
+
+class FreezeZone { // Round 6
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.radius = 100;
+    }
+    update(dt) { }
+    draw() {
+        ctx.fillStyle = 'rgba(0, 150, 255, 0.1)';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    // Effect applied in resolve logic
+}
+
+class AcceleratorPad { // Round 7
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.radius = 60;
+    }
+    update(dt) { }
+    draw() {
+        ctx.fillStyle = 'rgba(0, 255, 0, 0.1)';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        // Chevron
+        ctx.strokeStyle = '#0f0';
+        ctx.beginPath();
+        ctx.moveTo(this.x - 10, this.y);
+        ctx.lineTo(this.x, this.y - 20);
+        ctx.lineTo(this.x + 10, this.y);
+        ctx.stroke();
+    }
+}
+
+class TeleportGate { // Round 8
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.radius = 30;
+        this.pair = null; // Linked gate
+        this.cooldowns = new Map();
+    }
+    update(dt) {
+        this.cooldowns.forEach((val, key) => {
+            if (val > 0) this.cooldowns.set(key, val - dt);
+            else this.cooldowns.delete(key);
+        });
+    }
+    draw() {
+        ctx.strokeStyle = '#bc00ff';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(188, 0, 255, ${(Math.sin(Date.now() / 200) + 1) / 4})`;
+        ctx.fill();
+    }
+    onCollide(ball) {
+        if (this.pair && !this.cooldowns.has(ball.id)) {
+            ball.x = this.pair.x;
+            ball.y = this.pair.y;
+            this.pair.cooldowns.set(ball.id, 60); // 1s cooldown
+            playSound(1000, 'sine', 0.2, 0.5);
+            createDust(this.x, this.y, '#bc00ff');
+            createDust(this.pair.x, this.pair.y, '#bc00ff');
+        }
+    }
+}
+
+class OrbitalSaw { // Round 9
+    constructor(dist) {
+        this.dist = dist;
+        this.angle = 0;
+        this.speed = 0.02;
+        this.size = 25;
+        this.x = 0;
+        this.y = 0;
+    }
+    update(dt) {
+        this.angle += this.speed * dt;
+        this.x = centerX + Math.cos(this.angle) * this.dist;
+        this.y = centerY + Math.sin(this.angle) * this.dist;
+    }
+    draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle * 10);
+        ctx.fillStyle = '#ccc';
+        ctx.beginPath();
+        // Saw shape
+        for (let i = 0; i < 8; i++) {
+            const a = (i / 8) * Math.PI * 2;
+            ctx.lineTo(Math.cos(a) * this.size, Math.sin(a) * this.size);
+            const a2 = ((i + 0.5) / 8) * Math.PI * 2;
+            ctx.lineTo(Math.cos(a2) * this.size * 0.5, Math.sin(a2) * this.size * 0.5);
+        }
+        ctx.fill();
+        ctx.restore();
+    }
+    onCollide(ball) {
+        ball.takeDamage(5, "Saw");
+        const angle = Math.atan2(ball.y - this.y, ball.x - this.x);
+        ball.vx += Math.cos(angle) * 2;
+        ball.vy += Math.sin(angle) * 2;
+    }
+}
+
+class VoidVortex { // Round 10
+    constructor() {
+        this.x = centerX;
+        this.y = centerY;
+        this.strength = 0.15;
+    }
+    update(dt) {
+        // massive pull
+        balls.forEach(b => {
+            if (b.alive) {
+                const dx = this.x - b.x;
+                const dy = this.y - b.y;
+                const d = Math.sqrt(dx * dx + dy * dy);
+                if (d > 20) {
+                    b.vx += (dx / d) * this.strength;
+                    b.vy += (dy / d) * this.strength;
+                } else {
+                    b.takeDamage(1, "Void");
+                }
+            }
+        });
+    }
+    draw() {
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 40, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        const t = Date.now() / 500;
+        ctx.arc(this.x, this.y, 40 + Math.sin(t) * 5, 0, Math.PI * 2);
         ctx.stroke();
     }
 }
@@ -1574,14 +2021,40 @@ class Ball {
             const hdx = this.x - h.x;
             const hdy = this.y - h.y;
             const hdist = Math.sqrt(hdx * hdx + hdy * hdy);
-            if (hdist < this.radius + (h.size || 15)) {
+
+            // Check for LaserBeam specifically (line collision)
+            if (h instanceof LaserBeam) {
+                // Simplified check: if angle matches roughly? No, use line dist
+                // Actually LaserBeam draws across screen.
+                // Distance from point to line:
+                const A = -Math.sin(h.angle);
+                const B = Math.cos(h.angle);
+                const C = -A * centerX - B * centerY; // passing through center
+                const distLine = Math.abs(A * this.x + B * this.y + C) / Math.sqrt(A * A + B * B);
+
+                if (distLine < this.radius + 2) {
+                    this.takeDamage(1, "Laser");
+                    screenShake = Math.max(screenShake, 1);
+                }
+                return;
+            }
+
+            // Normal circular hazards
+            const hSize = h.size || h.range || (h.radius || 15);
+            if (hdist < this.radius + hSize) {
                 if (h.onCollide) {
                     h.onCollide(this);
+                } else if (h instanceof FreezeZone) {
+                    this.vx *= 0.9;
+                    this.vy *= 0.9;
+                } else if (h instanceof AcceleratorPad) {
+                    this.vx *= 1.1;
+                    this.vy *= 1.1;
                 } else if (h.size) { // Standard Blade Hazard
                     const angle = Math.atan2(hdy, hdx);
                     this.vx += Math.cos(angle) * 5;
                     this.vy += Math.sin(angle) * 5;
-                    this.takeDamage(1, "Hazard"); // Scaled
+                    this.takeDamage(1, "Hazard");
                     screenShake = Math.max(screenShake, 2);
                     playWallHit();
                 }
@@ -1638,7 +2111,7 @@ class Ball {
 
         // Theme Friction
         let frict = currentTheme.friction;
-        if (this.upgrades.includes('THRUSTERS')) frict = Math.min(0.995, frict + 0.01);
+        // removed thrusters physics mod, now just initial velocity
         this.vx *= frict;
         this.vy *= frict;
 
@@ -1713,7 +2186,7 @@ class Ball {
         // Final Phase: Show Upgrade Icons - with fallback for custom upgrades
         const upgradeIcons = {
             'INTEGRITY': '🛡️',
-            'THRUSTERS': '🚀',
+            'OVERDRIVE': '🚀',
             'REBOUND': '💚',
             'VENGEANCE': '🔥',
             'THORNS': '🌵',
@@ -1808,6 +2281,9 @@ function createDust(x, y, color) {
 }
 
 function resize() {
+    const oldCenterX = centerX || window.innerWidth / 2;
+    const oldCenterY = centerY || window.innerHeight / 2;
+
     width = window.innerWidth;
     height = window.innerHeight;
     canvas.width = width;
@@ -1816,6 +2292,17 @@ function resize() {
     centerY = height / 2;
     baseArenaRadius = Math.min(width, height) * 0.45;
     arenaRadius = baseArenaRadius;
+
+    // Shift camera to match new world coordinates
+    const dx = centerX - oldCenterX;
+    const dy = centerY - oldCenterY;
+
+    if (typeof cameraX !== 'undefined') {
+        cameraX += dx;
+        cameraY += dy;
+        targetCameraX += dx;
+        targetCameraY += dy;
+    }
 }
 
 function resolveBallCollisions() {
@@ -1890,6 +2377,10 @@ function resolveBallCollisions() {
 
 function init() {
     resize();
+    cameraX = centerX;
+    cameraY = centerY;
+    targetCameraX = centerX;
+    targetCameraY = centerY;
     gameActive = true;
     currentGameState = STATE.MATCH;
     if (typeof updateNavButtons === 'function') updateNavButtons();
@@ -1928,7 +2419,11 @@ function init() {
         if (activeBuffs[ball.name]) {
             activeBuffs[ball.name].forEach(buff => {
                 if (buff === 'INTEGRITY') ball.energy += 200;
-                if (buff === 'THRUSTERS') ball.mass *= 0.8;
+                if (buff === 'OVERDRIVE') {
+                    // +20% Speed, No penalty
+                    ball.vx *= 1.2;
+                    ball.vy *= 1.2;
+                }
                 ball.upgrades.push(buff);
             });
             delete activeBuffs[ball.name]; // Consume for match
@@ -1948,9 +2443,42 @@ function init() {
         balls.push(goldenBall);
     }
 
-    // Tier 2: Hazards
-    for (let i = 0; i < 3; i++) {
-        hazards.push(new Hazard((i / 3) * Math.PI * 2, baseArenaRadius * 0.4, 30));
+    // Tier 2: Hazards - Specific to League Round
+    hazards = [];
+    if (gameMode === 'league') {
+        const round = leagueRound;
+        if (round === 1) { // Static Spikes
+            for (let i = 0; i < 5; i++) hazards.push(new StaticSpike(centerX + Math.cos(i / 5 * Math.PI * 2) * 200, centerY + Math.sin(i / 5 * Math.PI * 2) * 200));
+        } else if (round === 2) { // Repulsor
+            hazards.push(new GravitationalAnchor(Math.random() * Math.PI * 2, 200));
+        } else if (round === 3) { // Attractor
+            const g = new GravitationalAnchor(0, 0); g.polarity = 1; hazards.push(g);
+        } else if (round === 4) { // Laser
+            hazards.push(new LaserBeam(0));
+            hazards.push(new LaserBeam(Math.PI / 2));
+        } else if (round === 5) { // Tesla
+            hazards.push(new TeslaCoil(centerX, centerY));
+        } else if (round === 6) { // Freeze
+            hazards.push(new FreezeZone(centerX, centerY));
+        } else if (round === 7) { // Accel
+            hazards.push(new AcceleratorPad(centerX - 200, centerY));
+            hazards.push(new AcceleratorPad(centerX + 200, centerY));
+        } else if (round === 8) { // Teleport
+            const g1 = new TeleportGate(centerX - 250, centerY);
+            const g2 = new TeleportGate(centerX + 250, centerY);
+            g1.pair = g2; g2.pair = g1;
+            hazards.push(g1); hazards.push(g2);
+        } else if (round === 9) { // Saw
+            hazards.push(new OrbitalSaw(150));
+            hazards.push(new OrbitalSaw(250));
+        } else if (round >= 10) { // Void
+            hazards.push(new VoidVortex());
+        }
+    } else {
+        // Default attract/quick match hazards
+        for (let i = 0; i < 3; i++) {
+            hazards.push(new Hazard((i / 3) * Math.PI * 2, baseArenaRadius * 0.4, 30));
+        }
     }
 
     gameStatus.textContent = `Arena: ${currentTheme.name}`;
@@ -3131,6 +3659,9 @@ function updateStats() {
                 });
             });
             targetCameraScale = Math.min(1.5, Math.max(0.8, (arenaRadius * 2) / (maxDist + 200)));
+            // Keep centered on arena during match
+            targetCameraX = centerX;
+            targetCameraY = centerY;
         }
     }
 }
@@ -3191,16 +3722,202 @@ function showCelebration(winner) {
     winnerNameEl.style.color = winner.color;
     celebrationOverlay.style.borderColor = winner.color;
     celebrationOverlay.style.boxShadow = `0 0 50px ${winner.color}`;
-    celebrationOverlay.classList.remove('hidden');
 
     for (let i = 0; i < 150; i++) {
-        particles.push(new Particle(centerX, centerY, winner.color));
+        particles.push(new Particle(winner.x, winner.y, winner.color));
     }
 
     logCommentary(`Stability achieved: Unit ${winner.name} persists. Pattern: ${winner.type}.`);
-    slowMo = 1.0;
 
-    setTimeout(showSummaryScreen, 2000);
+    // PHASE 1: Zoom into winner (camera pan)
+    targetCameraScale = 5.0; // Deep zoom
+    targetCameraX = winner.x;
+    targetCameraY = winner.y;
+    slowMo = 0.3; // Slow-mo dramatic effect
+
+    // PHASE 2: After 2 seconds, show internal view
+    setTimeout(() => {
+        showInternalView(winner);
+    }, 2000);
+}
+
+// Internal structure animation
+function showInternalView(winner) {
+    const overlay = document.getElementById('internal-view-overlay');
+    const canvas = document.getElementById('internal-view-canvas');
+    const ictx = canvas.getContext('2d');
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    overlay.style.display = 'flex';
+
+    let t = 0;
+    const duration = 180; // ~3 seconds at 60fps
+
+    // Generate unique internal structure based on ball properties
+    const seed = winner.name.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+    const nodeCount = 8 + (seed % 8);
+    const ringCount = 3 + (seed % 4);
+    const coreColor = winner.color;
+    const accentColor = winner.fColor || '#00f2ff';
+
+    const internalLoop = () => {
+        t++;
+        ictx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+        ictx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+
+        // Draw pulsing core
+        const coreSize = 50 + Math.sin(t * 0.05) * 10;
+        const gradient = ictx.createRadialGradient(cx, cy, 0, cx, cy, coreSize + 50);
+        gradient.addColorStop(0, coreColor);
+        gradient.addColorStop(0.5, accentColor);
+        gradient.addColorStop(1, 'rgba(0,0,0,0)');
+
+        ictx.beginPath();
+        ictx.arc(cx, cy, coreSize, 0, Math.PI * 2);
+        ictx.fillStyle = gradient;
+        ictx.fill();
+
+        // Draw spinning rings
+        for (let r = 0; r < ringCount; r++) {
+            const radius = 100 + r * 60;
+            const rotation = t * 0.02 * (r % 2 === 0 ? 1 : -1);
+
+            ictx.save();
+            ictx.translate(cx, cy);
+            ictx.rotate(rotation);
+
+            ictx.strokeStyle = `rgba(${r * 50}, ${255 - r * 30}, 255, ${0.3 + Math.sin(t * 0.1 + r) * 0.2})`;
+            ictx.lineWidth = 2;
+            ictx.beginPath();
+            ictx.arc(0, 0, radius, 0, Math.PI * 2);
+            ictx.stroke();
+
+            // Draw nodes on rings
+            for (let n = 0; n < nodeCount; n++) {
+                const angle = (n / nodeCount) * Math.PI * 2;
+                const nx = Math.cos(angle) * radius;
+                const ny = Math.sin(angle) * radius;
+                const nodeSize = 4 + Math.sin(t * 0.1 + n + r) * 2;
+
+                ictx.beginPath();
+                ictx.arc(nx, ny, nodeSize, 0, Math.PI * 2);
+                ictx.fillStyle = accentColor;
+                ictx.fill();
+            }
+
+            ictx.restore();
+        }
+
+        // Draw energy arcs (lightning)
+        if (t % 5 === 0) {
+            for (let i = 0; i < 3; i++) {
+                const a1 = Math.random() * Math.PI * 2;
+                const a2 = a1 + (Math.random() - 0.5);
+                const r1 = 50 + Math.random() * 100;
+                const r2 = 100 + Math.random() * 150;
+
+                ictx.strokeStyle = `rgba(255, 255, 255, ${0.5 + Math.random() * 0.5})`;
+                ictx.lineWidth = 1;
+                ictx.beginPath();
+                ictx.moveTo(cx + Math.cos(a1) * r1, cy + Math.sin(a1) * r1);
+
+                // Jagged line
+                for (let j = 0; j < 4; j++) {
+                    const midA = a1 + (a2 - a1) * (j / 4) + (Math.random() - 0.5) * 0.2;
+                    const midR = r1 + (r2 - r1) * (j / 4) + (Math.random() - 0.5) * 20;
+                    ictx.lineTo(cx + Math.cos(midA) * midR, cy + Math.sin(midA) * midR);
+                }
+                ictx.lineTo(cx + Math.cos(a2) * r2, cy + Math.sin(a2) * r2);
+                ictx.stroke();
+            }
+        }
+
+        // Draw configuration name
+        ictx.fillStyle = '#fff';
+        ictx.font = 'bold 24px Outfit';
+        ictx.textAlign = 'center';
+        ictx.fillText(winner.name, cx, cy + 250);
+        ictx.font = '14px Outfit';
+        ictx.fillStyle = 'rgba(255,255,255,0.5)';
+        ictx.fillText('INTERNAL CONFIGURATION', cx, cy + 280);
+
+        if (t < duration) {
+            requestAnimationFrame(internalLoop);
+        } else {
+            // Fade out internal view, show celebration overlay
+            overlay.style.opacity = '0';
+            overlay.style.transition = 'opacity 1s';
+
+            setTimeout(() => {
+                overlay.style.display = 'none';
+                overlay.style.opacity = '1';
+                overlay.style.transition = '';
+
+                // Now show celebration overlay with button
+                celebrationOverlay.classList.remove('hidden');
+                slowMo = 1.0;
+
+                // Reset camera
+                targetCameraScale = 1.0;
+                targetCameraX = centerX;
+                targetCameraY = centerY;
+
+                // Add Continue Button
+                let btn = document.getElementById('celebration-continue-btn');
+                if (!btn) {
+                    btn = document.createElement('button');
+                    btn.id = 'celebration-continue-btn';
+                    btn.textContent = 'CONTINUE OBSERVATION';
+                    btn.className = 'restart-btn btn-primary';
+                    btn.style.marginTop = '20px';
+                    btn.onclick = () => {
+                        showSummaryScreen();
+                    };
+                    celebrationOverlay.appendChild(btn);
+                }
+                btn.style.display = 'block';
+                btn.style.opacity = '0';
+                btn.style.transition = 'opacity 1s';
+                setTimeout(() => { btn.style.opacity = '1'; }, 100);
+            }, 1000);
+        }
+    };
+
+    internalLoop();
+}
+
+function triggerImplosion() {
+    gameActive = false;
+    // Kill everyone
+    balls.forEach(b => {
+        if (b.alive) {
+            b.alive = false;
+            createDust(b.x, b.y, b.color);
+        }
+    });
+
+    // Massive shake and sound
+    screenShake = 100;
+    playSound(40, 'sawtooth', 2.0, 1.0);
+
+    // Visuals
+    const shock = new Shockwave(centerX, centerY);
+    shock.maxRadius = arenaRadius * 3;
+    shock.strength = 100;
+    shock.radius = 0;
+    shockwaves.push(shock);
+
+    logCommentary("TIMEFRAME EXCEEDED. TOTAL REALITY COLLAPSE.");
+    gameStatus.textContent = "IMPLOSION EVENT";
+
+    setTimeout(() => {
+        // Just show summary after total death
+        showSummaryScreen();
+    }, 3000);
 }
 
 let lastPowerup = 0;
@@ -3218,11 +3935,18 @@ function loop(timestamp) {
             slowMo = 0.2; // Constant cinematic slow-mo for attract mode
         }
         gameTime += dt * slowMo;
+
+        // Implosion Check
+        if (gameTime >= gameDuration) {
+            triggerImplosion();
+            return;
+        }
+
         const shrinkFactor = Math.max(0.3, 1 - (gameTime / gameDuration));
         arenaRadius = baseArenaRadius * shrinkFactor;
 
-        // Tier 4: Escalating Hazards
-        if (timestamp - lastHazardSpawn > 15000 && hazards.length < 15) {
+        // Tier 4: Escalating Hazards - Only spawn randoms in Non-League or if < 15
+        if (gameMode !== 'league' && timestamp - lastHazardSpawn > 15000 && hazards.length < 15) {
             const r = Math.random();
             if (r > 0.8) hazards.push(new EntropyNode(centerX, centerY));
             else if (r > 0.5) hazards.push(new GravitationalAnchor(Math.random() * Math.PI * 2, baseArenaRadius * 0.9));
@@ -3246,6 +3970,8 @@ function loop(timestamp) {
     }
 
     cameraScale += (targetCameraScale - cameraScale) * 0.05;
+    cameraX += (targetCameraX - cameraX) * 0.05;
+    cameraY += (targetCameraY - cameraY) * 0.05;
 
     let shakeX = (Math.random() - 0.5) * screenShake;
     let shakeY = (Math.random() - 0.5) * screenShake;
@@ -3264,9 +3990,11 @@ function loop(timestamp) {
     ctx.restore();
 
     ctx.save();
+    // New Panning Camera Transform
+    // Maps (cameraX, cameraY) to (centerX, centerY) on screen
     ctx.translate(centerX + shakeX, centerY + shakeY);
     ctx.scale(cameraScale, cameraScale);
-    ctx.translate(-centerX, -centerY);
+    ctx.translate(-cameraX, -cameraY);
 
     if (gameActive) {
         if (timestamp - lastPowerup > 4000) {
@@ -3552,7 +4280,7 @@ function showSummaryScreen() {
                 }
             });
 
-            const matchResults = { placements };
+            const matchResults = placements; // pass the array directly
             const trackedSurvived = winner === leagueState.trackedConfiguration;
 
             advanceLeagueRound(trackedSurvived, matchResults);
