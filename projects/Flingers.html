@@ -1,0 +1,1462 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FLINGER: NEON OVERDRIVE</title>
+    <style>
+        :root {
+            --neon-blue: #00f2ff;
+            --neon-pink: #ff00ff;
+            --neon-yellow: #f4ff00;
+            --neon-green: #00ff66;
+            --bg-black: #08080c;
+        }
+
+        body {
+            margin: 0;
+            background: #000;
+            color: #fff;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #game-container {
+            position: relative;
+            width: 95vmin;
+            height: 95vmin;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            background: var(--bg-black);
+            cursor: crosshair;
+            width: 95vmin;
+            /* Fit screen */
+            height: 95vmin;
+        }
+
+        /* UI Styling */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .panel {
+            background: rgba(20, 20, 30, 0.95);
+            padding: 40px;
+            border: 2px solid var(--neon-blue);
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 0 50px rgba(0, 242, 255, 0.3);
+            width: 1400px;
+            max-width: 95%;
+        }
+
+        h1 {
+            font-size: 4em;
+            margin: 0;
+            color: var(--neon-blue);
+            text-shadow: 0 0 20px var(--neon-blue);
+            letter-spacing: 10px;
+        }
+
+        .currency-text {
+            color: var(--neon-green);
+            font-weight: bold;
+            font-size: 1.5em;
+            text-shadow: 0 0 10px var(--neon-green);
+        }
+
+        /* Shop Grid */
+        .shop-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin: 25px 0;
+        }
+
+        .shop-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid #333;
+        }
+
+        .shop-item:hover {
+            border-color: var(--neon-pink);
+        }
+
+        .shop-info {
+            text-align: left;
+        }
+
+        .shop-info b {
+            display: block;
+            color: var(--neon-blue);
+        }
+
+        .shop-info small {
+            color: #888;
+        }
+
+        button {
+            background: var(--neon-blue);
+            border: none;
+            padding: 12px 20px;
+            color: #000;
+            font-weight: 900;
+            border-radius: 5px;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: 0.2s;
+        }
+
+        button:hover:not(:disabled) {
+            transform: scale(1.1);
+            box-shadow: 0 0 20px var(--neon-blue);
+        }
+
+        button:disabled {
+            background: #444;
+            color: #888;
+            cursor: not-allowed;
+        }
+
+        #hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px;
+            pointer-events: none;
+            display: flex;
+            justify-content: space-between;
+            font-family: 'Courier New', monospace;
+            font-size: 1.2em;
+            box-sizing: border-box;
+        }
+
+        .stat-box {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            border-left: 4px solid var(--neon-pink);
+        }
+
+        #score-list {
+            margin-top: 20px;
+            text-align: left;
+            color: #888;
+            font-size: 0.9em;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+    <link rel="icon" href="data:,"> <!-- Fix Favicon 404 -->
+</head>
+
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- HUD -->
+        <div id="hud" class="hidden">
+            <div class="stat-box">
+                SCORE: <span id="hud-score">0</span><br>
+                <small id="hud-streak" style="color:var(--neon-pink)">STREAK: 0</small>
+            </div>
+            <div class="stat-box"
+                style="text-align: right; border-left: none; border-right: 4px solid var(--neon-green);">
+                ESSENCE: <span id="hud-essence" class="currency-text">0</span><br>
+                WAVE: <span id="hud-wave">1</span><br>
+                <div id="consumables" style="margin-top:5px; font-size:0.8em;">
+                    <button id="btn-bomb" class="hidden"
+                        style="background:#f00; font-size:0.8em; padding:5px 10px;">BOMB (0)</button>
+                    <button id="btn-shield" class="hidden"
+                        style="background:#00f; font-size:0.8em; padding:5px 10px;">SHIELD (0)</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Menu -->
+        <div id="menu-start" class="overlay">
+            <div class="panel">
+                <h1>FLINGER</h1>
+                <input type="text" id="player-name" placeholder="IDENTIFY PILOT" maxlength="10"
+                    style="padding:15px; margin:20px; border-radius:5px; border:1px solid var(--neon-blue); background:#000; color:#fff; text-align:center; width: 80%;">
+                <br>
+                <div style="display:flex; gap:10px; justify-content:center; margin-top:10px;">
+                    <button id="btn-start">BOOT ENGINE</button>
+                    <button id="btn-settings" style="background:#333; color:#fff;">CONFIG</button>
+                    <button id="btn-help" style="background:#333; color:#fff;">?</button>
+                </div>
+                <div id="score-list"></div>
+            </div>
+        </div>
+
+        <!-- Settings Menu -->
+        <div id="menu-settings" class="overlay hidden">
+            <div class="panel">
+                <h2 style="color:var(--neon-blue)">SYSTEM CONFIG</h2>
+                <div style="text-align:left; width: 300px; margin: 0 auto;">
+                    <label>SFX VOLUME <span id="val-sfx">100%</span></label>
+                    <input type="range" id="set-sfx" min="0" max="100" style="width:100%"><br><br>
+
+                    <label>DIFFICULTY</label><br>
+                    <select id="set-diff"
+                        style="width:100%; background:#000; color:#fff; padding:10px; border:1px solid #555;">
+                        <option value="0.8">CADET (EASY)</option>
+                        <option value="1.0">VETERAN (NORMAL)</option>
+                        <option value="1.5">COMMANDER (HARD)</option>
+                    </select>
+                </div>
+                <br>
+                <button id="btn-clear-data" style="background:#500; font-size:0.7em; width:100%">PURGE DATA</button>
+                <br><br>
+                <button id="btn-close-settings">CONFIRM</button>
+            </div>
+        </div>
+
+        <!-- Help Menu -->
+        <div id="menu-help" class="overlay hidden">
+            <div class="panel">
+                <h2>MANUAL</h2>
+                <p>MOUSE to Aim, CLICK or SPACE to Fire.</p>
+                <p>Defend the Nest from the Chrome Swarm.</p>
+                <p>Collect Essence to upgrade weaponry.</p>
+                <p>Tip: Hit consecutive enemies to build FOCUS.</p>
+                <br>
+                <button onclick="document.getElementById('menu-help').classList.add('hidden')">ACKNOWLEDGE</button>
+            </div>
+        </div>
+
+        <!-- Narrative Overlay -->
+        <div id="menu-story" class="overlay hidden" style="background:#000; z-index:200">
+            <div class="panel" style="border:none; box-shadow:none; max-width:600px; text-align:left;">
+                <h2 id="story-title"
+                    style="color:var(--neon-blue); font-size:1.5em; border-bottom:1px solid #333; padding-bottom:10px;">
+                    INCOMING TRANSMISSION...</h2>
+                <div id="story-text"
+                    style="font-family:'Courier New'; font-size:1.1em; line-height:1.6; min-height:100px; color:#ddd; margin: 20px 0;">
+                </div>
+                <div style="text-align:right; margin-top:20px;">
+                    <button id="btn-story-next" style="width: auto;">PROCEED</button>
+                    <button id="btn-story-skip"
+                        style="background:transparent; border:1px solid #333; color:#666; width:auto; font-size:0.8em; margin-left:10px">SKIP</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upgrade Shop -->
+        <div id="menu-shop" class="overlay hidden">
+            <div class="panel">
+                <h1 style="color: var(--neon-green); font-size: 2.5em;">STATION UPGRADES</h1>
+                <p>Wave Cleared! Essence Bank: <span class="currency-text" id="shop-essence">0</span></p>
+
+                <div class="shop-grid" id="shop-container">
+                    <!-- JS Generated -->
+                </div>
+                <button id="btn-next-wave" style="width:100%; background: var(--neon-pink);">CONTINUE MISSION</button>
+            </div>
+        </div>
+
+        <!-- Game Over -->
+        <div id="menu-over" class="overlay hidden">
+            <div class="panel">
+                <h1 style="color: #ff0044;">NEST FALLEN</h1>
+                <p id="final-stats"></p>
+                <button onclick="location.reload()">RE-INITIALIZE</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /** @type {HTMLCanvasElement} */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // --- AUDIO (Procedural) ---
+        const AC = new (window.AudioContext || window.webkitAudioContext)();
+        function play(f, type, d, v, sweep = true) {
+            const o = AC.createOscillator();
+            const g = AC.createGain();
+            o.type = type;
+            o.frequency.setValueAtTime(f, AC.currentTime);
+            o.frequency.setValueAtTime(f, AC.currentTime);
+            if (sweep) o.frequency.exponentialRampToValueAtTime(10, AC.currentTime + d);
+            g.gain.setValueAtTime(v * (config.sfxVol / 100), AC.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.01, AC.currentTime + d);
+            o.connect(g); g.connect(AC.destination);
+            o.start(); o.stop(AC.currentTime + d);
+        }
+
+        // --- CONFIG & PERSISTENT UPGRADES ---
+        let game = {
+            running: false,
+            score: 0,
+            essence: 0,
+            wave: 1,
+            streak: 0,
+            focusID: null,
+            focusMult: 1,
+            enemies: [],
+            stones: [],
+            particles: [],
+            texts: [],
+            ripples: [],
+            lastFire: 0,
+            shake: 0,
+            recoil: 0,
+            spawnTimer: 0,
+            spawnTotal: 5,
+            spawnCount: 0,
+            spawnTimer: 0,
+            spawnTotal: 5,
+            spawnCount: 0,
+            stars: [],
+            bombs: 0,
+            shields: 0,
+            wisps: [], // Array of orbital wisps
+            harpoon: {
+                active: false,
+                x: 0, y: 0,
+                vx: 0, vy: 0,
+                state: 'ready', // ready, fired, latched, returning
+                target: null // enemy object
+            }
+        };
+
+        // Persistent Config
+        let config = JSON.parse(localStorage.getItem('flinger_config')) || {
+            sfxVol: 100,
+            difficulty: 1.0,
+            highScores: []
+        };
+
+        let shop = {
+            fireDelay: { id: 'fire', lvl: 1, cost: 150, val: 600, name: "AUTOLOADER", desc: "Fire Rate" },
+            stoneSpeed: { id: 'speed', lvl: 1, cost: 100, val: 8, name: "ACCELERATOR", desc: "Projectile Speed" },
+            knockback: { id: 'impact', lvl: 1, cost: 100, val: 6, name: "GRAVITY PUMP", desc: "Impact Force" },
+            piercing: { id: 'pierce', lvl: 0, cost: 500, val: 0, name: "PHASE SHIFT", desc: "Pierce +1 Enemy" },
+            splash: { id: 'splash', lvl: 0, cost: 400, val: 0, name: "VOID RUPTURE", desc: "Splash Damage Radius" },
+            magnet: { id: 'magnet', lvl: 1, cost: 300, val: 1.0, name: "ESSENCE SIPHON", desc: "Essence Yield +20%" },
+            damage: { id: 'damage', lvl: 1, cost: 1200, val: 1, name: "HYPER-CHARGE", desc: "Projectile Damage +1" },
+            bomb: { id: 'bomb', lvl: 0, cost: 1000, val: 0, type: 'consumable', name: "PLANETARY PURGE", desc: "Smart Bomb (Single Use)" },
+            shield: { id: 'shield', lvl: 0, cost: 800, val: 0, type: 'consumable', name: "AEGIS GENERATOR", desc: "Shield (One Hit Block)" },
+            // New Advanced Items
+            split: { id: 'split', lvl: 0, cost: 2000, val: 0, name: "HYDRA PROTOCOL", desc: "+10% Multishot Chance" },
+            wisp: { id: 'wisp', lvl: 0, cost: 5000, val: 0, type: 'consumable', name: "ORBITAL WISP", desc: "Permanent Defense Drone (Max 3)" },
+            harpoon: { id: 'harpoon', lvl: 1, cost: 0, val: 0, name: "HARPOON", desc: "Unlock: RMB Capture" }
+        };
+
+
+        const narrative = {
+            intro: [
+                "In the void between stars, ancient entities known as the Chromatic Swarm seek planets rich in Essence—the fundamental energy of all life.",
+                "You are a Sentinel, protector of a lone Nest orbiting the last Essence wellspring.",
+                "Armed with a kinetic launcher passed down through generations, you must fling stones of pure compressed Essence to repel the Swarm.",
+                "Each wave brings new colors, new threats, and new mysteries. The Swarm does not tire. The question is not if the Nest will fall, but how long you can delay the inevitable."
+            ],
+            waves: {
+                1: "Sentinel, the first scouts have arrived. Their colors betray their intent.",
+                5: "The Swarm learns. They come faster now. Upgrade your systems.",
+                10: "High energy signatures detected. Something leads them... something ancient.",
+                15: "Their numbers are endless. We must hold the line.",
+                20: "CRITICAL ALERT: MAXIMUM SWARM DENSITY DETECTED.",
+                25: "⚠️ WARNING: SEISMIC EVENT IMMINENT. THE MONOLITH APPROACHES.",
+                35: "The loss of their General has not deterred them. They only grow angrier.",
+                50: "⚠️ WARNING: OPTICAL ANOMALY DETECTED. THE PRISM REVEALED.",
+                60: "Reality is thinning. The void itself seems to be leaking through.",
+                75: "⚠️ WARNING: GRAVITATIONAL COLLAPSE. THE VOID CORE MANIFESTS.",
+                90: "It all leads to this. The queen calls her children home.",
+                100: "🛑 CRITICAL: THE CHROMA QUEEN HAS ARRIVED. DEFEND THE NEST AT ALL COSTS."
+            }
+        };
+
+        // --- OBJECT CLASSES ---
+        class Flinger {
+            constructor() { this.angle = 0; this.pulse = 0; }
+            draw() {
+                this.pulse += 0.05 + (game.wave * 0.01);
+                const p = Math.sin(this.pulse) * 5;
+
+                ctx.save();
+                ctx.translate(800, 800);
+                ctx.rotate(this.angle);
+
+                // Nest Outer Aura (Pulsing)
+                ctx.beginPath();
+                ctx.arc(0, 0, 45 + p, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(0, 242, 255, ${0.1 + Math.sin(this.pulse) * 0.05})`;
+                ctx.lineWidth = 15;
+                ctx.stroke();
+
+                // Inner Glow
+                ctx.beginPath();
+                ctx.arc(0, 0, 30, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 242, 255, 0.05)';
+                ctx.shadowBlur = 30 + p * 2;
+                ctx.shadowColor = 'var(--neon-blue)';
+                ctx.fill();
+
+                // Recoil effect
+                const recoilOffset = game.recoil;
+                ctx.translate(-recoilOffset, 0);
+
+                // Arm
+                const g = ctx.createLinearGradient(0, 0, 60, 0);
+                g.addColorStop(0, '#00f2ff');
+                g.addColorStop(1, '#ff00ff');
+                ctx.fillStyle = g;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#00f2ff';
+                ctx.fillRect(0, -10, 55, 20);
+
+                // Nozzle
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(50, -12, 10, 24);
+
+                ctx.restore();
+            }
+        }
+
+        class Stone {
+            constructor(x, y, vx, vy) {
+                this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+                this.trail = [];
+                this.hitIds = []; // enemies already hit
+                this.hasHit = false; // Fix: Track if stone has hit anything to prevent streak break
+
+                // Synergy: Heavy Artillery (Damage 5 + Knockback 5)
+                const big = shop.damage.lvl >= 5 && shop.knockback.lvl >= 5;
+                this.radius = big ? 10 : 6;
+            }
+            update() {
+                this.trail.unshift({ x: this.x, y: this.y, age: 1.0 });
+                if (this.trail.length > 15) this.trail.pop();
+                this.trail.forEach(t => t.age -= 0.08); // Fade trail points
+
+                this.x += this.vx; this.y += this.vy;
+            }
+            draw() {
+                // Draw Trail (Enhanced)
+                if (this.trail.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.trail[0].x, this.trail[0].y);
+                    for (let i = 1; i < this.trail.length; i++) {
+                        const t = this.trail[i];
+                        ctx.lineTo(t.x, t.y);
+                    }
+                    // Create gradient for trail
+                    const grad = ctx.createLinearGradient(this.trail[this.trail.length - 1].x, this.trail[this.trail.length - 1].y, this.x, this.y);
+                    grad.addColorStop(0, 'rgba(255, 0, 255, 0)');
+                    grad.addColorStop(1, '#ff00ff');
+                    ctx.strokeStyle = grad;
+                    ctx.lineWidth = 4;
+                    ctx.lineCap = 'round';
+                    ctx.stroke();
+                }
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#fff';
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#ff00ff';
+                ctx.fill();
+            }
+        }
+
+        class Enemy {
+            constructor(archetype = 'scout') {
+                const ang = Math.random() * Math.PI * 2;
+                this.id = Math.random();
+                this.x = 800 + Math.cos(ang) * 1000;
+                this.y = 800 + Math.sin(ang) * 1000;
+                this.vx = 0; this.vy = 0;
+
+                // Base Stats
+                let hpBase = 3 + Math.floor(game.wave / 5);
+                let speedBase = (0.35 + (game.wave * 0.1)) * config.difficulty;
+                let radius = 18;
+                let hue = 200; // Default Blue
+
+                // Archetype Modifiers
+                if (archetype === 'rusher') {
+                    speedBase *= 1.4; // Fast
+                    hpBase = Math.max(1, Math.floor(hpBase * 0.8)); // Fragile
+                    radius = 14; // Small
+                    hue = Math.random() * 30; // Red/Orange
+                }
+                else if (archetype === 'hulk') {
+                    speedBase *= 0.7; // Slow
+                    hpBase = Math.ceil(hpBase * 1.5); // Tanky
+                    radius = 26; // Big
+                    hue = 90 + Math.random() * 50; // Green
+                }
+                else if (archetype === 'elite') {
+                    speedBase *= 1.2;
+                    hpBase = Math.ceil(hpBase * 1.2);
+                    radius = 22;
+                    hue = 270 + Math.random() * 40; // Purple
+                }
+                else {
+                    // Scout (Default)
+                    hue = 180 + Math.random() * 60; // Blue/Cyan
+                }
+
+                this.maxHp = hpBase;
+                this.hp = this.maxHp;
+                this.radius = radius;
+                this.speed = speedBase;
+                this.hue = hue;
+                this.archetype = archetype;
+
+                this.pulse = 0;
+                this.spawnAnim = 0; // 0 to 1
+            }
+            update() {
+                if (this.spawnAnim < 1) this.spawnAnim += 0.05;
+                const dx = 800 - this.x, dy = 800 - this.y;
+                const dist = Math.hypot(dx, dy);
+                const tx = (dx / dist) * this.speed, ty = (dy / dist) * this.speed;
+
+                this.vx += (tx - this.vx) * 0.03;
+                this.vy += (ty - this.vy) * 0.03;
+                this.x += this.vx; this.y += this.vy;
+                this.pulse += 0.1;
+
+                this.pulse += 0.1;
+
+                // Shield Logic handled in main loop or here? Main loop is better for collision.
+                if (dist < 45 + this.radius) endSession();
+
+                // Boundary Bounce
+                const pad = this.radius;
+                if (this.x < pad) { this.x = pad; this.vx *= -0.8; }
+                if (this.x > 1600 - pad) { this.x = 1600 - pad; this.vx *= -0.8; }
+                if (this.y < pad) { this.y = pad; this.vy *= -0.8; }
+                if (this.y > 1600 - pad) { this.y = 1600 - pad; this.vy *= -0.8; }
+            }
+            draw() {
+                const p = 1 + Math.sin(this.pulse) * 0.1;
+                const s = p * Math.min(this.spawnAnim, 1); // Combine spawn scale and pulse
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.scale(s, s);
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = `hsl(${this.hue}, 100%, 50%)`;
+                ctx.fillStyle = `hsl(${this.hue}, 100%, 60%)`;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // HP Pips
+                ctx.fillStyle = '#fff';
+                for (let i = 0; i < this.hp; i++) {
+                    ctx.fillRect(-12 + (i * 10), -this.radius - 10, 6, 4);
+                }
+                ctx.restore();
+            }
+        }
+
+        class Boss extends Enemy {
+            constructor(type) {
+                super();
+                this.isBoss = true;
+                this.type = type;
+                this.maxHp = game.wave * 30; // Huge HP
+                this.hp = this.maxHp;
+                this.radius = 60; // Huge size
+                this.speed = 0.2; // Slow
+                this.abilityTimer = 0;
+                this.x = 800; this.y = -200; // Start off screen
+
+                if (type === 'prism') { this.hue = 0; this.speed = 1.0; } // Fast
+                if (type === 'void') { this.hue = 270; this.speed = 0.1; }
+                if (type === 'queen') { this.hue = 320; this.speed = 0.5; }
+            }
+
+            update() {
+                super.update();
+                // Boss Mechanics
+                this.abilityTimer++;
+
+                // 1. Monolith: Seismic Slam
+                if (this.type === 'monolith' && this.abilityTimer > 300) {
+                    game.shake = 40;
+                    play(100, 'sawtooth', 0.5, 0.5);
+                    // Push player back? No player is static. Push STONES away?
+                    // Or push enemies? Monolith is solo.
+                    // Visual shockwave
+                    popEffect(this.x, this.y, '#fff');
+                    this.abilityTimer = 0;
+                    // Seismic Wave: Push stones away
+                    game.stones.forEach(s => {
+                        const ang = Math.atan2(s.y - this.y, s.x - this.x);
+                        s.vx += Math.cos(ang) * 10;
+                        s.vy += Math.sin(ang) * 10;
+                    });
+                }
+
+                // 2. Prism: Shards (Passive onHit handled in onHit)
+
+                // 3. Void: Gravity
+                if (this.type === 'void') {
+                    // Strong Gravity Well
+                    game.stones.forEach(s => {
+                        const dx = this.x - s.x;
+                        const dy = this.y - s.y;
+                        const dist = Math.hypot(dx, dy);
+                        if (dist < 600) { // Range
+                            s.vx += (dx / dist) * 0.8;
+                            s.vy += (dy / dist) * 0.8;
+                        }
+                        if (dist < this.radius) {
+                            s.hitIds.push(this.id);
+                            popEffect(s.x, s.y, '#000');
+                            s.x = -9999; // Consume
+                        }
+                    });
+
+                    // Pull Harpoon
+                    const h = game.harpoon;
+                    if (h.active && h.state !== 'latched') {
+                        const dx = this.x - h.x;
+                        const dy = this.y - h.y;
+                        const dist = Math.hypot(dx, dy);
+                        if (dist < 800) {
+                            h.vx += (dx / dist) * 0.5;
+                            h.vy += (dy / dist) * 0.5;
+                        }
+                    }
+                }
+
+                // 4. Queen: Bullet Hell
+                if (this.type === 'queen' && this.abilityTimer > 120) {
+                    // Fire 8 projectiles in ring
+                    for (let i = 0; i < 8; i++) {
+                        const ang = (Math.PI * 2 / 8) * i + (this.abilityTimer * 0.01);
+                        game.enemies.push(new ProjectileEnemy(this.x, this.y, ang));
+                    }
+                    this.abilityTimer = 0;
+                }
+            }
+        }
+
+        class ProjectileEnemy extends Enemy {
+            constructor(x, y, ang) {
+                super();
+                this.x = x; this.y = y;
+                this.radius = 10;
+                this.hp = 1;
+                this.vx = Math.cos(ang) * 5;
+                this.vy = Math.sin(ang) * 5;
+                this.hue = 0;
+            }
+            update() {
+                this.x += this.vx; this.y += this.vy;
+                if (this.x < 0 || this.x > 1600 || this.y < 0 || this.y > 1600) this.dead = true;
+                // Don't seek player, just fly
+                if (Math.hypot(this.x - 800, this.y - 800) < 55) endSession();
+            }
+        }
+
+        class Star {
+            constructor() {
+                this.reset(true);
+            }
+            reset(randomStart = false) {
+                this.x = Math.random() * 1600;
+                this.y = randomStart ? Math.random() * 1600 : -10;
+                this.z = Math.random() * 3 + 1; // Depth: 1 (fast/big) to 4 (slow/small)
+                this.size = Math.random() * 1.5 + 0.5;
+                this.opacity = Math.random();
+                this.twinkleSpeed = Math.random() * 0.05 + 0.01;
+            }
+            update() {
+                this.y += 0.5 * this.z; // Parallax scrolling
+                this.opacity += this.twinkleSpeed;
+                if (this.opacity > 1 || this.opacity < 0.2) this.twinkleSpeed *= -1;
+
+                if (this.y > 1600) this.reset();
+            }
+            draw() {
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
+                const s = this.size * (this.z / 2);
+                ctx.fillRect(this.x, this.y, s, s);
+            }
+        }
+
+        const pilot = new Flinger();
+
+        // --- ENGINE ---
+        function setup() {
+            canvas.width = 1600; canvas.height = 1600;
+            // Init Stars
+            for (let i = 0; i < 100; i++) game.stars.push(new Star());
+
+            loadScores();
+            initSettings();
+
+            window.onmousemove = e => {
+                const r = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / r.width;
+                const scaleY = canvas.height / r.height;
+                pilot.angle = Math.atan2((e.clientY - r.top) * scaleY - 800, (e.clientX - r.left) * scaleX - 800);
+            };
+
+            const shoot = () => {
+                const now = Date.now();
+                if (!game.running || now - game.lastFire < shop.fireDelay.val) return;
+                game.lastFire = now;
+                game.recoil = 15;
+                play(500, 'square', 0.1, 0.1);
+
+                // Synergy: Split Shot (Passive)
+                // 10% chance per level to fire 3 shots
+                const multishot = Math.random() < (shop.split.lvl * 0.1);
+
+                const fireStone = (angleOffset = 0) => {
+                    game.stones.push(new Stone(
+                        800 + Math.cos(pilot.angle + angleOffset) * 55,
+                        800 + Math.sin(pilot.angle + angleOffset) * 55,
+                        Math.cos(pilot.angle + angleOffset) * shop.stoneSpeed.val,
+                        Math.sin(pilot.angle + angleOffset) * shop.stoneSpeed.val
+                    ));
+                };
+
+                fireStone(0);
+                if (multishot) {
+                    fireStone(-0.2);
+                    fireStone(0.2);
+                    play(600, 'square', 0.1, 0.1); // Extra sound
+                }
+            };
+
+            const fireHarpoon = (e) => {
+                e.preventDefault(); // Prevent context menu
+                if (!game.running || game.harpoon.state !== 'ready') return;
+
+                game.harpoon.state = 'fired';
+                game.harpoon.x = 800; // Start at center
+                game.harpoon.y = 800;
+
+                // Slightly slower speed than stones?
+                const speed = shop.stoneSpeed.val * 0.8;
+                game.harpoon.vx = Math.cos(pilot.angle) * speed;
+                game.harpoon.vy = Math.sin(pilot.angle) * speed;
+
+                play(400, 'sawtooth', 0.2, 0.3); // Harpoon sound
+            };
+
+            window.onmousedown = (e) => {
+                if (e.button === 2) fireHarpoon(e);
+                else shoot();
+            };
+            window.oncontextmenu = e => e.preventDefault(); // Block context menu globally
+            window.onkeydown = e => { if (e.code === 'Space') shoot(); };
+
+            document.getElementById('btn-start').onclick = () => {
+                AC.resume();
+                document.getElementById('menu-start').classList.add('hidden');
+                document.getElementById('hud').classList.remove('hidden');
+
+                // Play Intro if Wave 1
+                if (game.wave === 1) {
+                    showStory(narrative.intro, () => startWave());
+                } else {
+                    startWave();
+                }
+            };
+
+            document.getElementById('btn-next-wave').onclick = () => {
+                document.getElementById('menu-shop').classList.add('hidden');
+                game.wave++; // Fix: Increment wave
+                updateHUD(); // Update HUD immediately
+                startWave();
+            };
+
+            initShop();
+        }
+
+        function showStory(lines, onComplete) {
+            if (typeof lines === 'string') lines = [lines];
+            let index = 0;
+            const ui = document.getElementById('menu-story');
+            const txt = document.getElementById('story-text');
+            const btn = document.getElementById('btn-story-next');
+            ui.classList.remove('hidden');
+
+            const next = () => {
+                if (index >= lines.length) {
+                    ui.classList.add('hidden');
+                    onComplete();
+                    return;
+                }
+                txt.innerText = lines[index++];
+                if (index >= lines.length) btn.innerText = "BEGIN MISSION";
+                else btn.innerText = "PROCEED";
+            };
+
+            btn.onclick = () => { play(200, 'sine', 0.05, 0.1); next(); };
+            document.getElementById('btn-story-skip').onclick = () => { ui.classList.add('hidden'); onComplete(); }; // Skip all
+            next();
+        }
+
+        function startWave() {
+            // Check for wave briefing
+            const msg = narrative.waves[game.wave];
+            if (msg && !game.briefingShown) {
+                game.briefingShown = true;
+                showStory(msg, () => startWave());
+                return;
+            }
+            game.briefingShown = false; // Reset for next time
+
+            // Boss Wave Logic
+            if ([25, 50, 75, 100].includes(game.wave)) {
+                game.spawnTotal = 1; // Only the Boss
+            } else {
+                game.spawnTotal = 4 + (game.wave * 2);
+            }
+
+            game.spawnCount = 0;
+            game.running = true;
+            requestAnimationFrame(loop);
+        }
+
+        function loop() {
+            if (!game.running) return;
+
+            // 1. Spawning
+            game.spawnTimer++;
+            if (game.spawnTimer > 100 && game.spawnCount < game.spawnTotal) {
+                if ([25, 50, 75, 100].includes(game.wave) && game.spawnCount === 0) {
+                    // Spawn BOSS
+                    let type = 'monolith';
+                    if (game.wave === 50) type = 'prism';
+                    if (game.wave === 75) type = 'void';
+                    if (game.wave === 100) type = 'queen';
+                    game.enemies.push(new Boss(type));
+                } else {
+                    // Select Archetype based on Wave
+                    const types = ['scout'];
+                    if (game.wave >= 4) types.push('rusher');
+                    if (game.wave >= 8) types.push('hulk');
+                    if (game.wave >= 12) types.push('elite');
+
+                    // Random selection (weighted?)
+                    const type = types[Math.floor(Math.random() * types.length)];
+                    game.enemies.push(new Enemy(type));
+                }
+                game.spawnCount++;
+                game.spawnTimer = 0;
+            }
+
+            // 2. Physics & Logic
+            game.recoil *= 0.8;
+            game.shake *= 0.9;
+
+            // Synergy Checks
+            checkSynergies();
+
+            // HARPOON LOGIC
+            if (game.harpoon.state !== 'ready') {
+                const h = game.harpoon;
+
+                if (h.state === 'fired') {
+                    h.x += h.vx; h.y += h.vy;
+                    // Max distance check or boundary check?
+                    if (h.x < 0 || h.x > 1600 || h.y < 0 || h.y > 1600) {
+                        h.state = 'returning';
+                    }
+
+                    // Collision with Enemies
+                    for (let e of game.enemies) {
+                        if (e.dead) continue;
+                        if (Math.hypot(h.x - e.x, h.y - e.y) < e.radius + 10) {
+                            h.state = 'latched';
+                            h.target = e;
+                            play(600, 'sawtooth', 0.1, 0.5); // Hit sound
+                            break;
+                        }
+                    }
+                } else if (h.state === 'latched') {
+                    if (h.target.dead) { h.state = 'returning'; h.target = null; }
+                    else {
+                        // Drag enemy back
+                        h.target.x += (800 - h.target.x) * 0.05;
+                        h.target.y += (800 - h.target.y) * 0.05;
+                        h.x = h.target.x; h.y = h.target.y;
+
+                        // Check if reached nest
+                        if (Math.hypot(h.x - 800, h.y - 800) < 60) {
+                            // Harvest!
+                            play(300, 'sine', 0.5, 0.0);
+                            play(600, 'sine', 0.5, 0.0); // Chime
+                            game.essence += h.target.maxHp * 5; // 5x Essence Logic
+                            popEffect(h.x, h.y, '#0f0');
+                            killEnemy(h.target, 0); // 0 bounty because we gave 5x essence already (or 5x multiplier?) 
+                            // Let's just give direct essence here to be safe and kill with 0 multiplier.
+                            h.state = 'ready';
+                            h.target = null;
+                        }
+                    }
+                } else if (h.state === 'returning') {
+                    // Fly back to player
+                    h.x += (800 - h.x) * 0.1;
+                    h.y += (800 - h.y) * 0.1;
+                    if (Math.hypot(h.x - 800, h.y - 800) < 20) {
+                        h.state = 'ready';
+                    }
+                }
+            }
+
+            // WISP LOGIC
+            game.wisps.forEach((w, i) => {
+                w.angle += 0.05;
+                const ox = 800 + Math.cos(w.angle) * w.radius;
+                const oy = 800 + Math.sin(w.angle) * w.radius;
+
+                // Collision
+                game.enemies.forEach(e => {
+                    if (e.dead) return;
+                    if (Math.hypot(ox - e.x, oy - e.y) < 20 + e.radius) {
+                        // Hit
+                        e.hp -= 5; // High damage
+                        const ang = Math.atan2(e.y - 800, e.x - 800);
+                        e.vx += Math.cos(ang) * 10;
+                        e.vy += Math.sin(ang) * 10;
+                        play(700, 'square', 0.05, 0.1);
+                        popEffect(ox, oy, '#0ff');
+                        if (e.hp <= 0) killEnemy(e, 1);
+                    }
+                });
+            });
+
+            // Stone updates
+            // Stone updates
+            for (let i = game.stones.length - 1; i >= 0; i--) {
+                const s = game.stones[i]; s.update();
+
+                // Fix: Check for dead enemies to avoid processing them
+                for (let j = game.enemies.length - 1; j >= 0; j--) {
+                    const e = game.enemies[j];
+                    if (e.dead) continue; // Skip dead enemies
+                    // Hitbox based on stone radius
+                    if (!s.hitIds.includes(e.id) && Math.hypot(s.x - e.x, s.y - e.y) < (18 + s.radius)) {
+                        onHit(e, s);
+                        s.hitIds.push(e.id);
+                        s.hasHit = true; // Mark as hit
+                        if (s.hitIds.length > shop.piercing.val) {
+                            game.stones.splice(i, 1);
+                            break;
+                        }
+                    }
+                }
+                if (s.hitIds.length > shop.piercing.val && !game.stones[i]) continue;
+
+                if (s.x < 0 || s.x > 1600 || s.y < 0 || s.y > 1600) {
+                    // Fix: Only reset streak if the stone MISSED completely
+                    if (!s.hasHit) {
+                        game.streak = 0;
+                        updateHUD();
+                    }
+                    game.stones.splice(i, 1);
+                }
+            }
+
+            game.enemies.forEach(e => e.update());
+
+            // Enemy-Enemy Collision
+            for (let i = 0; i < game.enemies.length; i++) {
+                for (let j = i + 1; j < game.enemies.length; j++) {
+                    const e1 = game.enemies[i];
+                    const e2 = game.enemies[j];
+                    const dx = e1.x - e2.x;
+                    const dy = e1.y - e2.y;
+                    const dist = Math.hypot(dx, dy);
+                    const minDist = e1.radius + e2.radius;
+
+                    if (dist < minDist && dist > 0) {
+                        const angle = Math.atan2(dy, dx);
+                        const force = (minDist - dist) * 0.05; // Soft push
+                        const tx = Math.cos(angle) * force;
+                        const ty = Math.sin(angle) * force;
+
+                        e1.vx += tx; e1.vy += ty;
+                        e2.vx -= tx; e2.vy -= ty;
+                    }
+                }
+            }
+
+            // Wave Complete
+            // Fix: Clean up dead enemies at end of frame to prevent iteration crashes
+            game.enemies = game.enemies.filter(e => !e.dead);
+
+            if (game.spawnCount >= game.spawnTotal && game.enemies.length === 0) {
+                game.running = false;
+                openShop();
+            }
+
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        function onHit(enemy, stone) {
+            game.shake = 8;
+            game.streak++;
+            game.focusID = enemy.id === game.focusID ? enemy.id : null; // Reset focus if switched? No, keep existing logic but simplify
+
+            // Focus logic (simplified)
+            // if (game.focusID === enemy.id) game.focusMult = Math.min(game.focusMult + 0.5, 5);
+            // else game.focusMult = 1;
+            // game.focusID = enemy.id;
+            // Re-implement existing logic properly
+            // Focus logic (Improved):
+            // If hitting the SAME enemy, boost multiplier.
+            // If hitting a NEW enemy, keep multiplier but cap it (combo system).
+            // Reset to 1 only on Miss (handled in loop).
+            if (game.focusID === enemy.id) {
+                game.focusMult = Math.min(game.focusMult + 0.5, 5);
+            } else {
+                // Hitting a new enemy maintains the combo but at a slightly reduced effectiveness or flat?
+                // Let's just NOT reset it to 1. Let's keep it growing but slower, or just keep it.
+                // User complaint: "Focus cannot grow beyond 2x because... ball is destroyed".
+                // Fix: Allow Focus to grow on ANY hit, but faster on SAME target.
+                game.focusMult = Math.min(game.focusMult + 0.2, 5);
+            }
+            game.focusID = enemy.id;
+
+            enemy.hp -= shop.damage.val; // Use Damage Upgrade
+            const ang = Math.atan2(enemy.y - stone.y, enemy.x - stone.x);
+            enemy.vx = Math.cos(ang) * shop.knockback.val;
+            enemy.vy = Math.sin(ang) * shop.knockback.val; // Use Knockback Upgrade
+
+            // Prism Boss Mechanic: Spawn Shards on Hit
+            if (enemy.isBoss && enemy.type === 'prism') {
+                if (Math.random() < 0.4) {
+                    game.enemies.push(new ProjectileEnemy(enemy.x, enemy.y, Math.random() * Math.PI * 2));
+                }
+            }
+
+            // Splash Damage
+            // Synergy: Cluster Impact (Splash 5 + Pierce 5) -> Always trigger splash
+            const hasCluster = shop.splash.lvl >= 5 && shop.piercing.lvl >= 5;
+
+            if (shop.splash.val > 0) {
+                // If it's a piercing shot that ISN'T the final hit, usually no splash.
+                // But with Synergy, YES splash.
+                // Base logic: Splash triggers on every hit anyway in current code?
+                // Checking current onHit... yes it does. So Synergy is already active effectively?
+                // Let's make the Synergy INCREASE the radius or damage then.
+                let radius = shop.splash.val;
+                if (hasCluster) radius *= 1.5; // 50% bigger splash
+
+                game.enemies.forEach(other => {
+                    if (other.id === enemy.id || other.dead) return; // Skip self or dead
+                    const d = Math.hypot(other.x - enemy.x, other.y - enemy.y);
+                    if (d < radius) {
+                        other.hp -= shop.damage.val; // Splash deals full damage? Or half? Let's do full for power.
+                        const ang2 = Math.atan2(other.y - enemy.y, other.x - enemy.x);
+                        other.vx += Math.cos(ang2) * shop.knockback.val * 0.8;
+                        other.vy += Math.sin(ang2) * shop.knockback.val * 0.8;
+                        popEffect(other.x, other.y, '#fff');
+                        if (other.hp <= 0 && !other.dead) killEnemy(other, 0.5);
+                    }
+                });
+            }
+
+            if (enemy.hp <= 0) {
+                killEnemy(enemy, 1.0);
+            } else {
+                play(300, 'sine', 0.1, 0.1);
+            }
+            updateHUD();
+        }
+
+        function killEnemy(enemy, bountyMult = 1.0) {
+            if (enemy.dead) return;
+            enemy.dead = true;
+            const bounty = Math.floor(100 * game.focusMult * (1 + game.streak * 0.1) * bountyMult * shop.magnet.val);
+            game.score += bounty;
+            const eGain = Math.floor((bounty / 10) * shop.magnet.val);
+            game.essence += eGain;
+
+            play(100, 'sawtooth', 0.4, 0.2);
+            popEffect(enemy.x, enemy.y, `hsl(${enemy.hue}, 100%, 50%)`);
+
+            game.texts.push({
+                x: enemy.x, y: enemy.y,
+                txt: `+${bounty}`,
+                life: 1, color: varName('--neon-blue')
+            });
+
+            // game.enemies = game.enemies.filter(e => e.id !== enemy.id); // REMOVED: Crash fix. Filter at end of frame instead.
+        }
+
+        function draw() {
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.fillStyle = '#08080c';
+            ctx.fillRect(0, 0, 1600, 1600);
+
+            // Update & Draw Stars
+            game.stars.forEach(s => { s.update(); s.draw(); });
+
+            if (game.shake > 0.5) {
+                const mag = game.shake;
+                const ang = Math.random() * Math.PI * 2;
+                ctx.translate(Math.cos(ang) * mag, Math.sin(ang) * mag);
+            }
+
+            // Neon Grid
+            ctx.strokeStyle = '#151520';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 1600; i += 50) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 1600); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(1600, i); ctx.stroke();
+            }
+
+            game.stones.forEach(s => s.draw());
+            game.enemies.forEach(e => e.draw());
+
+            // Particle System
+            for (let i = game.particles.length - 1; i >= 0; i--) {
+                const p = game.particles[i];
+                p.x += p.vx; p.y += p.vy; p.life -= 0.02;
+                p.vx *= 0.95; p.vy *= 0.95; // Friction
+                if (p.life <= 0) { game.particles.splice(i, 1); continue; }
+
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                // Sparkle effect
+                if (Math.random() < 0.2) ctx.fillStyle = '#fff';
+
+                const size = p.life * 4;
+                ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
+            }
+
+            // Draw Wisps
+            game.wisps.forEach(w => {
+                const ox = 800 + Math.cos(w.angle) * w.radius;
+                const oy = 800 + Math.sin(w.angle) * w.radius;
+                ctx.beginPath();
+                ctx.arc(ox, oy, 8, 0, Math.PI * 2);
+                ctx.fillStyle = '#0ff';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#0ff';
+                ctx.fill();
+            });
+
+            // Draw Harpoon
+            if (game.harpoon.state !== 'ready') {
+                const h = game.harpoon;
+                ctx.beginPath();
+                ctx.moveTo(800, 800); // Tether start
+                ctx.lineTo(h.x, h.y);
+                ctx.strokeStyle = '#aaa';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.beginPath();
+                // Spear head
+                ctx.arc(h.x, h.y, 6, 0, Math.PI * 2);
+                ctx.fillStyle = '#f00';
+                ctx.fill();
+            }
+
+            // Floating Texts
+            for (let i = game.texts.length - 1; i >= 0; i--) {
+                const t = game.texts[i];
+                t.y -= 1; t.life -= 0.015;
+                if (t.life <= 0) { game.texts.splice(i, 1); continue; }
+                ctx.globalAlpha = t.life;
+                ctx.fillStyle = t.color;
+                ctx.font = 'bold 16px Arial';
+                ctx.fillText(t.txt, t.x, t.y);
+            }
+
+            ctx.globalAlpha = 1;
+            pilot.draw();
+
+            // Boss Health Bar
+            const boss = game.enemies.find(e => e.isBoss);
+            if (boss) {
+                const pct = Math.max(0, boss.hp / boss.maxHp);
+                const w = 800;
+                const h = 20;
+                const x = 400;
+                const y = 80;
+
+                ctx.fillStyle = '#333';
+                ctx.fillRect(x, y, w, h);
+                ctx.fillStyle = `hsl(${boss.hue}, 100%, 50%)`;
+                ctx.fillRect(x, y, w * pct, h);
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x, y, w, h);
+
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 24px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(boss.type.toUpperCase(), 800, 70);
+            }
+        }
+
+        function popEffect(x, y, c) {
+            for (let i = 0; i < 20; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const spd = Math.random() * 5 + 2;
+                game.particles.push({
+                    x, y, color: c,
+                    vx: Math.cos(ang) * spd,
+                    vy: Math.sin(ang) * spd,
+                    life: 1.0 + Math.random() * 0.5
+                });
+            }
+        }
+
+        function updateHUD() {
+            document.getElementById('hud-score').innerText = game.score;
+            document.getElementById('hud-essence').innerText = game.essence;
+            document.getElementById('hud-streak').innerText = `STREAK: ${game.streak} (x${game.focusMult.toFixed(1)} Focus)`;
+            document.getElementById('hud-wave').innerText = game.wave;
+        }
+
+        // --- SHOP & DATA ---
+        function openShop() {
+            document.getElementById('menu-shop').classList.remove('hidden');
+            document.getElementById('shop-essence').innerText = game.essence;
+            refreshShopUI();
+        }
+
+        function initShop() {
+            const c = document.getElementById('shop-container');
+            c.innerHTML = '';
+
+            Object.keys(shop).forEach(k => {
+                const item = shop[k];
+                const div = document.createElement('div');
+                div.className = 'shop-item';
+                div.innerHTML = `
+                    <div class="shop-info">
+                        <b>${item.name}</b>
+                        <small>${item.desc}</small>
+                        <div style="font-size:0.8em; color:#666">Lvl <span id="lvl-${item.id}">0</span></div>
+                    </div>
+                    <button id="buy-${item.id}">---</button>
+                `;
+                c.appendChild(div);
+
+                document.getElementById(`buy-${item.id}`).onclick = () => {
+                    if (game.essence >= item.cost) {
+                        game.essence -= item.cost;
+                        item.lvl++;
+                        item.cost = Math.floor(item.cost * 1.5);
+
+                        // Tech Logic
+                        if (k === 'fireDelay') item.val = Math.max(100, item.val - 50);
+                        if (k === 'stoneSpeed') item.val += 1.5;
+                        if (k === 'knockback') item.val += 2;
+                        if (k === 'piercing') item.val += 1;
+                        if (k === 'damage') item.val += 1; // Damage + 1
+                        if (k === 'bomb') { game.bombs++; item.val = 0; } // Consumable
+                        if (k === 'shield') { game.shields++; item.val = 0; } // Consumable
+
+                        play(800, 'sine', 0.2, 0.2, false);
+                        // Don't increase cost for consumables linearly? Or do? Let's keep it flat or slight increase.
+                        // Reset cost for consumables to flat rate? roguelike style usually increases. Let's start with standard double logic but maybe cap it?
+                        if (item.type === 'consumable') item.cost = Math.floor(item.cost * 1.2);
+
+                        openShop();
+                        updateHUD();
+                    }
+                }
+            });
+        }
+
+        function refreshShopUI() {
+            Object.keys(shop).forEach(k => {
+                const item = shop[k];
+                const btn = document.getElementById(`buy-${item.id}`);
+
+                if (item.type === 'consumable') {
+                    const count = k === 'bomb' ? game.bombs : game.shields;
+                    document.getElementById(`lvl-${item.id}`).innerText = `OWNED: ${count}`;
+                    btn.innerText = `BUY ${item.cost} E`;
+                } else {
+                    document.getElementById(`lvl-${item.id}`).innerText = `LVL ${item.lvl}`;
+                    btn.innerText = `${item.cost} E`;
+                }
+
+                btn.disabled = game.essence < item.cost;
+            });
+        }
+
+        function updateHUD() {
+            document.getElementById('hud-score').innerText = game.score;
+            document.getElementById('hud-streak').innerText = 'STREAK: ' + game.streak;
+            document.getElementById('hud-essence').innerText = Math.floor(game.essence);
+            document.getElementById('hud-wave').innerText = game.wave;
+
+            // Update Consumable Buttons
+            const btnBomb = document.getElementById('btn-bomb');
+            const btnShield = document.getElementById('btn-shield');
+
+            if (game.bombs > 0) {
+                btnBomb.classList.remove('hidden');
+                btnBomb.innerText = `BOMB (${game.bombs})`;
+                btnBomb.onclick = useBomb;
+            } else btnBomb.classList.add('hidden');
+
+            if (game.shields > 0) {
+                btnShield.classList.remove('hidden');
+                btnShield.innerText = `SHIELD (${game.shields})`;
+                btnShield.style.opacity = '1.0';
+            } else btnShield.classList.add('hidden');
+        }
+
+        function useBomb() {
+            if (game.bombs <= 0 || !game.running) return;
+            game.bombs--;
+            play(150, 'sawtooth', 1.0, 0.5); // Bomb Sound
+            game.shake = 30; // Massive shake
+            // Flash screen white
+            const flash = document.createElement('div');
+            flash.style.position = 'absolute';
+            flash.style.top = '0'; flash.style.left = '0'; flash.style.width = '100%'; flash.style.height = '100%';
+            flash.style.background = '#fff'; flash.style.pointerEvents = 'none';
+            document.body.appendChild(flash);
+            let op = 1.0;
+            const fade = setInterval(() => {
+                op -= 0.1;
+                flash.style.opacity = op;
+                if (op <= 0) { clearInterval(fade); flash.remove(); }
+            }, 50);
+
+            // Kill all enemies
+            // Need to iterate copy since killEnemy modifies array
+            [...game.enemies].forEach(e => killEnemy(e, 0.5)); // half bounty for bomb
+            updateHUD();
+        }
+
+        function checkShield() {
+            if (game.shields > 0) {
+                game.shields--;
+                play(600, 'sine', 0.5, 0.5); // Shield Break Sound
+                game.shake = 20;
+                // Push all enemies back
+                game.enemies.forEach(e => {
+                    const ang = Math.atan2(e.y - 800, e.x - 800);
+                    e.vx = Math.cos(ang) * 20;
+                    e.vy = Math.sin(ang) * 20;
+                });
+                updateHUD();
+                return true; // Shield used
+            }
+            return false; // No shield
+        }
+
+        function endSession() {
+            // Shield Check
+            if (checkShield()) return;
+
+            game.running = false;
+            play(50, 'sawtooth', 1.5, 0.5);
+
+            const name = document.getElementById('player-name').value || 'PILOT';
+            if (!config.highScores) config.highScores = [];
+            config.highScores.push({ name, score: game.score });
+            config.highScores.sort((a, b) => b.score - a.score);
+            config.highScores = config.highScores.slice(0, 5);
+            saveConfig();
+
+            document.getElementById('menu-over').classList.remove('hidden');
+            document.getElementById('final-stats').innerText = `PILOT: ${name} | SCORE: ${game.score} | WAVE: ${game.wave}`;
+        }
+
+        function loadScores() {
+            const scores = config.highScores || [];
+            document.getElementById('score-list').innerHTML = '<b>TOP PILOTS:</b><br>' +
+                scores.map(s => `${s.name}: ${s.score}`).join('<br>');
+        }
+
+        function initSettings() {
+            const s = document.getElementById('set-sfx');
+            s.value = config.sfxVol;
+            document.getElementById('val-sfx').innerText = config.sfxVol + '%';
+            s.oninput = () => {
+                config.sfxVol = parseInt(s.value);
+                document.getElementById('val-sfx').innerText = config.sfxVol + '%';
+                saveConfig();
+            };
+
+            const d = document.getElementById('set-diff');
+            d.value = config.difficulty;
+            d.onchange = () => {
+                config.difficulty = parseFloat(d.value);
+                saveConfig();
+            };
+
+            document.getElementById('btn-settings').onclick = () => document.getElementById('menu-settings').classList.remove('hidden');
+            document.getElementById('btn-help').onclick = () => document.getElementById('menu-help').classList.remove('hidden');
+            document.getElementById('btn-close-settings').onclick = () => document.getElementById('menu-settings').classList.add('hidden');
+
+            document.getElementById('btn-clear-data').onclick = () => {
+                if (confirm('WIPE ALL PROGRESS? THIS CANNOT BE UNDONE.')) {
+                    localStorage.removeItem('flinger_config');
+                    localStorage.removeItem('flinger_scores');
+                    location.reload();
+                }
+            };
+        }
+
+        function saveConfig() {
+            localStorage.setItem('flinger_config', JSON.stringify(config));
+        }
+
+        function checkSynergies() {
+            // Synergy 1: Rapid Fire (Auto Lvl 5 + Speed Lvl 5)
+            // Bonus: Fire Rate caps lower (faster)
+            if (shop.fireDelay.lvl >= 5 && shop.stoneSpeed.lvl >= 5) {
+                // Applied implicitly by having high levels, but let's add a visual identifier or extra boost?
+                // For now, let's just use the levels.
+            }
+
+            // Synergy 2: Cluster Impact (Splash Lvl 5 + Pierce Lvl 5)
+            // Effect: Piercing shots also trigger splash on every hit (Logic adjusted in onHit)
+
+            // Synergy 3: Heavy Artillery (Damage Lvl 5 + Knockback Lvl 5)
+            // Effect: Projectiles get bigger
+        }
+
+        function varName(name) { return getComputedStyle(document.documentElement).getPropertyValue(name); }
+
+        setup();
+    </script>
+</body>
+
+</html>
