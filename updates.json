@@ -1,5 +1,10 @@
 ﻿[
     {
+        "date": "2026-01-03",
+        "title": "Flinger added to Arcade",
+        "summary": "Added Flinger (Neon Overdrive) to the Arcade hub and games page."
+    },
+    {
         "date":  "2025-11-29",
         "title":  "Audio Corridor VR fixes",
         "summary":  "Improved VR camera rig, autopilot in XR, locomotion, and reliable explosions/starting positions."
