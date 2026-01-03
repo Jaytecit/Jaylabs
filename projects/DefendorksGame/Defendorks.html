@@ -75,5 +75,12 @@
   </div>
 
   <script src="script.js" defer></script>
+  <script>
+  (function(){ if(document.getElementById('gp-cursor')) return; let gpIndex=null,lastPrimary=false; const cursor={x:innerWidth/2,y:innerHeight/2}; const el=document.createElement('div'); el.id='gp-cursor'; el.style.cssText='position:fixed;left:0;top:0;width:14px;height:14px;background:rgba(255,255,255,0.9);border-radius:50%;box-shadow:0 0 12px rgba(0,200,255,0.9);transform:translate(-50%,-50%);pointer-events:none;z-index:99999;display:none;'; document.body.appendChild(el);
+    window.addEventListener('gamepadconnected',(e)=>{ gpIndex=e.gamepad.index; el.style.display='block'; }); window.addEventListener('gamepaddisconnected',(e)=>{ if(gpIndex===e.gamepad.index) gpIndex=null; el.style.display='none'; });
+    function simulateMouse(type,x,y){ const t=document.elementFromPoint(x,y); if(!t) return; t.dispatchEvent(new MouseEvent(type,{view:window,bubbles:true,cancelable:true,clientX:Math.round(x),clientY:Math.round(y)})); }
+    function poll(){ const gps=navigator.getGamepads && navigator.getGamepads(); const gp=(gpIndex!==null && gps && gps[gpIndex])?gps[gpIndex]:(gps&&gps[0]); if(gp){ const lx=gp.axes[0]||0, ly=gp.axes[1]||0; const sensitivity=Math.max(innerWidth,innerHeight)*0.02; cursor.x=Math.min(innerWidth,Math.max(0,cursor.x+lx*sensitivity)); cursor.y=Math.min(innerHeight,Math.max(0,cursor.y+ly*sensitivity)); el.style.left=cursor.x+'px'; el.style.top=cursor.y+'px'; const primary=!!(gp.buttons && gp.buttons[0] && gp.buttons[0].pressed); if(primary && !lastPrimary){ simulateMouse('pointerdown',cursor.x,cursor.y); simulateMouse('mousedown',cursor.x,cursor.y); } else if(!primary && lastPrimary){ simulateMouse('pointerup',cursor.x,cursor.y); simulateMouse('mouseup',cursor.x,cursor.y); simulateMouse('click',cursor.x,cursor.y); } lastPrimary=primary; } requestAnimationFrame(poll); } requestAnimationFrame(poll);
+  })();
+  </script>
 </body>
 </html>
