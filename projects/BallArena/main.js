@@ -3408,6 +3408,76 @@ window.toggleNarratorSetting = toggleNarratorSetting;
 window.toggleMusicSetting = toggleMusicSetting;
 window.toggleSFXSetting = toggleSFXSetting;
 window.toggleShakeSetting = toggleShakeSetting;
+
+// --- Gamepad / Quest Controller Support ---
+// Adds a simple virtual cursor controlled by gamepad axes and maps the primary
+// button to mouse/pointer events so the Quest browser's controller can interact
+// with the game's UI and canvas.
+(() => {
+    let gpIndex = null;
+    let lastPrimary = false;
+    const cursor = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+
+    const el = document.createElement('div');
+    el.id = 'gp-cursor';
+    el.style.cssText = 'position:fixed;left:0;top:0;width:16px;height:16px;background:rgba(255,255,255,0.9);border-radius:50%;box-shadow:0 0 12px rgba(0,200,255,0.9);transform:translate(-50%,-50%);pointer-events:none;z-index:99999;display:none;';
+    document.body.appendChild(el);
+
+    window.addEventListener('gamepadconnected', (e) => {
+        gpIndex = e.gamepad.index;
+        el.style.display = 'block';
+        console.log('[Gamepad] connected', e.gamepad.id, 'index', gpIndex);
+    });
+    window.addEventListener('gamepaddisconnected', (e) => {
+        if (gpIndex === e.gamepad.index) gpIndex = null;
+        el.style.display = 'none';
+        console.log('[Gamepad] disconnected', e.gamepad.id);
+    });
+
+    function simulateMouse(type, x, y) {
+        const target = document.elementFromPoint(x, y);
+        if (!target) return;
+        const ev = new MouseEvent(type, {
+            view: window,
+            bubbles: true,
+            cancelable: true,
+            clientX: Math.round(x),
+            clientY: Math.round(y)
+        });
+        target.dispatchEvent(ev);
+    }
+
+    function poll() {
+        const gps = navigator.getGamepads && navigator.getGamepads();
+        const gp = (gpIndex !== null && gps && gps[gpIndex]) ? gps[gpIndex] : (gps && gps[0]);
+        if (gp) {
+            // Typical mapping: axes[0]/[1] = left stick
+            const lx = gp.axes[0] || 0;
+            const ly = gp.axes[1] || 0;
+            const sensitivity = Math.max(window.innerWidth, window.innerHeight) * 0.02; // screen scaled speed
+            cursor.x = Math.min(window.innerWidth, Math.max(0, cursor.x + lx * sensitivity));
+            cursor.y = Math.min(window.innerHeight, Math.max(0, cursor.y + ly * sensitivity));
+            el.style.left = cursor.x + 'px';
+            el.style.top = cursor.y + 'px';
+
+            // Primary button (A) usually index 0; treat pressed->mousedown, release->mouseup+click
+            const primary = !!(gp.buttons && gp.buttons[0] && gp.buttons[0].pressed);
+            if (primary && !lastPrimary) {
+                simulateMouse('pointerdown', cursor.x, cursor.y);
+                simulateMouse('mousedown', cursor.x, cursor.y);
+            } else if (!primary && lastPrimary) {
+                simulateMouse('pointerup', cursor.x, cursor.y);
+                simulateMouse('mouseup', cursor.x, cursor.y);
+                simulateMouse('click', cursor.x, cursor.y);
+            }
+            lastPrimary = primary;
+        }
+        requestAnimationFrame(poll);
+    }
+
+    // Start polling loop (will be inert until a gamepad appears)
+    requestAnimationFrame(poll);
+})();
 window.toggleSlowMoSetting = toggleSlowMoSetting;
 window.closeSettings = closeSettings;
 window.initMode = initMode;
