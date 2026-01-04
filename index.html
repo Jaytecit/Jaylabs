@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8" />
     <title>JayLabs Playground</title>
@@ -20,7 +21,7 @@
             --text-1: #ffffff;
             --text-2: rgba(200, 220, 255, 0.7);
             --glass-border: rgba(255, 255, 255, 0.1);
-            
+
             /* Hi-Fi Unit Colors (silver deck) */
             --metal-light: #f0f0f0;
             --metal-mid: #d7d7d7;
@@ -33,14 +34,16 @@
             --panel-text: #1f1f1f;
         }
 
-        * { box-sizing: border-box; }
+        * {
+            box-sizing: border-box;
+        }
 
         body {
             margin: 0;
             min-height: 100vh;
             background-color: var(--bg-deep);
             /* Retro Grid Background */
-            background-image: 
+            background-image:
                 linear-gradient(rgba(0, 217, 255, 0.03) 1px, transparent 1px),
                 linear-gradient(90deg, rgba(0, 217, 255, 0.03) 1px, transparent 1px);
             background-size: 40px 40px;
@@ -65,30 +68,41 @@
             justify-content: center;
             padding: 4rem 1rem 3rem;
             position: relative;
-            transition: opacity 0.3s ease; /* Smooth fade when hiding */
+            transition: opacity 0.3s ease;
+            /* Smooth fade when hiding */
         }
 
         .logo-stage {
             position: relative;
             width: 100%;
             max-width: 800px;
-            aspect-ratio: 16 / 6; 
+            aspect-ratio: 16 / 6;
             margin-bottom: 3rem;
             filter: drop-shadow(0 0 30px rgba(0, 217, 255, 0.15));
         }
 
         .logo-element {
             position: absolute;
-            top: 0; left: 0;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
             object-fit: contain;
             transition: opacity 1s ease;
         }
 
-        .video-hidden { opacity: 0; pointer-events: none; }
-        .img-hidden { opacity: 0; }
-        .img-visible { opacity: 1; }
+        .video-hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .img-hidden {
+            opacity: 0;
+        }
+
+        .img-visible {
+            opacity: 1;
+        }
 
         /* --- JAYLABS JL-85 HI-FI UNIT STYLES --- */
         .hifi-unit {
@@ -393,7 +407,7 @@
             border: 1px solid #9b9b9b;
             background: linear-gradient(to bottom, #f5f5f5, #d1d1d1);
             box-shadow:
-                inset 0 1px 0 rgba(255,255,255,0.7),
+                inset 0 1px 0 rgba(255, 255, 255, 0.7),
                 0 2px 3px rgba(0, 0, 0, 0.25);
             cursor: pointer;
             font-size: 10px;
@@ -513,8 +527,13 @@
             height: 100%;
         }
 
-        #trackTitle { color: #fff; }
-        #trackArtist { color: #f5c77d; }
+        #trackTitle {
+            color: #fff;
+        }
+
+        #trackArtist {
+            color: #f5c77d;
+        }
 
         /* --- CASSETTE DECK --- */
         .cassette-deck {
@@ -524,9 +543,9 @@
             border-radius: 3px;
             border: 1px solid #c2c2c2;
             box-shadow:
-                inset 0 1px 0 rgba(255,255,255,0.7),
-                inset 0 -1px 0 rgba(0,0,0,0.08),
-                0 2px 4px rgba(0,0,0,0.25);
+                inset 0 1px 0 rgba(255, 255, 255, 0.7),
+                inset 0 -1px 0 rgba(0, 0, 0, 0.08),
+                0 2px 4px rgba(0, 0, 0, 0.25);
             position: relative;
             display: flex;
             justify-content: center;
@@ -537,7 +556,7 @@
         .cassette-window {
             width: 90%;
             height: 85%;
-            background: linear-gradient(180deg, rgba(32,32,32,0.7), rgba(15,15,15,0.85));
+            background: linear-gradient(180deg, rgba(32, 32, 32, 0.7), rgba(15, 15, 15, 0.85));
             border: 1px solid #7f7f7f;
             position: relative;
             display: flex;
@@ -545,7 +564,7 @@
             align-items: center;
             overflow: hidden;
             transition: opacity 0.5s;
-            box-shadow: inset 0 1px 3px rgba(0,0,0,0.55);
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.55);
         }
 
         .cassette-body {
@@ -558,7 +577,7 @@
             justify-content: center;
             align-items: center;
             box-shadow:
-                inset 0 1px 1px rgba(255,255,255,0.6),
+                inset 0 1px 1px rgba(255, 255, 255, 0.6),
                 0 0 4px rgba(0, 0, 0, 0.35);
         }
 
@@ -576,9 +595,9 @@
             padding: 6px 8px;
             position: relative;
             box-shadow:
-                inset 0 1px 0 rgba(255,255,255,0.8),
-                inset 0 -1px 0 rgba(0,0,0,0.1),
-                0 1px 3px rgba(0,0,0,0.25);
+                inset 0 1px 0 rgba(255, 255, 255, 0.8),
+                inset 0 -1px 0 rgba(0, 0, 0, 0.1),
+                0 1px 3px rgba(0, 0, 0, 0.25);
             overflow: hidden;
         }
 
@@ -586,13 +605,11 @@
             content: "";
             position: absolute;
             inset: 0;
-            background: repeating-linear-gradient(
-                90deg,
-                rgba(0,0,0,0.025) 0,
-                rgba(0,0,0,0.025) 6px,
-                transparent 6px,
-                transparent 12px
-            );
+            background: repeating-linear-gradient(90deg,
+                    rgba(0, 0, 0, 0.025) 0,
+                    rgba(0, 0, 0, 0.025) 6px,
+                    transparent 6px,
+                    transparent 12px);
             pointer-events: none;
         }
 
@@ -652,7 +669,7 @@
             background: radial-gradient(circle, #f8f8f8 40%, #c4c4c4 100%);
             position: relative;
             border: 3px dashed #666;
-            box-shadow: inset 0 0 2px rgba(0,0,0,0.35);
+            box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.35);
         }
 
         .reel.spinning {
@@ -674,7 +691,7 @@
             border: 1px solid #5b5b5b;
             display: flex;
             align-items: flex-end;
-            box-shadow: inset 0 1px 4px rgba(0,0,0,0.6);
+            box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.6);
         }
 
         canvas {
@@ -720,8 +737,11 @@
         }
 
         /* --- NAVIGATION GRID --- */
-        .nav-section { padding-bottom: 4rem; flex: 1; }
-        
+        .nav-section {
+            padding-bottom: 4rem;
+            flex: 1;
+        }
+
         .lab-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -729,90 +749,194 @@
         }
 
         .card {
-            background: linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%);
-            border: 1px solid var(--glass-border); border-radius: 16px; padding: 1.5rem;
-            text-decoration: none; color: inherit; transition: transform 0.2s, background 0.2s, border-color 0.2s;
-            position: relative; overflow: hidden; display: flex; flex-direction: column; min-height: 240px;
-            border: 1px solid rgba(255,255,255,0.1);
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            text-decoration: none;
+            color: inherit;
+            transition: transform 0.2s, background 0.2s, border-color 0.2s;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 240px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .card:hover {
-            transform: translateY(-5px); background: rgba(255, 255, 255, 0.04);
-            border-color: var(--accent-cyan); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.04);
+            border-color: var(--accent-cyan);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
         }
 
         .pill {
-            font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em;
-            padding: 0.25rem 0.75rem; border-radius: 100px; background: rgba(255,255,255,0.05);
-            width: fit-content; margin-bottom: 0.75rem; border: 1px solid rgba(255,255,255,0.1);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            padding: 0.25rem 0.75rem;
+            border-radius: 100px;
+            background: rgba(255, 255, 255, 0.05);
+            width: fit-content;
+            margin-bottom: 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .card h2 { margin: 0 0 0.5rem; font-size: 1.4rem; color: #fff; }
-        .card p { font-size: 0.95rem; color: var(--text-2); margin: 0; line-height: 1.5; flex-grow: 1; }
-        
+        .card h2 {
+            margin: 0 0 0.5rem;
+            font-size: 1.4rem;
+            color: #fff;
+        }
+
+        .card p {
+            font-size: 0.95rem;
+            color: var(--text-2);
+            margin: 0;
+            line-height: 1.5;
+            flex-grow: 1;
+        }
+
         .card-link-text {
-            margin-top: 1.5rem; color: var(--accent-cyan); font-weight: 600; font-size: 0.9rem;
-            display: flex; align-items: center; gap: 0.5rem; white-space: nowrap;
+            margin-top: 1.5rem;
+            color: var(--accent-cyan);
+            font-weight: 600;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            white-space: nowrap;
         }
 
         /* Specific Card Accents */
-        .card.games:hover { border-color: var(--accent-magenta); }
-        .card.games .card-link-text { color: var(--accent-magenta); }
-        .card.pcvr:hover { border-color: var(--accent-cyan); }
-        .card.gens:hover { border-color: var(--accent-purple); }
-        .card.gens .card-link-text { color: var(--accent-purple); }
+        .card.games:hover {
+            border-color: var(--accent-magenta);
+        }
+
+        .card.games .card-link-text {
+            color: var(--accent-magenta);
+        }
+
+        .card.pcvr:hover {
+            border-color: var(--accent-cyan);
+        }
+
+        .card.gens:hover {
+            border-color: var(--accent-purple);
+        }
+
+        .card.gens .card-link-text {
+            color: var(--accent-purple);
+        }
 
         /* Desktop Layout: Source card spans bottom */
         @media (min-width: 960px) {
-            .lab-grid { grid-template-columns: repeat(3, 1fr); }
-            .card.source {
-                grid-column: 1 / -1; width: 70%; margin: 1rem auto 0;
-                min-height: auto; flex-direction: row; align-items: center; gap: 2rem; padding: 1.2rem 2rem;
+            .lab-grid {
+                grid-template-columns: repeat(3, 1fr);
             }
-            .card.source .card-content-wrapper { flex-grow: 1; display: flex; flex-direction: row; align-items: center; gap: 1.5rem; text-align: left; }
-            .card.source .pill { margin-bottom: 0; }
-            .card.source h2 { margin: 0; font-size: 1.2rem; min-width: 140px; }
-            .card.source p { margin: 0; font-size: 0.9rem; }
-            .card.source .card-link-text { margin-top: 0; }
+
+            .card.source {
+                grid-column: 1 / -1;
+                width: 70%;
+                margin: 1rem auto 0;
+                min-height: auto;
+                flex-direction: row;
+                align-items: center;
+                gap: 2rem;
+                padding: 1.2rem 2rem;
+            }
+
+            .card.source .card-content-wrapper {
+                flex-grow: 1;
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                gap: 1.5rem;
+                text-align: left;
+            }
+
+            .card.source .pill {
+                margin-bottom: 0;
+            }
+
+            .card.source h2 {
+                margin: 0;
+                font-size: 1.2rem;
+                min-width: 140px;
+            }
+
+            .card.source p {
+                margin: 0;
+                font-size: 0.9rem;
+            }
+
+            .card.source .card-link-text {
+                margin-top: 0;
+            }
         }
 
         /* --- FOOTER --- */
         footer {
-            border-top: 1px solid rgba(255,255,255,0.1); padding: 2rem 1rem;
-            text-align: center; color: var(--text-2); font-size: 0.85rem;
-            background: rgba(0,0,0,0.3); margin-top: auto;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 2rem 1rem;
+            text-align: center;
+            color: var(--text-2);
+            font-size: 0.85rem;
+            background: rgba(0, 0, 0, 0.3);
+            margin-top: auto;
         }
-        .footer-links { display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap; }
-        footer a { color: var(--accent-cyan); text-decoration: none; transition: color 0.2s; }
-        footer a:hover { color: #fff; text-decoration: underline; }
-        
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        footer a {
+            color: var(--accent-cyan);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        footer a:hover {
+            color: #fff;
+            text-decoration: underline;
+        }
+
         @media (max-width: 600px) {
-            .logo-stage { aspect-ratio: 16/9; }
-            .footer-links { gap: 0.5rem; flex-direction: column; }
-            .card.source { flex-direction: column; align-items: flex-start; }
-            .card.source .card-content-wrapper { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+            .logo-stage {
+                aspect-ratio: 16/9;
+            }
+
+            .footer-links {
+                gap: 0.5rem;
+                flex-direction: column;
+            }
+
+            .card.source {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .card.source .card-content-wrapper {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
         }
     </style>
 </head>
+
 <body>
 
     <!-- HERO SECTION: Logo & Hi-Fi Unit -->
     <section class="hero-section">
-        
+
         <!-- Video Transition -->
         <div class="logo-stage">
-            <video 
-                id="logoVideo" 
-                class="logo-element" 
-                src="Images/Jaylabs.mp4" 
-                muted playsinline autoplay
-            ></video>
-            <img 
-                id="logoImage" 
-                src="Images/Jaylabs.svg" 
-                alt="JayLabs" 
-                class="logo-element img-hidden"
-            >
+            <video id="logoVideo" class="logo-element" src="Images/Jaylabs.mp4" muted playsinline autoplay></video>
+            <img id="logoImage" src="Images/Jaylabs.svg" alt="JayLabs" class="logo-element img-hidden">
         </div>
 
         <!-- JAYLABS JL-85 HI-FI UNIT -->
@@ -836,7 +960,8 @@
                     </div>
                     <div>
                         <div class="brand-logo">JAYLABS <span>AUDIO</span></div>
-                        <div class="model-no" style="font-size:0.6rem; color:#555; font-weight:bold;">COMPACT SYSTEM JL-85
+                        <div class="model-no" style="font-size:0.6rem; color:#555; font-weight:bold;">COMPACT SYSTEM
+                            JL-85
                         </div>
                     </div>
                 </div>
@@ -992,7 +1117,7 @@
     <!-- CONTENT: The Main Grid (ID required for turbo script) -->
     <div class="container nav-section" id="main-content">
         <div class="lab-grid">
-            
+
             <a href="games.html" class="card games">
                 <div class="pill">Arcade</div>
                 <h2>Games</h2>
@@ -1045,7 +1170,7 @@
         const video = document.getElementById('logoVideo');
         const image = document.getElementById('logoImage');
 
-        if(video) {
+        if (video) {
             video.addEventListener('ended', () => {
                 video.classList.add('video-hidden');
                 image.classList.remove('img-hidden');
@@ -1059,6 +1184,7 @@
 
         // --- 2. JAYLABS JL-85 AUDIO FIRMWARE ---
         const playlist = [
+            { title: "80s Retro", artist: "Jay Martooni", src: "80s.wav" },
             { title: "Synthwave Skyline", artist: "Jay Martooni", src: "Synthwave_Skyline.mp3" },
             { title: "Retro Arcade", artist: "Jay Martooni", src: "Retro_Arcade.mp3" },
             { title: "Chrome Pulse", artist: "Jay Martooni", src: "Chrome_Pulse.mp3" },
@@ -1079,7 +1205,7 @@
         let bassVal = 50, trebleVal = 50, balanceVal = 50;
         let dolbyEnabled = false, cro2Enabled = false;
         const audio = new Audio();
-        audio.crossOrigin = "anonymous";
+        // Removed crossOrigin to ensure local files play correctly in all environments
         audio.volume = 0.4;
         audio.loop = true; // keep current track repeating until user changes it
 
@@ -1173,7 +1299,7 @@
             try { audio.load(); } catch (e) { /* ignore if not necessary */ }
             elTitle.textContent = playlist[currentIndex].title;
             elArtist.textContent = playlist[currentIndex].artist;
-            document.getElementById('trackIdx').textContent = `TRK 0${i + 1}`;
+            document.getElementById('trackIdx').textContent = `TRK ${(i + 1).toString().padStart(2, '0')}`;
             elStatus.textContent = "STOPPED";
             elStatus.style.color = "#005555";
         }
@@ -1317,7 +1443,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             const mainContent = document.getElementById('main-content');
             const heroSection = document.querySelector('.hero-section');
-            
+
             // Snapshot the "Home" state
             const homeHTML = mainContent.innerHTML;
             const homeClasses = mainContent.className || "container nav-section";
@@ -1337,7 +1463,7 @@
                         if (heroSection) heroSection.style.display = 'flex';
                         mainContent.innerHTML = homeHTML;
                         mainContent.className = homeClasses;
-                        window.history.pushState({page: 'home'}, '', 'index.html');
+                        window.history.pushState({ page: 'home' }, '', 'index.html');
                         return;
                     }
 
@@ -1355,7 +1481,7 @@
                             if (heroSection) heroSection.style.display = 'none';
                             mainContent.innerHTML = newContent.innerHTML;
                             mainContent.className = newContent.className;
-                            window.history.pushState({page: href}, '', href);
+                            window.history.pushState({ page: href }, '', href);
                             window.scrollTo(0, 0);
                         }
                     } catch (err) {
@@ -1367,9 +1493,10 @@
 
             // Browser Back Button
             window.addEventListener('popstate', (event) => {
-                window.location.reload(); 
+                window.location.reload();
             });
         });
     </script>
 </body>
+
 </html>
