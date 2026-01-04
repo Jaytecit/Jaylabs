@@ -1161,7 +1161,10 @@
             if (i >= playlist.length) i = 0;
             currentIndex = i;
 
-            audio.src = playlist[currentIndex].src;
+            // Encode the src to safely handle spaces and special characters
+            audio.src = encodeURI(playlist[currentIndex].src);
+            // Ensure the element reloads the new source
+            try { audio.load(); } catch (e) { /* ignore if not necessary */ }
             elTitle.textContent = playlist[currentIndex].title;
             elArtist.textContent = playlist[currentIndex].artist;
             document.getElementById('trackIdx').textContent = `TRK 0${i + 1}`;
