@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIDI Creator & File Dropper</title>
+    <!-- Primary Library Link -->
+    <script src="https://unpkg.com/midi-writer-js@2.1.4/browser/index.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121212; color: #e0e0e0; display: flex; flex-direction: column; align-items: center; padding: 40px; }
+        .container { background: #1e1e1e; padding: 30px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 100%; max-width: 650px; text-align: center; }
+        
+        #drop-zone { border: 2px dashed #444; border-radius: 8px; padding: 40px; margin: 20px 0; transition: 0.3s; background: #252525; cursor: pointer; }
+        #drop-zone.hover { border-color: #007bff; background: #2d353f; }
+        
+        textarea { width: 100%; height: 180px; background: #2d2d2d; color: #00ff00; border: 1px solid #444; border-radius: 4px; padding: 10px; font-family: 'Courier New', monospace; box-sizing: border-box; resize: vertical; }
+        
+        button { background: #007bff; color: white; border: none; padding: 15px 25px; border-radius: 6px; cursor: pointer; font-size: 18px; font-weight: bold; margin-top: 15px; width: 100%; transition: 0.2s; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #444; cursor: not-allowed; }
+        
+        .status { font-size: 0.9em; margin-bottom: 10px; padding: 5px; border-radius: 4px; }
+        .ready { color: #2ecc71; }
+        .error { color: #e74c3c; }
+        h1 { margin: 0 0 10px 0; color: #007bff; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>MIDI Creator</h1>
+        <div id="status-msg" class="status">Checking library...</div>
+
+        <!-- Drag and Drop Area -->
+        <div id="drop-zone">
+            <strong>Drag & Drop a .txt or .json file here</strong><br>
+            <span style="font-size: 0.8em; color: #888;">or paste the code into the box below</span>
+        </div>
+
+        <textarea id="noteInput" placeholder="Paste JSON code here...">[
+  {"pitch": "C4", "duration": "4"},
+  {"pitch": "E4", "duration": "4"},
+  {"pitch": "G4", "duration": "4"},
+  {"pitch": "C5", "duration": "2"}
+]</textarea>
+
+        <button id="genBtn" onclick="generateMIDI()" disabled>Download MIDI</button>
+    </div>
+
+    <script>
+        const statusMsg = document.getElementById('status-msg');
+        const genBtn = document.getElementById('genBtn');
+        const dropZone = document.getElementById('drop-zone');
+        const noteInput = document.getElementById('noteInput');
+
+        // Check if library loaded correctly
+        window.onload = function() {
+            if (typeof MidiWriter !== 'undefined') {
+                statusMsg.innerText = "● System Ready";
+                statusMsg.className = "status ready";
+                genBtn.disabled = false;
+            } else {
+                statusMsg.innerText = "X Library failed to load. Please check your internet connection.";
+                statusMsg.className = "status error";
+            }
+        };
+
+        // Drag and Drop Logic
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('hover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('hover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('hover');
+            const file = e.dataTransfer.files[0];
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                noteInput.value = event.target.result;
+            };
+            reader.readAsText(file);
+        });
+
+        // MIDI Generation Logic
+        function generateMIDI() {
+            try {
+                const inputData = JSON.parse(noteInput.value);
+                const track = new MidiWriter.Track();
+                track.addEvent(new MidiWriter.ProgramChangeEvent({instrument: 1}));
+
+                inputData.forEach(item => {
+                    track.addEvent(new MidiWriter.NoteEvent({
+                        pitch: [item.pitch],
+                        duration: item.duration
+                    }));
+                });
+
+                const write = new MidiWriter.Writer(track);
+                const link = document.createElement('a');
+                link.href = write.buildDataUri();
+                link.download = 'generated-tune.mid';
+                link.click();
+            } catch (err) {
+                alert("Error: Make sure the text is valid JSON code.\n\n" + err.message);
+            }
+        }
+    </script>
+</body>
+</html>
