@@ -294,8 +294,6 @@
     </div>
 
     <script>
-
-    <script>
     // Gamepad / Quest controller virtual cursor (shared snippet)
     (function(){
         if (document.getElementById('gp-cursor')) return;
@@ -311,7 +309,6 @@
         function poll(){ const gps = navigator.getGamepads && navigator.getGamepads(); const gp = (gpIndex!==null && gps && gps[gpIndex])?gps[gpIndex]:(gps&&gps[0]); if(gp){ const lx=gp.axes[0]||0, ly=gp.axes[1]||0; const sensitivity = Math.max(window.innerWidth,window.innerHeight)*0.02; cursor.x = Math.min(window.innerWidth, Math.max(0, cursor.x + lx*sensitivity)); cursor.y = Math.min(window.innerHeight, Math.max(0, cursor.y + ly*sensitivity)); el.style.left = cursor.x+'px'; el.style.top = cursor.y+'px'; const primary = !!(gp.buttons && gp.buttons[0] && gp.buttons[0].pressed); if(primary && !lastPrimary){ simulateMouse('pointerdown',cursor.x,cursor.y); simulateMouse('mousedown',cursor.x,cursor.y); } else if(!primary && lastPrimary){ simulateMouse('pointerup',cursor.x,cursor.y); simulateMouse('mouseup',cursor.x,cursor.y); simulateMouse('click',cursor.x,cursor.y); } lastPrimary = primary; } requestAnimationFrame(poll); }
         requestAnimationFrame(poll);
     })();
-    </script>
         /** @type {HTMLCanvasElement} */
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -381,13 +378,13 @@
             piercing: { id: 'pierce', lvl: 0, cost: 500, val: 0, name: "PHASE SHIFT", desc: "Pierce +1 Enemy" },
             splash: { id: 'splash', lvl: 0, cost: 400, val: 0, name: "VOID RUPTURE", desc: "Splash Damage Radius" },
             magnet: { id: 'magnet', lvl: 1, cost: 300, val: 1.0, name: "ESSENCE SIPHON", desc: "Essence Yield +20%" },
-            damage: { id: 'damage', lvl: 1, cost: 1200, val: 1, name: "HYPER-CHARGE", desc: "Projectile Damage +1" },
+            damage: { id: 'damage', lvl: 1, cost: 2000, val: 1, name: "HYPER-CHARGE", desc: "Projectile Damage +1" },
             bomb: { id: 'bomb', lvl: 0, cost: 1000, val: 0, type: 'consumable', name: "PLANETARY PURGE", desc: "Smart Bomb (Single Use)" },
             shield: { id: 'shield', lvl: 0, cost: 800, val: 0, type: 'consumable', name: "AEGIS GENERATOR", desc: "Shield (One Hit Block)" },
             // New Advanced Items
             split: { id: 'split', lvl: 0, cost: 2000, val: 0, name: "HYDRA PROTOCOL", desc: "+10% Multishot Chance" },
             wisp: { id: 'wisp', lvl: 0, cost: 5000, val: 0, type: 'consumable', name: "ORBITAL WISP", desc: "Permanent Defense Drone (Max 3)" },
-            harpoon: { id: 'harpoon', lvl: 1, cost: 0, val: 0, name: "HARPOON", desc: "Unlock: RMB Capture" }
+            harpoon: { id: 'harpoon', lvl: 1, cost: 1000, val: 0, name: "HARPOON", desc: "Unlock: RMB Capture" }
         };
 
 
@@ -551,6 +548,7 @@
                 this.speed = speedBase;
                 this.hue = hue;
                 this.archetype = archetype;
+                this.isHarpooned = false;
 
                 this.pulse = 0;
                 this.spawnAnim = 0; // 0 to 1
@@ -569,7 +567,7 @@
                 this.pulse += 0.1;
 
                 // Shield Logic handled in main loop or here? Main loop is better for collision.
-                if (dist < 45 + this.radius) endSession();
+                if (!this.isHarpooned && dist < 45 + this.radius) endSession();
 
                 // Boundary Bounce
                 const pad = this.radius;
@@ -698,7 +696,7 @@
                 this.x += this.vx; this.y += this.vy;
                 if (this.x < 0 || this.x > 1600 || this.y < 0 || this.y > 1600) this.dead = true;
                 // Don't seek player, just fly
-                if (Math.hypot(this.x - 800, this.y - 800) < 55) endSession();
+                if (!this.isHarpooned && Math.hypot(this.x - 800, this.y - 800) < 55) endSession();
             }
         }
 
@@ -913,36 +911,42 @@
                     }
 
                     // Collision with Enemies
-                    for (let e of game.enemies) {
-                        if (e.dead) continue;
-                        if (Math.hypot(h.x - e.x, h.y - e.y) < e.radius + 10) {
-                            h.state = 'latched';
-                            h.target = e;
-                            play(600, 'sawtooth', 0.1, 0.5); // Hit sound
-                            break;
+                        for (let e of game.enemies) {
+                            if (e.dead) continue;
+                            if (Math.hypot(h.x - e.x, h.y - e.y) < e.radius + 10) {
+                                h.state = 'latched';
+                                h.target = e;
+                                h.target.isHarpooned = true;
+                                play(600, 'sawtooth', 0.1, 0.5); // Hit sound
+                                break;
+                            }
                         }
-                    }
-                } else if (h.state === 'latched') {
-                    if (h.target.dead) { h.state = 'returning'; h.target = null; }
-                    else {
-                        // Drag enemy back
-                        h.target.x += (800 - h.target.x) * 0.05;
-                        h.target.y += (800 - h.target.y) * 0.05;
-                        h.x = h.target.x; h.y = h.target.y;
-
-                        // Check if reached nest
-                        if (Math.hypot(h.x - 800, h.y - 800) < 60) {
-                            // Harvest!
-                            play(300, 'sine', 0.5, 0.0);
-                            play(600, 'sine', 0.5, 0.0); // Chime
-                            game.essence += h.target.maxHp * 5; // 5x Essence Logic
-                            popEffect(h.x, h.y, '#0f0');
-                            killEnemy(h.target, 0); // 0 bounty because we gave 5x essence already (or 5x multiplier?) 
-                            // Let's just give direct essence here to be safe and kill with 0 multiplier.
-                            h.state = 'ready';
+                    } else if (h.state === 'latched') {
+                        if (h.target.dead) {
+                            h.target.isHarpooned = false;
+                            h.state = 'returning';
                             h.target = null;
                         }
-                    }
+                        else {
+                            // Drag enemy back
+                            h.target.x += (800 - h.target.x) * 0.05;
+                            h.target.y += (800 - h.target.y) * 0.05;
+                            h.x = h.target.x; h.y = h.target.y;
+
+                        // Check if reached nest
+                            if (Math.hypot(h.x - 800, h.y - 800) < 60) {
+                                // Harvest!
+                                play(300, 'sine', 0.5, 0.0);
+                                play(600, 'sine', 0.5, 0.0); // Chime
+                                game.essence += h.target.maxHp * 5; // 5x Essence Logic
+                                popEffect(h.x, h.y, '#0f0');
+                                killEnemy(h.target, 0); // 0 bounty because we gave 5x essence already (or 5x multiplier?) 
+                                // Let's just give direct essence here to be safe and kill with 0 multiplier.
+                                h.target.isHarpooned = false;
+                                h.state = 'ready';
+                                h.target = null;
+                            }
+                        }
                 } else if (h.state === 'returning') {
                     // Fly back to player
                     h.x += (800 - h.x) * 0.1;
@@ -1293,7 +1297,9 @@
                     if (game.essence >= item.cost) {
                         game.essence -= item.cost;
                         item.lvl++;
-                        item.cost = Math.floor(item.cost * 1.5);
+                        let costMultiplier = 1.5;
+                        if (k === 'damage' || k === 'split') costMultiplier = 2;
+                        item.cost = Math.floor(item.cost * costMultiplier);
 
                         // Tech Logic
                         if (k === 'fireDelay') item.val = Math.max(100, item.val - 50);

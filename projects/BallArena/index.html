@@ -235,10 +235,42 @@
         <button id="restartBtn" style="display: none;">Restart Simulation</button>
     </div>
 
-    <!-- Commentary Panel -->
-    <div id="commentary-panel">
-        <h3>LIVE COMMENTARY</h3>
-        <div id="commentary-log"></div>
+    <!-- Commentary + Legend Panel -->
+    <div id="right-panel-stack">
+        <div id="commentary-panel">
+            <h3>LIVE COMMENTARY</h3>
+            <div id="commentary-log"></div>
+        </div>
+        <div id="legend-panel">
+            <h3>LEGEND</h3>
+            <div class="legend-section">
+                <div class="legend-title">Hazards</div>
+                <div class="legend-grid">
+                    <div class="legend-item"><span class="legend-icon hazard-spinner"></span>Spinner</div>
+                    <div class="legend-item"><span class="legend-icon hazard-anchor-attract"></span>Attractor</div>
+                    <div class="legend-item"><span class="legend-icon hazard-anchor-repel"></span>Repulsor</div>
+                    <div class="legend-item"><span class="legend-icon hazard-entropy"></span>Entropy Node</div>
+                    <div class="legend-item"><span class="legend-icon hazard-void-gap"></span>Void Gap</div>
+                    <div class="legend-item"><span class="legend-icon hazard-laser"></span>Laser Beam</div>
+                    <div class="legend-item"><span class="legend-icon hazard-tesla"></span>Tesla Coil</div>
+                    <div class="legend-item"><span class="legend-icon hazard-freeze"></span>Freeze Zone</div>
+                    <div class="legend-item"><span class="legend-icon hazard-accelerator"></span>Accel Pad</div>
+                    <div class="legend-item"><span class="legend-icon hazard-teleport"></span>Teleport Gate</div>
+                    <div class="legend-item"><span class="legend-icon hazard-saw"></span>Orbital Saw</div>
+                    <div class="legend-item"><span class="legend-icon hazard-vortex"></span>Void Vortex</div>
+                </div>
+            </div>
+            <div class="legend-section">
+                <div class="legend-title">Power-Ups</div>
+                <div class="legend-grid">
+                    <div class="legend-item"><span class="legend-icon powerup health">+</span>Health</div>
+                    <div class="legend-item"><span class="legend-icon powerup boost">⚡</span>Boost</div>
+                    <div class="legend-item"><span class="legend-icon powerup shockwave">💥</span>Shockwave</div>
+                    <div class="legend-item"><span class="legend-icon powerup shield">🛡️</span>Shield</div>
+                    <div class="legend-item"><span class="legend-icon powerup regen">💊</span>Regen</div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div id="game-container">

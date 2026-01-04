@@ -1700,7 +1700,7 @@ class TeslaCoil { // Round 5
             // Find target
             const target = balls.find(b => b.alive && Math.sqrt((b.x - this.x) ** 2 + (b.y - this.y) ** 2) < this.range);
             if (target) {
-                target.takeDamage(20, "Tesla");
+                target.takeDamage(10, "Tesla");
                 target.vx *= 0.5;
                 target.vy *= 0.5;
                 createLightning(this.x, this.y, target.x, target.y);
@@ -2375,7 +2375,50 @@ function resolveBallCollisions() {
     }
 }
 
+function createLegend() {
+    const existingLegend = document.getElementById('legend-panel');
+    if (existingLegend) {
+        existingLegend.remove();
+    }
+
+    const legendPanel = document.createElement('div');
+    legendPanel.id = 'legend-panel';
+    legendPanel.style.position = 'absolute';
+    legendPanel.style.bottom = '20px';
+    legendPanel.style.right = '20px';
+    legendPanel.style.width = '200px';
+    legendPanel.style.background = 'rgba(0, 0, 0, 0.7)';
+    legendPanel.style.borderRadius = '10px';
+    legendPanel.style.padding = '15px';
+    legendPanel.style.color = '#fff';
+    legendPanel.style.fontFamily = 'Outfit, sans-serif';
+    legendPanel.style.fontSize = '12px';
+    legendPanel.style.border = '1px solid var(--accent-color)';
+
+    legendPanel.innerHTML = `
+        <h3 style="margin: 0 0 10px 0; color: var(--accent-color); text-align: center;">LEGEND</h3>
+        <div style="display: grid; grid-template-columns: auto 1fr; gap: 5px 10px; align-items: center;">
+            <span style="font-size: 18px;">+</span><span>Health Pack</span>
+            <span style="font-size: 18px;">⚡</span><span>Speed Boost</span>
+            <span style="font-size: 18px;">💥</span><span>Shockwave</span>
+            <span style="font-size: 18px;">🛡️</span><span>Shield</span>
+            <span style="font-size: 18px;">💊</span><span>Regeneration</span>
+            <span style="font-size: 18px; color: #ff3300;">☣</span><span>Spinner Hazard</span>
+            <span style="font-size: 18px; color: #bc00ff;">🌀</span><span>Attractor</span>
+            <span style="font-size: 18px; color: #00ffaa;">💨</span><span>Repulsor</span>
+        </div>
+    `;
+
+    const commentaryPanel = document.getElementById('commentary-panel');
+    if (commentaryPanel && commentaryPanel.parentNode) {
+        commentaryPanel.parentNode.insertBefore(legendPanel, commentaryPanel.nextSibling);
+    } else {
+        document.body.appendChild(legendPanel);
+    }
+}
+
 function init() {
+    createLegend();
     resize();
     cameraX = centerX;
     cameraY = centerY;
@@ -2447,12 +2490,16 @@ function init() {
     hazards = [];
     if (gameMode === 'league') {
         const round = leagueRound;
-        if (round === 1) { // Static Spikes
-            for (let i = 0; i < 5; i++) hazards.push(new StaticSpike(centerX + Math.cos(i / 5 * Math.PI * 2) * 200, centerY + Math.sin(i / 5 * Math.PI * 2) * 200));
-        } else if (round === 2) { // Repulsor
-            hazards.push(new GravitationalAnchor(Math.random() * Math.PI * 2, 200));
-        } else if (round === 3) { // Attractor
-            const g = new GravitationalAnchor(0, 0); g.polarity = 1; hazards.push(g);
+        if (round === 1) { // Replace StaticSpikes with Spinners
+            for (let i = 0; i < 3; i++) {
+                hazards.push(new Hazard((i / 3) * Math.PI * 2, baseArenaRadius * 0.4, 30));
+            }
+        } else if (round === 2) { // Repulsor at edge
+            hazards.push(new GravitationalAnchor(Math.random() * Math.PI * 2, baseArenaRadius * 0.9));
+        } else if (round === 3) { // Attractor at edge
+            const g = new GravitationalAnchor(Math.random() * Math.PI * 2, baseArenaRadius * 0.9);
+            g.polarity = 1;
+            hazards.push(g);
         } else if (round === 4) { // Laser
             hazards.push(new LaserBeam(0));
             hazards.push(new LaserBeam(Math.PI / 2));
