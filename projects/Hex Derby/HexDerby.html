@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Hex Derby — Pure Physics</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Main Menu for Mode Selection -->
+  <div id="mainMenu" style="position: fixed; inset: 0; background: linear-gradient(135deg, #1a1a2e, #16213e); z-index: 1000; display: flex; flex-direction: column; justify-content: center; align-items: center; color: white;">
+    <div style="text-align: center; margin-bottom: 60px;">
+      <h1 style="font-size: 48px; margin: 0; color: #fff; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">HEX DERBY</h1>
+      <p style="font-size: 18px; color: #ccc; margin: 10px 0;">Pure Physics Ball Combat Arena</p>
+    </div>
+    
+    <div style="display: flex; gap: 30px; flex-wrap: wrap; justify-content: center;">
+      <!-- Normal Mode Button -->
+      <div class="mode-card" id="normalModeCard" style="background: linear-gradient(145deg, #2a2a5a, #1a1a4a); border: 2px solid #444; border-radius: 15px; padding: 30px; text-align: center; cursor: pointer; transition: all 0.3s ease; min-width: 200px;">
+        <div style="font-size: 24px; margin-bottom: 15px;">🎯</div>
+        <h3 style="margin: 0 0 10px 0; color: #fff;">Normal Mode</h3>
+        <p style="color: #ccc; font-size: 14px; margin: 0; line-height: 1.4;">Classic single-match betting with all 12 balls. Place bets and watch the chaos unfold!</p>
+      </div>
+      
+      <!-- Tournament Mode Button -->
+      <div class="mode-card" id="tournamentModeCard" style="background: linear-gradient(145deg, #2a5a2a, #1a4a1a); border: 2px solid #4ade80; border-radius: 15px; padding: 30px; text-align: center; cursor: pointer; transition: all 0.3s ease; min-width: 200px;">
+        <div style="font-size: 24px; margin-bottom: 15px;">🏆</div>
+        <h3 style="margin: 0 0 10px 0; color: #4ade80;">Tournament Mode</h3>
+        <p style="color: #ccc; font-size: 14px; margin: 0; line-height: 1.4;">5-match elimination tournament! Long-term betting with escalating stakes and glory.</p>
+      </div>
+      
+      <!-- Playground Mode Button -->
+      <div class="mode-card" id="playgroundModeCard" style="background: linear-gradient(145deg, #5a2a2a, #4a1a1a); border: 2px solid #ff6b35; border-radius: 15px; padding: 30px; text-align: center; cursor: pointer; transition: all 0.3s ease; min-width: 200px;">
+        <div style="font-size: 24px; margin-bottom: 15px;">🔧</div>
+        <h3 style="margin: 0 0 10px 0; color: #ff6b35;">Playground Mode</h3>
+        <p style="color: #ccc; font-size: 14px; margin: 0; line-height: 1.4;">Experiment with physics parameters and arena settings. No betting, pure experimentation!</p>
+      </div>
+    </div>
+    
+    <div style="margin-top: 40px; text-align: center; display:flex; flex-direction:column; gap:8px; align-items:center;">
+      <p style="color: #888; font-size: 12px;">Choose your game mode to begin</p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
+        <button id="openSettingsFromMenu" class="btn">Settings</button>
+        <button id="openBankBoostFromMenu" class="btn" style="background:#6aa2ff;">Bank Boost</button>
+        <button id="newGameFromMenu" class="btn" style="background:#22c55e;">New Game</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dedicated Betting Phase Interface (Outside Game Interface) -->
+  <div id="bettingPhase" style="position: fixed; inset: 0; background: linear-gradient(135deg, #0f172a, #1e293b); z-index: 800; display: none; overflow-y: auto;">
+    
+    <!-- Betting Phase Header -->
+    <div style="background: rgba(0,0,0,0.8); padding: 20px; border-bottom: 2px solid #334155;">
+      <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1400px; margin: 0 auto;">
+        <div>
+          <h2 id="bettingPhaseTitle" style="color: #fff; margin: 0; font-size: 28px;">Place Your Bets</h2>
+          <p id="bettingPhaseSubtitle" style="color: #94a3b8; margin: 5px 0 0 0; font-size: 16px;">Match starting soon - get your bets in!</p>
+        </div>
+        <div style="display: flex; gap: 15px; align-items: center;">
+          <div style="text-align: right;">
+            <div style="color: #22c55e; font-size: 24px; font-weight: bold;" id="bettingBankroll">£1,000</div>
+            <div style="color: #94a3b8; font-size: 12px;">Available Balance</div>
+          </div>
+          <button id="startMatchFromBetting" class="btn" style="background: #22c55e; padding: 12px 24px; font-size: 16px; font-weight: bold;">START MATCH</button>
+          <button id="bettingReturnToMenu" class="btn" style="background: #374151; color: #fff; padding: 12px 24px; font-size: 16px; font-weight: bold; margin-left: 10px;">Main Menu</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Main Betting Interface -->
+    <div style="max-width: 1400px; margin: 0 auto; padding: 30px; display: grid; grid-template-columns: 1fr 350px; gap: 30px;">
+      
+      <!-- Left Panel: Contestants & Odds -->
+      <div id="contestantsPanel">
+        <div style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 25px;">
+          <h3 style="color: #fff; margin: 0 0 20px 0; font-size: 20px; display: flex; align-items: center; gap: 10px;">
+            <span>🎯</span> Contestants & Live Odds
+          </h3>
+          
+          <!-- Odds Table -->
+          <div id="oddsTable" style="background: rgba(0,0,0,0.3); border-radius: 8px; overflow: hidden;">
+            <!-- Dynamic content will be inserted here -->
+          </div>
+          
+          <!-- Market Activity -->
+          <div style="margin-top: 20px; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+            <h4 style="color: #94a3b8; margin: 0 0 10px 0; font-size: 14px;">📊 MARKET ACTIVITY</h4>
+            <div id="marketActivity" style="color: #64748b; font-size: 12px; max-height: 100px; overflow-y: auto;">
+              <div>Market opening... odds stabilizing...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Right Panel: Betting Slip & Controls -->
+      <div id="bettingPanel">
+        <!-- Quick Stake Buttons -->
+        <div style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+          <h4 style="color: #fff; margin: 0 0 15px 0;">Quick Stakes</h4>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <button class="stake-btn" data-stake="10" style="padding: 10px; background: #374151; color: #fff; border: none; border-radius: 6px; cursor: pointer;">£10</button>
+            <button class="stake-btn" data-stake="25" style="padding: 10px; background: #374151; color: #fff; border: none; border-radius: 6px; cursor: pointer;">£25</button>
+            <button class="stake-btn" data-stake="50" style="padding: 10px; background: #374151; color: #fff; border: none; border-radius: 6px; cursor: pointer;">£50</button>
+            <button class="stake-btn" data-stake="100" style="padding: 10px; background: #374151; color: #fff; border: none; border-radius: 6px; cursor: pointer;">£100</button>
+          </div>
+          <input type="number" id="customStake" placeholder="Custom amount..." style="width: 100%; margin-top: 10px; padding: 10px; background: #1f2937; border: 1px solid #374151; border-radius: 6px; color: #fff;">
+        </div>
+        
+        <!-- Active Betting Slip -->
+        <div style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 20px;">
+          <h4 style="color: #fff; margin: 0 0 15px 0; display: flex; justify-content: space-between; align-items: center;">
+            <span>Betting Slip</span>
+            <button id="clearBets" style="background: #dc2626; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer;">Clear All</button>
+          </h4>
+          <div id="activeBetsDisplay" style="min-height: 200px;">
+            <div style="color: #64748b; text-align: center; padding: 40px 20px;">
+              <div style="font-size: 24px; margin-bottom: 10px;">📋</div>
+              <div>No bets placed yet</div>
+              <div style="font-size: 12px; margin-top: 5px;">Click on odds to add bets</div>
+            </div>
+          </div>
+          
+          <!-- Bet Summary -->
+          <div id="betSummary" style="border-top: 1px solid #374151; padding-top: 15px; margin-top: 15px; display: none;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+              <span style="color: #94a3b8;">Total Stake:</span>
+              <span style="color: #fff;" id="totalStake">£0</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+              <span style="color: #94a3b8;">Potential Payout:</span>
+              <span style="color: #22c55e;" id="totalPayout">£0</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-weight: bold;">
+              <span style="color: #94a3b8;">Potential Profit:</span>
+              <span style="color: #22c55e;" id="totalProfit">£0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Interface (Hidden Initially) -->
+  <div id="gameInterface" style="display: none;">
+  
+  <div id="overlay" style="display:flex; justify-content:space-between; align-items:flex-start; width:100%; padding:10px 14px; position:fixed; inset:0; pointer-events:none; font-size:14px; color:var(--ink2);">
+    <div class="title">
+      HEX DERBY — Pure Physics
+      <span id="playgroundIndicator" style="display:none; color:#ff6b35; font-weight:bold; margin-left:10px;">[PLAYGROUND MODE]</span>
+      <span id="tournamentIndicator" style="display:none; color:#4ade80; font-weight:bold; margin-left:10px;">[TOURNAMENT MODE]</span>
+    </div>
+    <div style="display:flex; gap:8px; pointer-events:auto; margin-left:12px; position:relative;">
+  <div id="matchTimer" style="color:#ffe8a6; font-weight:bold; padding:4px 8px; background:rgba(0,0,0,0.3); border-radius:4px; font-size:14px; display:none; position:absolute; left:-100px; top:0;">00:00</div>
+  
+  <!-- Match Phase Navigation (Hidden by default, shown during matches) -->
+  <div id="matchPhaseNav" style="display: none; gap: 8px;">
+    <button id="returnToBetting" class="btn" style="background: #22c55e;">Return to Betting</button>
+    <button id="returnToMainMenu" class="btn" style="background: #374151;">Main Menu</button>
+    <button id="audio" class="btn">Audio: Off</button>
+  </div>
+  
+  <!-- Pre-Match Navigation (Hidden during matches) -->
+    <div id="preMatchNav" style="display: flex; gap: 8px;">
+      <button id="backToMenu" class="btn" style="background: #374151;">Back to Menu</button>
+      <button id="tournamentMode" class="btn" style="display: none;">Tournament Mode</button>
+      <button id="playgroundMode" class="btn" style="display: none;">Playground Mode</button>
+      <button id="audio2" class="btn">Audio: Off</button>
+      <button id="openSettings" class="btn">Settings</button>
+      <button id="openBankBoost" class="btn" style="background:#6aa2ff;">Bank Boost</button>
+      <button id="newGame" class="btn" style="background:#22c55e;">New Game</button>
+    </div>
+    </div>
+  </div>
+
+  <div id="ballHealthDisplay">
+    <!-- New Betting Controls (Hidden during matches) -->
+    <div id="bettingControls" class="hide-during-match">
+        <div class="bet-section">
+            <span class="label">Bankroll:</span><span id="bank" class="money">£1,000</span>
+        </div>
+        <div class="bet-section">
+            <span class="label">Stake:</span>
+            <div class="stake-buttons">
+                <button class="btn" data-bet="10">£10</button>
+                <button class="btn" data-bet="25">£25</button>
+                <button class="btn" data-bet="50">£50</button>
+                <button class="btn" id="betAll">All-in</button>
+            </div>
+        </div>
+        <div class="bet-section">
+            <span class="label">Bet Type:</span>
+            <select id="betType" style="height:28px;">
+                <option value="WIN">Win</option>
+                <option value="TOP3">Top 3</option>
+                <option value="EXACTA">Exacta (1st-2nd)</option>
+                <option value="QUINELLA">Quinella (Any order 1st/2nd)</option>
+            </select>
+        </div>
+        <div class="bet-section">
+            <button id="rebet" class="btn">Rebet</button>
+        </div>
+    </div>
+    
+    <!-- New Match Control Panel (Hidden during matches) -->
+    <div id="matchControls" class="hide-during-match">
+        <div class="control-section">
+            <button id="start" class="btn">Start Match</button>
+            <button id="restart" class="btn">Restart</button>
+            <button id="resetBank" class="btn">Reset £1,000</button>
+        </div>
+    </div>
+    
+    <!-- Compact Match Info (Shown only during matches) -->
+    <div id="matchInfo" class="show-during-match" style="display: none; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 12px; margin-bottom: 15px; text-align: center;">
+      <div style="color: #fff; font-weight: bold; margin-bottom: 5px;">Match in Progress</div>
+      <div id="activeMatchBets" style="color: #94a3b8; font-size: 12px;"></div>
+    </div>
+    
+      <!-- Ball health entries will be added here dynamically -->
+  </div>
+
+  <!-- Playground Arena Controls -->
+  <div id="playgroundArenaControls" style="display:none;">
+    <div class="control-section">
+      <button id="playgroundStart" class="btn" style="background:#4a90e2;">Start Arena</button>
+      <button id="playgroundReset" class="btn">Reset Balls</button>
+    </div>
+  </div>
+
+  <div id="preMsg">Click a sphere to select • Choose a stake • Or Start to spectate</div>
+  <div id="countdown">3</div>
+
+  
+
+  <div id="matchStatusPanel" style="position:fixed; right:10px; top:56px; width:340px; max-height:44vh; overflow:auto; pointer-events:auto; background:rgba(0,0,0,0.35); padding:10px; border-radius:10px; color:#ddd; font-size:13px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+      <div style="font-weight:800; letter-spacing:.03em;">Match Status</div>
+      <button id="clearMatchStatus" class="btn" style="padding:2px 8px; font-size:12px;">Clear</button>
+    </div>
+    <div id="matchStatusHeader" style="font-size:12px; color:#9fb7ffcc; margin-bottom:6px;"></div>
+    <div id="matchStatusLog" style="font-size:12px; line-height:1.35;">
+      <div style="opacity:.8;">Awaiting match… place bets in the betting phase.</div>
+    </div>
+  </div>
+
+
+  <!-- Playground Parameter Controls -->
+  <div id="playgroundControls" style="display:none; position:fixed; right:10px; top:56px; width:350px; max-height:80vh; overflow:auto; pointer-events:auto; background:rgba(0,0,0,0.8); padding:12px; border-radius:8px; color:#ddd; font-size:12px;">
+    <div style="font-weight:bold; margin-bottom:10px; font-size:14px;">🛠️ Playground Controls</div>
+    
+    <div class="param-group">
+      <h4>Arena Settings</h4>
+      <div class="param-item">
+        <label>Arena Radius: <span id="arenaRadius-value"></span></label>
+        <input type="range" id="arenaRadius" min="200" max="600" step="10">
+      </div>
+      <div class="param-item">
+        <label>Wall Thickness: <span id="wallThickness-value"></span></label>
+        <input type="range" id="wallThickness" min="2" max="20" step="1">
+      </div>
+      <div class="param-item">
+        <label>Spin Acceleration: <span id="spinAccel-value"></span></label>
+        <input type="range" id="spinAccel" min="0" max="0.001" step="0.00001">
+      </div>
+      <div class="param-item">
+        <label>Max Spin Speed: <span id="spinMax-value"></span></label>
+        <input type="range" id="spinMax" min="0" max="0.3" step="0.01">
+      </div>
+    </div>
+
+    <div class="param-group">
+      <h4>Physics</h4>
+      <div class="param-item">
+        <label>Gravity: <span id="gravityY-value"></span></label>
+        <input type="range" id="gravityY" min="0" max="2" step="0.05">
+      </div>
+      <div class="param-item">
+        <label>Ball Restitution: <span id="restitution-value"></span></label>
+        <input type="range" id="restitution" min="0.1" max="3" step="0.1">
+      </div>
+      <div class="param-item">
+        <label>Air Resistance: <span id="air-value"></span></label>
+        <input type="range" id="air" min="0" max="0.1" step="0.001">
+      </div>
+      <div class="param-item">
+        <label>Ball Friction: <span id="ballFriction-value"></span></label>
+        <input type="range" id="ballFriction" min="0" max="1" step="0.05">
+      </div>
+    </div>
+
+    <div class="param-group">
+      <h4>Damage System</h4>
+      <div class="param-item">
+        <label>Damage Scale: <span id="damageScale-value"></span></label>
+        <input type="range" id="damageScale" min="0" max="1" step="0.01">
+      </div>
+      <div class="param-item">
+        <label>Damage Threshold: <span id="damageThreshold-value"></span></label>
+        <input type="range" id="damageThreshold" min="0" max="10" step="0.1">
+      </div>
+      <div class="param-item">
+        <label>Repulsion Force: <span id="ballRepulsionForce-value"></span></label>
+        <input type="range" id="ballRepulsionForce" min="0" max="1" step="0.01">
+      </div>
+    </div>
+
+    <div class="param-group">
+      <h4>Ball Settings</h4>
+      <div class="param-item">
+        <label>Ball Count: <span id="ballCount-value"></span></label>
+        <input type="range" id="ballCount" min="2" max="20" step="1">
+      </div>
+      <div class="param-item">
+        <label>Min Ball Size: <span id="ballMin-value"></span></label>
+        <input type="range" id="ballMin" min="10" max="50" step="2">
+      </div>
+      <div class="param-item">
+        <label>Max Ball Size: <span id="ballMax-value"></span></label>
+        <input type="range" id="ballMax" min="20" max="80" step="2">
+      </div>
+      <div class="param-item">
+        <label>Drop Kick: <span id="dropKick-value"></span></label>
+        <input type="range" id="dropKick" min="0" max="10" step="0.1">
+      </div>
+    </div>
+
+    <div class="param-group">
+      <h4>Presets</h4>
+      <div style="display:flex; gap:5px; flex-wrap:wrap;">
+        <button class="btn preset-btn" onclick="applyPreset('default')">Default</button>
+        <button class="btn preset-btn" onclick="applyPreset('chaos')">Chaos</button>
+        <button class="btn preset-btn" onclick="applyPreset('slowmo')">Slow-mo</button>
+        <button class="btn preset-btn" onclick="applyPreset('bouncy')">Bouncy</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="hud" id="hud"></div>
+
+  <!-- Dev Panel removed -->
+
+<script src="js/constants.js"></script>
+<script src="js/state.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/telemetry.js"></script>
+<script src="js/drawing.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/tournament.js"></script>
+<script src="js/status-panel.js"></script>
+<!-- Dev Panel script removed -->
+<script src="js/main.js"></script>
+</div> <!-- End of gameInterface -->
+
+<!-- Settings Modal (outside gameInterface so it works on main menu) -->
+<div id="settingsModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:1200; align-items:center; justify-content:center;">
+  <div style="background:#0b1222; border:1px solid #2a3a6a; border-radius:12px; width:min(520px, 92vw); padding:16px; color:#dbe6ff;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <div style="font-weight:800; letter-spacing:.04em;">Settings</div>
+      <button id="closeSettings" class="btn">Close</button>
+    </div>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+      <div>
+        <div style="opacity:.85; font-weight:600; margin-bottom:6px;">General</div>
+        <label style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <input type="checkbox" id="setAudio"> Audio Enabled
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <input type="checkbox" id="setMotion"> Reduce Motion
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <input type="checkbox" id="setColorblind"> Colorblind/High Contrast
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <input type="checkbox" id="setAutoTune"> Auto-Tune Difficulty
+        </label>
+      </div>
+      <div>
+        <div style="opacity:.85; font-weight:600; margin-bottom:6px;">Difficulty</div>
+        <select id="setDifficulty" class="btn" style="width:100%;">
+          <option>Casual</option>
+          <option selected>Balanced</option>
+          <option>Chaos</option>
+        </select>
+        <div style="opacity:.7; font-size:12px; margin-top:6px;">
+          Casual: longer matches, gentler damage. Chaos: faster eliminations, more volatility.
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+      <button id="applySettings" class="btn" style="background:#4a90e2;">Apply</button>
+      <button id="saveSettings" class="btn" style="background:#22c55e;">Save</button>
+    </div>
+  </div>
+  </div>
+
+<!-- Bank Boost Mini‑Game Modal -->
+<div id="bankBoostModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:1300; align-items:center; justify-content:center;">
+  <div style="background:#0b1222; border:1px solid #2a3a6a; border-radius:12px; width:min(560px, 95vw); padding:16px; color:#dbe6ff;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <div style="font-weight:800; letter-spacing:.04em;">Bank Boost: Hex Flip</div>
+      <button id="closeBankBoost" class="btn">Close</button>
+    </div>
+    <div style="font-size:12px; color:#9fb7ffcc; margin-bottom:10px;">Pick a side (1–6), choose a stake, and flip. Exact hit pays 5x. Otherwise, you lose the stake.</div>
+    <div style="display:grid; grid-template-columns: repeat(6, 1fr); gap:8px; margin-bottom:12px;">
+      <button class="btn bb-side" data-side="1">1</button>
+      <button class="btn bb-side" data-side="2">2</button>
+      <button class="btn bb-side" data-side="3">3</button>
+      <button class="btn bb-side" data-side="4">4</button>
+      <button class="btn bb-side" data-side="5">5</button>
+      <button class="btn bb-side" data-side="6">6</button>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+      <div class="label">Stake:</div>
+      <div class="stake-buttons">
+        <button class="btn bb-stake" data-stake="10">£10</button>
+        <button class="btn bb-stake" data-stake="25">£25</button>
+        <button class="btn bb-stake" data-stake="50">£50</button>
+        <button class="btn bb-stake" data-stake="100">£100</button>
+      </div>
+      <input id="bbCustomStake" type="number" min="1" placeholder="Custom" style="width:90px; height:28px; background:#111a33; border:1px solid #2a3a6a; border-radius:6px; color:#dbe6ff; padding:2px 6px;" />
+      <button id="bbPlay" class="btn" style="background:#22c55e;">Flip!</button>
+    </div>
+    <div id="bbStatus" style="min-height:20px; font-size:13px; color:#dbe6ff;"></div>
+    <div id="bbHistory" style="margin-top:10px; font-size:12px; color:#9fb7ffcc;"></div>
+  </div>
+</div>
+
+<!-- Sound Effects -->
+<audio id="sfx-gameStart" src="audio/game_start.wav" preload="auto"></audio>
+<audio id="sfx-buttonClick" src="audio/button_click.wav" preload="auto"></audio>
+<audio id="sfx-countdownBeep" src="audio/countdown_beep.wav" preload="auto"></audio>
+<audio id="sfx-ballDrop" src="audio/ball_drop.wav" preload="auto"></audio>
+<audio id="sfx-ballCollision" src="audio/ball_collision.wav" preload="auto"></audio>
+<audio id="sfx-explosion" src="audio/explosion.wav" preload="auto"></audio>
+<audio id="sfx-gapOpen" src="audio/gap_open.wav" preload="auto"></audio>
+<audio id="sfx-gameOver" src="audio/game_over.wav" preload="auto"></audio>
+<audio id="sfx-win" src="audio/win.wav" preload="auto"></audio>
+<audio id="sfx-wallHit" src="audio/wall_hit.wav" preload="auto"></audio>
+<audio id="sfx-lose" src="audio/lose.wav" preload="auto"></audio>
+<audio id="sfx-pulse" src="audio/pulse.wav" preload="auto"></audio>
+
+</body>
+</html>
