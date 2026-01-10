@@ -12,34 +12,44 @@
             --neon-yellow: #f4ff00;
             --neon-green: #00ff66;
             --bg-black: #08080c;
+            -webkit-tap-highlight-color: transparent; /* Disable tap highlight for touch */
         }
 
-        body {
+        html, body {
             margin: 0;
+            padding: 0;
             background: #000;
             color: #fff;
             font-family: 'Segoe UI', Arial, sans-serif;
             overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            /* Center the game container on the page */
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
         }
 
         #game-container {
             position: relative;
-            width: 95vmin;
-            height: 95vmin;
+            width: 100%;
+            height: 100%;
             overflow: hidden;
+
+            /* Constrain aspect ratio on large screens to simulate a mobile device */
+            max-width: 480px;
+            max-height: 840px;
+            border: 2px solid var(--neon-blue);
+            box-shadow: 0 0 25px rgba(0, 242, 255, 0.5);
+            border-radius: 20px; /* Optional: rounded corners for the 'device' */
         }
 
         canvas {
             display: block;
             background: var(--bg-black);
             cursor: crosshair;
-            width: 95vmin;
-            /* Fit screen */
-            height: 95vmin;
+            width: 100%;
+            height: 100%;
         }
 
         /* UI Styling */
@@ -60,21 +70,25 @@
 
         .panel {
             background: rgba(20, 20, 30, 0.95);
-            padding: 40px;
+            padding: 20px;
             border: 2px solid var(--neon-blue);
             border-radius: 20px;
             text-align: center;
             box-shadow: 0 0 50px rgba(0, 242, 255, 0.3);
-            width: 1400px;
-            max-width: 95%;
+            width: 95%;
+            max-width: 500px;
+            max-height: 85vh; /* Ensure panel fits on screen */
+            box-sizing: border-box; /* Include padding in height/width calculations */
+            display: flex;
+            flex-direction: column;
         }
 
         h1 {
-            font-size: 4em;
-            margin: 0;
+            font-size: 2.5em;
+            margin: 0 0 15px 0;
             color: var(--neon-blue);
-            text-shadow: 0 0 20px var(--neon-blue);
-            letter-spacing: 10px;
+            text-shadow: 0 0 15px var(--neon-blue);
+            letter-spacing: 5px;
         }
 
         .currency-text {
@@ -87,19 +101,20 @@
         /* Shop Grid */
         .shop-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
-            margin: 25px 0;
+            grid-template-columns: 1fr;
+            gap: 10px;
+            margin: 20px 0;
         }
 
         .shop-item {
             background: rgba(255, 255, 255, 0.05);
-            padding: 15px;
-            border-radius: 12px;
+            padding: 10px;
+            border-radius: 8px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             border: 1px solid #333;
+            flex-wrap: wrap; /* Allow wrapping for smaller screens */
         }
 
         .shop-item:hover {
@@ -114,6 +129,25 @@
             display: block;
             color: var(--neon-blue);
         }
+
+        .panel-content {
+            overflow-y: auto;
+            flex-grow: 1; /* Allow content to take up available space */
+            padding-right: 15px; /* For scrollbar */
+            margin-right: -15px; /* Offset for scrollbar */
+        }
+
+        .panel-footer {
+            padding-top: 15px;
+            border-top: 1px solid #333;
+            margin-top: 15px;
+        }
+
+        .shop-grid-container {
+            /* This container will hold the grid */
+            margin-bottom: 20px;
+        }
+
 
         .shop-info small {
             color: #888;
@@ -192,11 +226,10 @@
                 style="text-align: right; border-left: none; border-right: 4px solid var(--neon-green);">
                 ESSENCE: <span id="hud-essence" class="currency-text">0</span><br>
                 WAVE: <span id="hud-wave">1</span><br>
-                <div id="consumables" style="margin-top:5px; font-size:0.8em;">
+                <small id="hud-mult" style="color:var(--neon-yellow)">MULT: 1.0x</small><br>
+                <div id="consumables" style="margin-top:5px; font-size:0.8em; display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
                     <button id="btn-bomb" class="hidden"
                         style="background:#f00; font-size:0.8em; padding:5px 10px;">BOMB (0)</button>
-                    <button id="btn-shield" class="hidden"
-                        style="background:#00f; font-size:0.8em; padding:5px 10px;">SHIELD (0)</button>
                 </div>
             </div>
         </div>
@@ -244,7 +277,8 @@
         <div id="menu-help" class="overlay hidden">
             <div class="panel">
                 <h2>MANUAL</h2>
-                <p>MOUSE to Aim, CLICK or SPACE to Fire.</p>
+                <p><b>DESKTOP:</b> Mouse to Aim, Left-Click or Space to Fire, Right-Click for Harpoon.</p>
+                <p><b>TOUCH:</b> Drag to Aim, Tap to Fire, Long-Press for Harpoon.</p>
                 <p>Defend the Nest from the Chrome Swarm.</p>
                 <p>Collect Essence to upgrade weaponry.</p>
                 <p>Tip: Hit consecutive enemies to build FOCUS.</p>
@@ -275,13 +309,20 @@
             <div class="panel">
                 <h1 style="color: var(--neon-green); font-size: 2.5em;">STATION UPGRADES</h1>
                 <p>Wave Cleared! Essence Bank: <span class="currency-text" id="shop-essence">0</span></p>
-
-                <div class="shop-grid" id="shop-container">
-                    <!-- JS Generated -->
+                <div class="panel-content">
+                    <div class="shop-grid-container">
+                        <div class="shop-grid" id="shop-container">
+                            <!-- JS Generated -->
+                        </div>
+                    </div>
                 </div>
-                <button id="btn-next-wave" style="width:100%; background: var(--neon-pink);">CONTINUE MISSION</button>
+                <div class="panel-footer">
+                    <button id="btn-next-wave" style="width:100%; background: var(--neon-pink);">CONTINUE MISSION</button>
+                </div>
             </div>
         </div>
+
+        <!-- Buyback removed: streak saving now only via paid Streak Insurance -->
 
         <!-- Game Over -->
         <div id="menu-over" class="overlay hidden">
@@ -333,6 +374,7 @@
             running: false,
             score: 0,
             essence: 0,
+            money: 100.00,
             wave: 1,
             streak: 0,
             focusID: null,
@@ -348,20 +390,22 @@
             spawnTimer: 0,
             spawnTotal: 5,
             spawnCount: 0,
-            spawnTimer: 0,
-            spawnTotal: 5,
-            spawnCount: 0,
             stars: [],
             bombs: 0,
             shields: 0,
             wisps: [], // Array of orbital wisps
+            volleyId: 0,
+            volleyHits: {},
             harpoon: {
                 active: false,
                 x: 0, y: 0,
                 vx: 0, vy: 0,
                 state: 'ready', // ready, fired, latched, returning
                 target: null // enemy object
-            }
+            },
+            streakInsurance: 0, // Count of insurance charges owned
+            autoInsuranceEnabled: false, // Toggle for auto-buy
+            buybackOfferedThisWave: false // Prevent repeated offers in same wave
         };
 
         // Persistent Config
@@ -383,9 +427,18 @@
             shield: { id: 'shield', lvl: 0, cost: 800, val: 0, type: 'consumable', name: "AEGIS GENERATOR", desc: "Shield (One Hit Block)" },
             // New Advanced Items
             split: { id: 'split', lvl: 0, cost: 2000, val: 0, name: "HYDRA PROTOCOL", desc: "+10% Multishot Chance" },
+            projectileCount: { id: 'projectileCount', lvl: 1, cost: 4000, val: 1, name: "SWARM PROTOCOL", desc: "+1 Projectiles (Max 9)" },
             wisp: { id: 'wisp', lvl: 0, cost: 5000, val: 0, type: 'consumable', name: "ORBITAL WISP", desc: "Permanent Defense Drone (Max 3)" },
-            harpoon: { id: 'harpoon', lvl: 1, cost: 1000, val: 0, name: "HARPOON", desc: "Unlock: RMB Capture" }
+            harpoon: { id: 'harpoon', lvl: 1, cost: 1000, val: 0, name: "HARPOON", desc: "Unlock Harpoon Launcher" },
+            streakInsurance: { id: 'insurance', lvl: 0, cost: 0, val: 0, type: 'consumable', name: "STREAK INSURANCE", desc: "Auto-Restore Lost Streak (No Pause)" }
         };
+
+        // Bundles: money-only packs that grant multiple items at a discount
+        let bundles = [
+            { id: 'starter', name: 'STARTER PACK', items: ['fireDelay', 'stoneSpeed'], discount: 0.10, desc: 'Basic upgrades to get going.' },
+            { id: 'combat', name: 'COMBAT PACK', items: ['damage', 'piercing', 'splash'], discount: 0.20, desc: 'More punch and multi-target.' },
+            { id: 'ultimate', name: 'ULTIMATE PACK', items: ['projectileCount', 'magnet', 'split', 'wisp', 'harpoon'], discount: 0.30, desc: 'High tier bundle for heavy players.' }
+        ];
 
 
         const narrative = {
@@ -397,6 +450,7 @@
             ],
             waves: {
                 1: "Sentinel, the first scouts have arrived. Their colors betray their intent.",
+                2: "More are coming. Don't let them get close to the Nest.",
                 5: "The Swarm learns. They come faster now. Upgrade your systems.",
                 10: "High energy signatures detected. Something leads them... something ancient.",
                 15: "Their numbers are endless. We must hold the line.",
@@ -459,11 +513,13 @@
         }
 
         class Stone {
-            constructor(x, y, vx, vy) {
+            constructor(x, y, vx, vy, isCenterProjectile = false, volleyId = 0) {
                 this.x = x; this.y = y; this.vx = vx; this.vy = vy;
                 this.trail = [];
                 this.hitIds = []; // enemies already hit
                 this.hasHit = false; // Fix: Track if stone has hit anything to prevent streak break
+                this.isCenterProjectile = isCenterProjectile; // Track if this is the center projectile for streak counting
+                this.volleyId = volleyId;
 
                 // Synergy: Heavy Artillery (Damage 5 + Knockback 5)
                 const big = shop.damage.lvl >= 5 && shop.knockback.lvl >= 5;
@@ -485,10 +541,15 @@
                         const t = this.trail[i];
                         ctx.lineTo(t.x, t.y);
                     }
-                    // Create gradient for trail
+                    // Create gradient for trail - different colors for primary vs secondary
                     const grad = ctx.createLinearGradient(this.trail[this.trail.length - 1].x, this.trail[this.trail.length - 1].y, this.x, this.y);
-                    grad.addColorStop(0, 'rgba(255, 0, 255, 0)');
-                    grad.addColorStop(1, '#ff00ff');
+                    if (this.isCenterProjectile) {
+                        grad.addColorStop(0, 'rgba(255, 0, 255, 0)');
+                        grad.addColorStop(1, '#ff00ff');
+                    } else {
+                        grad.addColorStop(0, 'rgba(0, 242, 255, 0)');
+                        grad.addColorStop(1, '#00f2ff');
+                    }
                     ctx.strokeStyle = grad;
                     ctx.lineWidth = 4;
                     ctx.lineCap = 'round';
@@ -497,9 +558,10 @@
 
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.fillStyle = '#fff';
+                // Primary projectile is white with magenta glow, secondary is cyan with blue glow
+                ctx.fillStyle = this.isCenterProjectile ? '#fff' : '#00f2ff';
                 ctx.shadowBlur = 15;
-                ctx.shadowColor = '#ff00ff';
+                ctx.shadowColor = this.isCenterProjectile ? '#ff00ff' : '#0088ff';
                 ctx.fill();
             }
         }
@@ -726,6 +788,81 @@
             }
         }
 
+        // --- NARRATIVE & UI ---
+        function showStory(lines, callback) {
+            // Display narrative text one line at a time
+            const storyEl = document.createElement('div');
+            storyEl.id = 'story-modal';
+            storyEl.style.cssText = `
+                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center;
+                z-index: 1000; padding: 20px;
+            `;
+            
+            const content = document.createElement('div');
+            content.style.cssText = `
+                max-width: 600px; text-align: center; color: #0f0; font-family: monospace;
+                font-size: 1.1em; line-height: 1.6;
+            `;
+            
+            let lineIdx = 0;
+            const showNextLine = () => {
+                if (lineIdx >= lines.length) {
+                    storyEl.remove();
+                    if (callback) callback();
+                    return;
+                }
+                content.innerText = lines[lineIdx];
+                lineIdx++;
+            };
+            
+            storyEl.onclick = showNextLine;
+            storyEl.appendChild(content);
+            document.body.appendChild(storyEl);
+            showNextLine();
+        }
+
+        function startWave() {
+            // This function is called to begin a wave of enemies.
+            
+            game.spawnTotal = 5 + Math.floor(game.wave * 2.5);
+            game.spawnCount = 0;
+            game.spawnTimer = 0;
+            game.enemies = [];
+            game.stones = [];
+            game.buybackOfferedThisWave = false;
+
+            // Boss Spawns on specific waves
+            let bossToSpawn = null;
+            if (game.wave === 25) bossToSpawn = 'monolith';
+            else if (game.wave === 50) bossToSpawn = 'prism';
+            else if (game.wave === 75) bossToSpawn = 'void';
+            else if (game.wave === 100) bossToSpawn = 'queen';
+
+            if (bossToSpawn) {
+                game.enemies.push(new Boss(bossToSpawn));
+                game.spawnTotal = 1; // Boss only
+                game.spawnCount = 1; // Prevent normal spawns
+            }
+            
+            const startLogic = () => {
+                if (!game.running) {
+                    game.running = true;
+                    loop(); // Start the game loop.
+                } else {
+                    game.running = true; // Ensure it continues.
+                }
+            };
+            
+            // Show narrative text for the current wave, if it exists.
+            const waveNarrative = narrative.waves[game.wave];
+            // The intro is handled separately by the start button, so this handles subsequent waves.
+            if (waveNarrative && game.wave > 1) {
+                showStory([waveNarrative], startLogic);
+            } else {
+                startLogic();
+            }
+        }
         const pilot = new Flinger();
 
         // --- ENGINE ---
@@ -737,12 +874,26 @@
             loadScores();
             initSettings();
 
-            window.onmousemove = e => {
+            function handleAim(clientX, clientY) {
                 const r = canvas.getBoundingClientRect();
                 const scaleX = canvas.width / r.width;
                 const scaleY = canvas.height / r.height;
-                pilot.angle = Math.atan2((e.clientY - r.top) * scaleY - 800, (e.clientX - r.left) * scaleX - 800);
+                pilot.angle = Math.atan2((clientY - r.top) * scaleY - 800, (clientX - r.left) * scaleX - 800);
+            }
+
+            window.onmousemove = e => {
+                handleAim(e.clientX, e.clientY);
             };
+
+            // Touch Controls
+            canvas.addEventListener('touchmove', e => {
+                e.preventDefault();
+                if (e.touches.length > 0) {
+                    handleAim(e.touches[0].clientX, e.touches[0].clientY);
+                }
+            }, { passive: false });
+
+
 
             const shoot = () => {
                 const now = Date.now();
@@ -751,23 +902,47 @@
                 game.recoil = 15;
                 play(500, 'square', 0.1, 0.1);
 
-                // Synergy: Split Shot (Passive)
-                // 10% chance per level to fire 3 shots
-                const multishot = Math.random() < (shop.split.lvl * 0.1);
+                // Track this volley's hit state: reset when firing. If ANY projectile hits,
+                // we will preserve streak even if the center projectile misses.
+                game.volleyId++; game.volleyHits[game.volleyId] = false;
 
-                const fireStone = (angleOffset = 0) => {
+                // Synergy: Split Shot (Passive)
+                // 10% chance per level to fire multiple shots
+                const multishot = Math.random() < (shop.split.lvl * 0.1);
+                
+                // Determine number of projectiles based on projectileCount upgrade
+                let projectileCount = 1;
+                if (multishot) {
+                    projectileCount = Math.min(1 + shop.projectileCount.val, 9);
+                }
+
+                const fireStone = (angleOffset = 0, isCenterProjectile = false) => {
                     game.stones.push(new Stone(
                         800 + Math.cos(pilot.angle + angleOffset) * 55,
                         800 + Math.sin(pilot.angle + angleOffset) * 55,
                         Math.cos(pilot.angle + angleOffset) * shop.stoneSpeed.val,
-                        Math.sin(pilot.angle + angleOffset) * shop.stoneSpeed.val
+                        Math.sin(pilot.angle + angleOffset) * shop.stoneSpeed.val,
+                        isCenterProjectile,
+                        game.volleyId
                     ));
                 };
 
-                fireStone(0);
+                // Fire center projectile
+                fireStone(0, true);
+                
+                // Fire surrounding projectiles if multishot is active
                 if (multishot) {
-                    fireStone(-0.2);
-                    fireStone(0.2);
+                    const angleSpread = 0.15; // Narrower spread for more projectiles
+                    const halfCount = Math.floor((projectileCount - 1) / 2);
+                    
+                    for (let i = 1; i <= halfCount; i++) {
+                        const angle = -angleSpread * i * (2 / Math.max(projectileCount - 1, 2));
+                        fireStone(angle, false);
+                    }
+                    for (let i = 1; i <= Math.floor((projectileCount - 1 - halfCount) / 1); i++) {
+                        const angle = angleSpread * i * (2 / Math.max(projectileCount - 1, 2));
+                        fireStone(angle, false);
+                    }
                     play(600, 'square', 0.1, 0.1); // Extra sound
                 }
             };
@@ -789,10 +964,40 @@
             };
 
             window.onmousedown = (e) => {
-                if (e.button === 2) fireHarpoon(e);
-                else shoot();
+                // We only want to shoot if the click is on the canvas, not on UI buttons
+                if (e.target === canvas) {
+                    if (e.button === 2) {
+                        fireHarpoon(e)
+                    } else {
+                        shoot();
+                    }
+                }
             };
-            window.oncontextmenu = e => e.preventDefault(); // Block context menu globally
+
+            let touchStartTime = 0;
+            canvas.addEventListener('touchstart', e => {
+                e.preventDefault();
+                if (e.touches.length > 0) {
+                    handleAim(e.touches[0].clientX, e.touches[0].clientY);
+                    touchStartTime = Date.now();
+                }
+            }, { passive: false });
+
+            canvas.addEventListener('touchend', e => {
+                e.preventDefault();
+                const touchDuration = Date.now() - touchStartTime;
+                if (touchDuration > 200) { // Long press for harpoon
+                    fireHarpoon(e);
+                } else { // Tap to shoot
+                    shoot();
+                }
+            }, { passive: false });
+
+            window.oncontextmenu = e => {
+                 if (e.target === canvas) {
+                    e.preventDefault();
+                 }
+            }; // Block context menu on canvas
             window.onkeydown = e => { if (e.code === 'Space') shoot(); };
 
             document.getElementById('btn-start').onclick = () => {
@@ -818,66 +1023,17 @@
             initShop();
         }
 
-        function showStory(lines, onComplete) {
-            if (typeof lines === 'string') lines = [lines];
-            let index = 0;
-            const ui = document.getElementById('menu-story');
-            const txt = document.getElementById('story-text');
-            const btn = document.getElementById('btn-story-next');
-            ui.classList.remove('hidden');
-
-            const next = () => {
-                if (index >= lines.length) {
-                    ui.classList.add('hidden');
-                    onComplete();
-                    return;
-                }
-                txt.innerText = lines[index++];
-                if (index >= lines.length) btn.innerText = "BEGIN MISSION";
-                else btn.innerText = "PROCEED";
-            };
-
-            btn.onclick = () => { play(200, 'sine', 0.05, 0.1); next(); };
-            document.getElementById('btn-story-skip').onclick = () => { ui.classList.add('hidden'); onComplete(); }; // Skip all
-            next();
-        }
-
-        function startWave() {
-            // Check for wave briefing
-            const msg = narrative.waves[game.wave];
-            if (msg && !game.briefingShown) {
-                game.briefingShown = true;
-                showStory(msg, () => startWave());
-                return;
-            }
-            game.briefingShown = false; // Reset for next time
-
-            // Boss Wave Logic
-            if ([25, 50, 75, 100].includes(game.wave)) {
-                game.spawnTotal = 1; // Only the Boss
-            } else {
-                game.spawnTotal = 4 + (game.wave * 2);
+        // Main game loop
+        const loop = () => {
+            if (!game.running) {
+                return; // Stop the loop if the game is not running
             }
 
-            game.spawnCount = 0;
-            game.running = true;
-            requestAnimationFrame(loop);
-        }
-
-        function loop() {
-            if (!game.running) return;
-
-            // 1. Spawning
-            game.spawnTimer++;
-            if (game.spawnTimer > 100 && game.spawnCount < game.spawnTotal) {
-                if ([25, 50, 75, 100].includes(game.wave) && game.spawnCount === 0) {
-                    // Spawn BOSS
-                    let type = 'monolith';
-                    if (game.wave === 50) type = 'prism';
-                    if (game.wave === 75) type = 'void';
-                    if (game.wave === 100) type = 'queen';
-                    game.enemies.push(new Boss(type));
-                } else {
+            // 1. Spawn Logic
+            if (game.spawnCount < game.spawnTotal) {
+                game.spawnTimer++;
+                const baseInterval = Math.max(10, 40 - game.wave * 1.5);
+                if (game.spawnTimer >= baseInterval) {
                     // Select Archetype based on Wave
                     const types = ['scout'];
                     if (game.wave >= 4) types.push('rusher');
@@ -887,9 +1043,9 @@
                     // Random selection (weighted?)
                     const type = types[Math.floor(Math.random() * types.length)];
                     game.enemies.push(new Enemy(type));
+                    game.spawnCount++;
+                    game.spawnTimer = 0;
                 }
-                game.spawnCount++;
-                game.spawnTimer = 0;
             }
 
             // 2. Physics & Logic
@@ -938,7 +1094,10 @@
                                 // Harvest!
                                 play(300, 'sine', 0.5, 0.0);
                                 play(600, 'sine', 0.5, 0.0); // Chime
-                                game.essence += h.target.maxHp * 5; // 5x Essence Logic
+                                // Apply wave and difficulty multipliers to harvest essence
+                                const waveMult = 1 + (game.wave - 1) * 0.1; // +10% per wave
+                                const totalHarvestMult = waveMult * (config.difficulty || 1);
+                                game.essence += Math.floor(h.target.maxHp * 5 * totalHarvestMult); // 5x base harvest
                                 popEffect(h.x, h.y, '#0f0');
                                 killEnemy(h.target, 0); // 0 bounty because we gave 5x essence already (or 5x multiplier?) 
                                 // Let's just give direct essence here to be safe and kill with 0 multiplier.
@@ -1002,10 +1161,12 @@
                 if (s.hitIds.length > shop.piercing.val && !game.stones[i]) continue;
 
                 if (s.x < 0 || s.x > 1600 || s.y < 0 || s.y > 1600) {
-                    // Fix: Only reset streak if the stone MISSED completely
-                    if (!s.hasHit) {
-                        game.streak = 0;
-                        updateHUD();
+                    // Only reset streak if the CENTER projectile missed AND no projectile
+                    // from this volley hit anything. Secondary projectiles missing
+                    // should not break the streak if any other projectile hit.
+                    if (s.isCenterProjectile && !game.volleyHits[s.volleyId]) {
+                        // Trigger a paused buyback opportunity instead of immediate reset
+                        triggerStreakLoss();
                     }
                     game.stones.splice(i, 1);
                 }
@@ -1050,28 +1211,24 @@
 
         function onHit(enemy, stone) {
             game.shake = 8;
-            game.streak++;
-            game.focusID = enemy.id === game.focusID ? enemy.id : null; // Reset focus if switched? No, keep existing logic but simplify
-
-            // Focus logic (simplified)
-            // if (game.focusID === enemy.id) game.focusMult = Math.min(game.focusMult + 0.5, 5);
-            // else game.focusMult = 1;
-            // game.focusID = enemy.id;
-            // Re-implement existing logic properly
-            // Focus logic (Improved):
-            // If hitting the SAME enemy, boost multiplier.
-            // If hitting a NEW enemy, keep multiplier but cap it (combo system).
-            // Reset to 1 only on Miss (handled in loop).
-            if (game.focusID === enemy.id) {
-                game.focusMult = Math.min(game.focusMult + 0.5, 5);
-            } else {
-                // Hitting a new enemy maintains the combo but at a slightly reduced effectiveness or flat?
-                // Let's just NOT reset it to 1. Let's keep it growing but slower, or just keep it.
-                // User complaint: "Focus cannot grow beyond 2x because... ball is destroyed".
-                // Fix: Allow Focus to grow on ANY hit, but faster on SAME target.
-                game.focusMult = Math.min(game.focusMult + 0.2, 5);
+            // Mark that some projectile in this volley hit
+            game.volleyHits[stone.volleyId] = true;
+            // Only increment streak and update focus if this is the center projectile
+            if (stone.isCenterProjectile) {
+                game.streak++;
+                
+                // Focus logic (Improved):
+                // If hitting the SAME enemy, boost multiplier.
+                // If hitting a NEW enemy, keep multiplier but at reduced effectiveness (combo system).
+                // Reset to 1 only on Miss (handled in loop).
+                if (game.focusID === enemy.id) {
+                    game.focusMult = Math.min(game.focusMult + 0.5, 5);
+                } else {
+                    // Hitting a new enemy maintains the combo but at slightly reduced effectiveness
+                    game.focusMult = Math.min(game.focusMult + 0.2, 5);
+                }
+                game.focusID = enemy.id;
             }
-            game.focusID = enemy.id;
 
             enemy.hp -= shop.damage.val; // Use Damage Upgrade
             const ang = Math.atan2(enemy.y - stone.y, enemy.x - stone.x);
@@ -1125,7 +1282,10 @@
             enemy.dead = true;
             const bounty = Math.floor(100 * game.focusMult * (1 + game.streak * 0.1) * bountyMult * shop.magnet.val);
             game.score += bounty;
-            const eGain = Math.floor((bounty / 10) * shop.magnet.val);
+            // Apply wave and difficulty multipliers to essence gain
+            const waveMult = 1 + (game.wave - 1) * 0.1; // +10% essence per wave
+            const totalMult = waveMult * (config.difficulty || 1);
+            const eGain = Math.floor((bounty / 10) * shop.magnet.val * totalMult);
             game.essence += eGain;
 
             play(100, 'sawtooth', 0.4, 0.2);
@@ -1261,13 +1421,6 @@
             }
         }
 
-        function updateHUD() {
-            document.getElementById('hud-score').innerText = game.score;
-            document.getElementById('hud-essence').innerText = game.essence;
-            document.getElementById('hud-streak').innerText = `STREAK: ${game.streak} (x${game.focusMult.toFixed(1)} Focus)`;
-            document.getElementById('hud-wave').innerText = game.wave;
-        }
-
         // --- SHOP & DATA ---
         function openShop() {
             document.getElementById('menu-shop').classList.remove('hidden');
@@ -1289,11 +1442,17 @@
                         <small>${item.desc}</small>
                         <div style="font-size:0.8em; color:#666">Lvl <span id="lvl-${item.id}">0</span></div>
                     </div>
-                    <button id="buy-${item.id}">---</button>
+                    <div style="display:flex; gap:8px; align-items:center">
+                        <button id="buy-${item.id}">---</button>
+                        <button id="buymoney-${item.id}">---</button>
+                    </div>
                 `;
                 c.appendChild(div);
 
+                // Essence purchase (existing behavior)
                 document.getElementById(`buy-${item.id}`).onclick = () => {
+                    // Streak insurance is money-only
+                    if (k === 'streakInsurance') return;
                     if (game.essence >= item.cost) {
                         game.essence -= item.cost;
                         item.lvl++;
@@ -1307,60 +1466,228 @@
                         if (k === 'knockback') item.val += 2;
                         if (k === 'piercing') item.val += 1;
                         if (k === 'damage') item.val += 1; // Damage + 1
+                        if (k === 'splash') item.val += 50; // Splash radius +50
+                        if (k === 'projectileCount') item.val = Math.min(item.val + 1, 9); // +1 projectile up to 9
                         if (k === 'bomb') { game.bombs++; item.val = 0; } // Consumable
                         if (k === 'shield') { game.shields++; item.val = 0; } // Consumable
+                        if (k === 'wisp') {
+                            // Cap wisps at 3
+                            if (game.wisps.length < 3) {
+                                game.wisps.push({x: 800, y: 800, angle: 0, radius: 120, enemy: null, searchTimer: 0});
+                            }
+                            item.val = 0;
+                        } // Consumable - spawn wisp
 
                         play(800, 'sine', 0.2, 0.2, false);
-                        // Don't increase cost for consumables linearly? Or do? Let's keep it flat or slight increase.
-                        // Reset cost for consumables to flat rate? roguelike style usually increases. Let's start with standard double logic but maybe cap it?
                         if (item.type === 'consumable') item.cost = Math.floor(item.cost * 1.2);
 
                         openShop();
                         updateHUD();
                     }
                 }
+
+                // Money purchase
+                document.getElementById(`buymoney-${item.id}`).onclick = () => {
+                    // Insurance is money-only and has special pricing/availability
+                    if (k === 'streakInsurance') {
+                        // Only available on wave 1 and then every 5th wave
+                        if (!(game.wave === 1 || ((game.wave - 1) % 5 === 0))) return;
+                        
+                        const price = getStreakInsurancePrice();
+
+                        if (game.money >= price) {
+                            game.money -= price;
+                            game.streakInsurance++;
+                            play(800, 'sine', 0.2, 0.2, false);
+                            openShop(); updateHUD();
+                        }
+                        return;
+                    }
+
+                    const mp = moneyFromEssence(item.cost);
+                    if (game.money >= mp) {
+                        game.money -= mp;
+                        // Apply item as if bought by essence but without essence deduction
+                        item.lvl++;
+                        let costMultiplier = 1.5;
+                        if (k === 'damage' || k === 'split') costMultiplier = 2;
+                        item.cost = Math.floor(item.cost * costMultiplier);
+
+                        if (k === 'fireDelay') item.val = Math.max(100, item.val - 50);
+                        if (k === 'stoneSpeed') item.val += 1.5;
+                        if (k === 'knockback') item.val += 2;
+                        if (k === 'piercing') item.val += 1;
+                        if (k === 'damage') item.val += 1;
+                        if (k === 'splash') item.val += 50;
+                        if (k === 'projectileCount') item.val = Math.min(item.val + 1, 9);
+                        if (k === 'bomb') { game.bombs++; item.val = 0; }
+                        if (k === 'shield') { game.shields++; item.val = 0; }
+                        if (k === 'wisp') { if (game.wisps.length < 3) game.wisps.push({x:800,y:800,angle:0,radius:120,enemy:null,searchTimer:0}); item.val = 0; }
+
+                        play(800, 'sine', 0.2, 0.2, false);
+                        if (item.type === 'consumable') item.cost = Math.floor(item.cost * 1.2);
+
+                        openShop(); updateHUD();
+                    }
+                }
             });
+
+            // Render bundles section (money-only)
+            const bundleHeading = document.createElement('h3');
+            bundleHeading.innerText = 'Bundles';
+            c.appendChild(bundleHeading);
+
+            bundles.forEach(b => {
+                const div = document.createElement('div');
+                div.className = 'shop-bundle';
+                div.style.marginTop = '8px';
+                div.style.padding = '8px';
+                div.style.border = '1px solid rgba(255,255,255,0.06)';
+                const itemNames = b.items.map(i => shop[i] ? shop[i].name : i).join(', ');
+                div.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center">
+                        <div>
+                            <b>${b.name}</b>
+                            <div style="font-size:0.85em; color:#aaa">${b.desc}</div>
+                            <div style="font-size:0.75em; color:#666">Includes: ${itemNames}</div>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center">
+                            <button id="buybundle-${b.id}">---</button>
+                        </div>
+                    </div>
+                `;
+                c.appendChild(div);
+
+                document.getElementById(`buybundle-${b.id}`).onclick = () => {
+                    // Compute current money price from the current item costs
+                    let sum = 0;
+                    b.items.forEach(key => { if (shop[key]) sum += moneyFromEssence(shop[key].cost); });
+                    const discounted = Math.round((sum * (1 - b.discount)) * 100) / 100;
+                    const price = Math.min(100.00, discounted);
+                    if (game.money >= price) {
+                        game.money -= price;
+                        // Apply each item as if purchased by money (no essence deduction)
+                        b.items.forEach(key => {
+                            const item = shop[key];
+                            if (!item) return;
+                            item.lvl++;
+                            let costMultiplier = 1.5;
+                            if (key === 'damage' || key === 'split') costMultiplier = 2;
+                            item.cost = Math.floor(item.cost * costMultiplier);
+
+                            if (key === 'fireDelay') item.val = Math.max(100, item.val - 50);
+                            if (key === 'stoneSpeed') item.val += 1.5;
+                            if (key === 'knockback') item.val += 2;
+                            if (key === 'piercing') item.val += 1;
+                            if (key === 'damage') item.val += 1;
+                            if (key === 'splash') item.val += 50;
+                            if (key === 'projectileCount') item.val = Math.min(item.val + 1, 9);
+                            if (key === 'bomb') { game.bombs++; item.val = 0; }
+                            if (key === 'shield') { game.shields++; item.val = 0; }
+                            if (key === 'wisp') { if (game.wisps.length < 3) game.wisps.push({x:800,y:800,angle:0,radius:120,enemy:null,searchTimer:0}); item.val = 0; }
+                        });
+                        play(900, 'sine', 0.3, 0.2, false);
+                        openShop(); updateHUD();
+                    }
+                };
+            });
+        }
+
+        function getStreakInsurancePrice() {
+            const blocks = Math.floor((Math.max(1, game.wave) - 1) / 5);
+            const base = 20 + blocks * 1;
+            const streakPct = Math.round((0.01 * game.streak) * 10) / 10; // nearest 10p
+            const basePrice = Math.round((base + streakPct) * 100) / 100;
+
+            // Apply doubling multiplier for each insurance owned
+            const finalPrice = basePrice * Math.pow(2, game.streakInsurance);
+            
+            return Math.round(finalPrice * 100) / 100; // Return rounded to 2 decimal places
         }
 
         function refreshShopUI() {
             Object.keys(shop).forEach(k => {
                 const item = shop[k];
                 const btn = document.getElementById(`buy-${item.id}`);
+                const btnMoney = document.getElementById(`buymoney-${item.id}`);
 
                 if (item.type === 'consumable') {
-                    const count = k === 'bomb' ? game.bombs : game.shields;
+                    let count = 0;
+                    if (k === 'bomb') count = game.bombs;
+                    else if (k === 'shield') count = game.shields;
+                    else if (k === 'wisp') count = game.wisps.length;
+                    else if (k === 'streakInsurance') count = game.streakInsurance;
+
                     document.getElementById(`lvl-${item.id}`).innerText = `OWNED: ${count}`;
-                    btn.innerText = `BUY ${item.cost} E`;
+
+                    // Essence button text
+                    if (k === 'streakInsurance') {
+                        btn.innerText = `N/A`;
+                        btn.disabled = true;
+                    } else {
+                        btn.innerText = `BUY ${item.cost} E`;
+                        btn.disabled = game.essence < item.cost;
+                    }
+
+                    // Money button text
+                    if (k === 'streakInsurance') {
+                        // Only available on wave 1 and every 5th wave
+                        if (game.wave === 1 || ((game.wave - 1) % 5 === 0)) {
+                            const price = getStreakInsurancePrice();
+                            btnMoney.innerText = `BUY ${formatMoney(price)}`;
+                            btnMoney.disabled = game.money < price;
+                        } else {
+                            btnMoney.innerText = `UNAVAILABLE`;
+                            btnMoney.disabled = true;
+                        }
+                    } else {
+                        const mp = moneyFromEssence(item.cost);
+                        btnMoney.innerText = `BUY ${formatMoney(mp)}`;
+                        btnMoney.disabled = game.money < mp;
+                    }
                 } else {
                     document.getElementById(`lvl-${item.id}`).innerText = `LVL ${item.lvl}`;
                     btn.innerText = `${item.cost} E`;
+                    btn.disabled = game.essence < item.cost;
+                    const mp = moneyFromEssence(item.cost);
+                    btnMoney.innerText = `BUY ${formatMoney(mp)}`;
+                    btnMoney.disabled = game.money < mp;
                 }
+            });
 
-                btn.disabled = game.essence < item.cost;
+            // Update bundle buttons/prices
+            bundles.forEach(b => {
+                const btn = document.getElementById(`buybundle-${b.id}`);
+                if (!btn) return;
+                let sum = 0;
+                b.items.forEach(key => { if (shop[key]) sum += moneyFromEssence(shop[key].cost); });
+                const discounted = Math.round((sum * (1 - b.discount)) * 100) / 100;
+                const price = Math.min(100.00, discounted);
+                btn.innerText = `BUY ${formatMoney(price)}`;
+                btn.disabled = game.money < price;
             });
         }
 
         function updateHUD() {
             document.getElementById('hud-score').innerText = game.score;
-            document.getElementById('hud-streak').innerText = 'STREAK: ' + game.streak;
+            document.getElementById('hud-streak').innerText = `STREAK: ${game.streak} (x${game.focusMult.toFixed(1)} Focus)`;
             document.getElementById('hud-essence').innerText = Math.floor(game.essence);
             document.getElementById('hud-wave').innerText = game.wave;
 
+            // Calculate and display wave multiplier
+            const waveMult = 1 + (game.wave - 1) * 0.1;
+            const totalMult = waveMult * (config.difficulty || 1);
+            const multEl = document.getElementById('hud-mult');
+            if (multEl) multEl.innerText = `MULT: ${totalMult.toFixed(2)}x`;
+
             // Update Consumable Buttons
             const btnBomb = document.getElementById('btn-bomb');
-            const btnShield = document.getElementById('btn-shield');
 
             if (game.bombs > 0) {
                 btnBomb.classList.remove('hidden');
                 btnBomb.innerText = `BOMB (${game.bombs})`;
                 btnBomb.onclick = useBomb;
             } else btnBomb.classList.add('hidden');
-
-            if (game.shields > 0) {
-                btnShield.classList.remove('hidden');
-                btnShield.innerText = `SHIELD (${game.shields})`;
-                btnShield.style.opacity = '1.0';
-            } else btnShield.classList.add('hidden');
         }
 
         function useBomb() {
@@ -1478,6 +1805,62 @@
         }
 
         function varName(name) { return getComputedStyle(document.documentElement).getPropertyValue(name); }
+
+        // Money pricing helper: convert essence -> £ (1£ per 2000E), capped to £10 for simple items
+        function moneyFromEssence(e) {
+            const v = Math.round((e / 2000) * 100) / 100; // two decimals
+            return Math.min(10.00, v);
+        }
+
+        function formatMoney(m) { return '£' + m.toFixed(2); }
+
+        // --- Streak Buyback Logic ---
+        function triggerStreakLoss() {
+            if (game.streak <= 0) return; // nothing to do
+            if (game.buybackOfferedThisWave) return; // Only once per wave
+            if (game.streak < 10) { game.streak = 0; updateHUD(); return; }
+
+            game.buybackOfferedThisWave = true;
+
+            const lost = game.streak;
+            // Auto-apply streak insurance if owned
+            if (game.streakInsurance > 0) {
+                game.streakInsurance--;
+                // Leave the streak intact and show a large notice
+                showLargeSavedNotice(lost);
+                updateHUD();
+                return;
+            }
+
+            // No insurance: simply reset streak
+            game.streak = 0;
+            updateHUD();
+        }
+
+        // legacy offerStreakBuyback removed (replaced by purchasable Streak Insurance)
+
+        // buyback confirmations removed: buybacks are disabled in favor of insurance
+
+        function consumeStreakInsurance() {
+            // Use insurance, restore streak, game keeps running
+            // Deprecated: replaced with auto-apply in triggerStreakLoss
+            game.streakInsurance = Math.max(0, game.streakInsurance - 1);
+            play(800, 'sine', 0.2, 0.2, false);
+            updateHUD();
+        }
+
+        function showLargeSavedNotice(lost) {
+            const el = document.createElement('div');
+            el.id = 'large-save-notice';
+            el.style.cssText = `position:fixed;left:50%;top:10%;transform:translateX(-50%);background:rgba(0,200,100,0.95);padding:20px 30px;border-radius:10px;z-index:999;text-align:center;font-weight:900;color:#001;box-shadow:0 0 30px rgba(0,200,100,0.2);`;
+            el.innerText = `LARGE STREAK SAVED: ${lost}`;
+            document.body.appendChild(el);
+            setTimeout(() => { el.remove(); }, 2200);
+        }
+
+        // insurance toast removed; insurance now auto-applies if owned
+
+        // buyback flow removed; streak saving only via purchased Streak Insurance
 
         setup();
     </script>
