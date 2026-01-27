@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>OctoPearl: Physics Sandbox</title>
+  <style>
+    html, body { 
+      height: 100%; 
+      margin: 0; 
+      background: #000; 
+      color: #aaddff; 
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+      cursor: crosshair;
+      user-select: none;
+    }
+    canvas { display:block; width:100%; height:100%; }
+
+    /* --- MAIN UI --- */
+    #ui { 
+      position: fixed; top: 20px; left: 20px; 
+      display:flex; flex-direction: column; gap: 12px;
+      pointer-events: none; z-index: 20;
+    }
+    .hud-panel {
+      background: rgba(10, 20, 30, 0.6); backdrop-filter: blur(8px);
+      border: 1px solid rgba(100, 200, 255, 0.1); border-radius: 12px;
+      padding: 12px 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+      pointer-events: auto;
+    }
+    button { 
+      appearance:none; border:none; color:#fff; 
+      background: linear-gradient(180deg, #2b3a51, #1a2432); 
+      border:1px solid #4a6a8a; padding:8px 14px; border-radius:6px; 
+      cursor:pointer; font-weight:600; font-size:12px; text-transform: uppercase;
+      letter-spacing: 0.5px; transition: all 0.2s;
+    }
+    button:hover { background: linear-gradient(180deg, #3b4d66, #223049); border-color: #6a9acb; }
+    button:active { transform: translateY(1px); }
+    .stat { font-size: 13px; color: #8ecae6; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+    .stat span { color: #fff; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .bar-container { width: 120px; height: 10px; background: #111; border-radius: 5px; overflow: hidden; position: relative; border: 1px solid #333; }
+    .bar-fill { height: 100%; background: linear-gradient(90deg, #ff4d4d, #ff9e4d); width: 100%; transition: width 0.2s; }
+    
+    /* --- PHYSICS CONTROLS --- */
+    #controls-toggle {
+        position: fixed; top: 20px; right: 20px;
+        z-index: 30; width: 40px; height: 40px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 20px; padding: 0;
+    }
+    #controls {
+        position: fixed; top: 70px; right: 20px; bottom: 20px;
+        width: 280px;
+        background: rgba(0, 10, 20, 0.85);
+        backdrop-filter: blur(10px);
+        border: 1px solid #345;
+        border-radius: 8px;
+        padding: 15px;
+        overflow-y: auto;
+        display: flex; flex-direction: column; gap: 10px;
+        z-index: 25;
+        transform: translateX(0);
+        transition: transform 0.3s ease;
+    }
+    #controls.hidden { transform: translateX(320px); }
+    
+    .ctrl-group { border-bottom: 1px solid #ffffff1a; padding-bottom: 10px; margin-bottom: 5px; }
+    .ctrl-title { font-size: 11px; color: #fb0; text-transform: uppercase; margin-bottom: 8px; font-weight: bold; letter-spacing: 1px;}
+    .ctrl-row { display: flex; flex-direction: column; margin-bottom: 8px; }
+    .ctrl-label { display: flex; justify-content: space-between; font-size: 12px; color: #adf; margin-bottom: 4px; }
+    .ctrl-val { color: #fff; font-weight: bold; font-family: monospace; }
+    input[type=range] { width: 100%; accent-color: #0af; cursor: pointer; }
+
+    #game-over {
+        position: fixed; inset: 0;
+        background: radial-gradient(circle at center, rgba(10,20,30,0.9), #000);
+        display: none; flex-direction: column; justify-content: center; align-items: center;
+        z-index: 100; text-align: center; backdrop-filter: blur(5px);
+    }
+    #game-over h1 { font-size: 64px; margin: 0 0 20px 0; color: #fff; text-shadow: 0 0 30px #0af; }
+    #game-over p { font-size: 24px; color: #add; margin-bottom: 30px; }
+    #game-over button { font-size: 18px; padding: 12px 30px; border-radius: 50px; }
+    .tutorial {
+        position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+        color: rgba(255,255,255,0.5); font-size: 14px; text-shadow: 0 2px 4px #000;
+        pointer-events: none; text-align: center; width: 80%;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- LEFT UI -->
+  <div id="ui">
+    <div class="hud-panel">
+      <button id="resetBtn">Reset</button>
+      <button id="pauseBtn">Pause</button>
+      <div class="stat">DEPTH <span id="depthVal">0</span>m</div>
+      <div class="stat">SCORE <span id="scoreVal">0</span></div>
+    </div>
+    <div class="hud-panel">
+      <div class="stat" style="width:100%">HEALTH <div class="bar-container"><div id="healthBar" class="bar-fill"></div></div></div>
+    </div>
+  </div>
+
+  <!-- RIGHT CONTROLS -->
+  <button id="controls-toggle">⚙</button>
+  <div id="controls">
+    <button onclick="resetDefaults()" style="margin-bottom:10px; background:#422;">Reset Physics</button>
+
+    <div class="ctrl-group">
+        <div class="ctrl-title">Environment</div>
+        <div class="ctrl-row">
+            <div class="ctrl-label">Gravity <span class="ctrl-val" id="val_GRAVITY"></span></div>
+            <input type="range" id="inp_GRAVITY" min="0" max="1.0" step="0.005">
+        </div>
+        <div class="ctrl-row">
+            <div class="ctrl-label">Air Drag (Friction) <span class="ctrl-val" id="val_AIR_DRAG"></span></div>
+            <input type="range" id="inp_AIR_DRAG" min="0.001" max="0.99" step="0.001">
+        </div>
+        <div class="ctrl-row">
+            <div class="ctrl-label">Wall Scroll Speed <span class="ctrl-val" id="val_WALL_SPEED"></span></div>
+            <input type="range" id="inp_WALL_SPEED" min="0" max="10.0" step="0.1">
+        </div>
+    </div>
+
+    <div class="ctrl-group">
+        <div class="ctrl-title">Stickiness (Tumbling)</div>
+        <div class="ctrl-row">
+            <div class="ctrl-label">Max Legs Stuck <span class="ctrl-val" id="val_MAX_STUCK_POINTS"></span></div>
+            <input type="range" id="inp_MAX_STUCK_POINTS" min="1" max="8" step="1">
+        </div>
+        <div class="ctrl-row">
+            <div class="ctrl-label">Stick Duration (Frames) <span class="ctrl-val" id="val_STICK_DURATION"></span></div>
+            <input type="range" id="inp_STICK_DURATION" min="1" max="5000" step="10">
+        </div>
+        <div class="ctrl-row">
+            <div class="ctrl-label">Random Unstick % <span class="ctrl-val" id="val_RANDOM_UNSTICK_PROB"></span></div>
+            <input type="range" id="inp_RANDOM_UNSTICK_PROB" min="0" max="0.1" step="0.001">
+        </div>
+        <div class="ctrl-row">
+            <div class="ctrl-label">Suction Range <span class="ctrl-val" id="val_WALL_SUCTION_DIST"></span></div>
+            <input type="range" id="inp_WALL_SUCTION_DIST" min="0" max="2000" step="5">
+        </div>
+        <div class="ctrl-row">
+            <div class="ctrl-label">Magnet Force <span class="ctrl-val" id="val_WALL_SUCTION_FORCE"></span></div>
+            <input type="range" id="inp_WALL_SUCTION_FORCE" min="0" max="5.0" step="0.1">
+        </div>
+        <div class="ctrl-row">
+            <div class="ctrl-label">Tension Break Dist <span class="ctrl-val" id="val_STICK_BREAK_DIST"></span></div>
+            <input type="range" id="inp_STICK_BREAK_DIST" min="1" max="500" step="5">
+        </div>
+    </div>
+
+    <div class="ctrl-group">
+        <div class="ctrl-title">Octopus Body</div>
+        <div class="ctrl-row" style="display:flex; justify-content:space-between; align-items:center;">
+            <label for="inp_HEAD_STICKY" style="font-size:12px; color:#adf; cursor:pointer;">Sticky Head</label>
+            <input type="checkbox" id="inp_HEAD_STICKY" style="accent-color:#0af; width:16px; height:16px; cursor:pointer;">
+        </div>
+        <div class="ctrl-row">
+            <div class="ctrl-label">Head Mass <span class="ctrl-val" id="val_HEAD_MASS"></span></div>
+            <input type="range" id="inp_HEAD_MASS" min="0" max="20" step="0.5">
+        </div>
+        <div class="ctrl-row">
+            <div class="ctrl-label">Leg Mass <span class="ctrl-val" id="val_LEG_MASS"></span></div>
+            <input type="range" id="inp_LEG_MASS" min="0" max="15" step="1.0">
+        </div>
+        <div class="ctrl-row">
+            <div class="ctrl-label">Leg Stiffness <span class="ctrl-val" id="val_LEG_STIFFNESS"></span></div>
+            <input type="range" id="inp_LEG_STIFFNESS" min="0.1" max="5" step="0.1">
+        </div>
+    </div>
+  </div>
+
+  <div class="tutorial">Drag to throw. Whip tentacles to attack.<br>Use Gear Icon to tweak Physics!</div>
+
+  <div id="game-over">
+      <h1>Crushed</h1>
+      <p>Depth Reached: <span id="finalDepth">0</span>m | Score: <span id="finalScore">0</span></p>
+      <button id="restartBtn">Dive Again</button>
+  </div>
+
+  <canvas id="c"></canvas>
+
+  <script>
+  // Expose resetDefaults globally
+  let resetDefaults;
+
+  (function(){
+    
+    // === DEFAULT CONFIGURATION ===
+    const DEFAULTS = {
+        GRAVITY: 0.05,          
+        AIR_DRAG: 0.001,         
+        MAX_STUCK_POINTS: 3,
+        STICK_DURATION: 700,    
+        RANDOM_UNSTICK_PROB: 0, 
+        STICK_BREAK_DIST: 300,   
+        WALL_SUCTION_DIST: 300,  
+        WALL_SUCTION_FORCE: 0.1,
+        WALL_SPEED: 0,        
+        HEAD_MASS: 1.0,
+        LEG_MASS: 5.0,          
+        LEG_STIFFNESS: 0.5,
+        HEAD_STICKY: false,     // New parameter
+        
+        // Constants (not in UI)
+        WHIP_DAMAGE_THRESH: 10,
+        WALL_BASE_X: 500,       
+        WALL_ROUGHNESS: 150,     
+        WALL_CLIFF_SIZE: 380,   
+        MAX_HEALTH: 1000,
+        SPAWN_RATE_FOOD: 0.05,
+        SPAWN_RATE_ENEMY: 0.01,
+        DEPTH_DAMAGE: 0.01,
+    };
+
+    // Current Config (Clone defaults)
+    const CONFIG = { ...DEFAULTS };
+
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    
+    // UI Elements
+    const elScore = document.getElementById('scoreVal');
+    const elDepth = document.getElementById('depthVal');
+    const elHealth = document.getElementById('healthBar');
+    const elGameOver = document.getElementById('game-over');
+    const elFinalScore = document.getElementById('finalScore');
+    const elFinalDepth = document.getElementById('finalDepth');
+
+    // State
+    let width, height;
+    let cameraY = 0;
+    let score = 0;
+    let health = 1000;
+    let running = true;
+    let gameOver = false;
+    let physicsTime = 0;
+    
+    // Arrays
+    let points = [];
+    let sticks = [];
+    let entities = []; 
+    let particles = [];
+    let octoHead;
+    
+    const LEG_COUNT = 8;
+    const LEG_SEGMENTS = 20;
+    const LEG_LENGTH = 6;
+    const HEAD_RADIUS = 24;
+    const mouse = { x: 0, y: 0, px: 0, py: 0, down: false, dragBody: null };
+
+    // --- SETUP CONTROLS ---
+    function setupControls() {
+        const keys = [
+            'GRAVITY', 'AIR_DRAG', 'WALL_SPEED', 
+            'MAX_STUCK_POINTS', 'STICK_DURATION', 'RANDOM_UNSTICK_PROB',
+            'WALL_SUCTION_DIST', 'WALL_SUCTION_FORCE', 'STICK_BREAK_DIST',
+            'HEAD_MASS', 'LEG_MASS', 'LEG_STIFFNESS'
+        ];
+
+        // Handle Ranges
+        keys.forEach(key => {
+            const inp = document.getElementById('inp_' + key);
+            const val = document.getElementById('val_' + key);
+            if(inp && val) {
+                inp.value = CONFIG[key];
+                val.innerText = CONFIG[key];
+                
+                inp.oninput = (e) => {
+                    let v = parseFloat(e.target.value);
+                    CONFIG[key] = v;
+                    val.innerText = v;
+                    applyLivePhysics(); 
+                };
+            }
+        });
+
+        // Handle Checkbox
+        const chkHead = document.getElementById('inp_HEAD_STICKY');
+        if(chkHead) {
+            chkHead.checked = CONFIG.HEAD_STICKY;
+            chkHead.onchange = (e) => {
+                CONFIG.HEAD_STICKY = e.target.checked;
+            };
+        }
+
+        // Toggle visibility
+        document.getElementById('controls-toggle').onclick = () => {
+            document.getElementById('controls').classList.toggle('hidden');
+        };
+    }
+
+    resetDefaults = function() {
+        Object.assign(CONFIG, DEFAULTS);
+        setupControls(); // Refresh slider positions
+        applyLivePhysics();
+    };
+
+    // Update existing objects when sliders move
+    function applyLivePhysics() {
+        if(!octoHead) return;
+        octoHead.mass = CONFIG.HEAD_MASS;
+        points.forEach(p => {
+            if (!p.isHead) {
+                p.mass = p.taper * CONFIG.LEG_MASS;
+            }
+        });
+        sticks.forEach(s => s.stiffness = CONFIG.LEG_STIFFNESS);
+    }
+
+    // --- MATH UTILS ---
+    const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+    const dist = (p1,p2) => Math.hypot(p1.x-p2.x, p1.y-p2.y);
+    
+    // Wall Noise
+    function hash(n) { return Math.sin(n)*43758.5453123 % 1; }
+    function noise(x) {
+        let i = Math.floor(x);
+        let f = x - i;
+        let u = f * f * (3 - 2 * f);
+        return hash(i) * (1 - u) + hash(i + 1) * u;
+    }
+    
+    function wallX(y) {
+        let n1 = noise(y * 0.002) * CONFIG.WALL_CLIFF_SIZE; 
+        let n2 = noise(y * 0.015) * CONFIG.WALL_ROUGHNESS;
+        let n3 = noise(y * 0.08) * 8; 
+        return CONFIG.WALL_BASE_X + n1 + n2 + n3;
+    }
+
+    // --- PHYSICS ENGINE ---
+    
+    class Point {
+        constructor(x, y, mass, isHead = false, isTip = false) {
+            this.x = x; this.y = y;
+            this.ox = x; this.oy = y;
+            this.mass = mass;
+            this.taper = 1.0; 
+            this.isHead = isHead;
+            this.isTip = isTip;
+            this.stuck = false;
+            this.pinned = false; 
+            this.cooldown = 0;
+            this.stuckTimer = 0; 
+        }
+        
+        update() {
+            if (this.pinned) return;
+            if (this.cooldown > 0) this.cooldown--;
+
+            let vx = (this.x - this.ox) * CONFIG.AIR_DRAG;
+            let vy = (this.y - this.oy) * CONFIG.AIR_DRAG;
+            this.ox = this.x; this.oy = this.y;
+            vy += CONFIG.GRAVITY * this.mass;
+
+            const wx = wallX(this.y);
+            const distToWall = this.x - wx;
+
+            // Suction
+            if (!this.stuck && this.cooldown === 0) {
+                if (distToWall < CONFIG.WALL_SUCTION_DIST && distToWall > -10) {
+                    this.x -= CONFIG.WALL_SUCTION_FORCE;
+                }
+            }
+
+            // Stuck Logic
+            if (this.stuck) {
+                vx = 0; vy = 0;
+                this.x = wx;
+                
+                this.stuckTimer++;
+
+                // Unstick Conditions: Tension, Duration, or Random Chance
+                let durationExceeded = this.stuckTimer > CONFIG.STICK_DURATION;
+                let randomSlip = Math.random() < CONFIG.RANDOM_UNSTICK_PROB;
+                let tensionBreak = distToWall > CONFIG.STICK_BREAK_DIST;
+
+                if (tensionBreak || durationExceeded || randomSlip) {
+                    this.unstick();
+                }
+
+            } else {
+                this.stuckTimer = 0;
+                
+                // Stick Logic (Head can stick if enabled)
+                let canStick = (this.isHead && CONFIG.HEAD_STICKY) || 
+                               this.isTip || 
+                               (this.id % 3 === 0 && !this.isHead); // Middle segments
+
+                if (canStick && this.cooldown === 0 && this.x < wx + 6) {
+                    this.x = wx; this.ox = this.x; this.stuck = true;
+                    if(Math.random() > 0.7) createParticles(this.x, this.y, '#88aaff', 1);
+                }
+            }
+            
+            this.x += vx; this.y += vy;
+        }
+
+        unstick() {
+            this.stuck = false;
+            this.cooldown = 20; 
+            this.x += 10;
+            this.ox = this.x - 2;
+            this.stuckTimer = 0; 
+        }
+    }
+
+    class Stick {
+        constructor(p1, p2, length, stiffness) {
+            this.p1 = p1; this.p2 = p2;
+            this.length = length; this.stiffness = stiffness;
+        }
+        update() {
+            const dx = this.p2.x - this.p1.x;
+            const dy = this.p2.y - this.p1.y;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            const diff = (this.length - d) / d * 0.5 * this.stiffness; 
+            const offsetX = dx * diff; const offsetY = dy * diff;
+
+            if (!this.p1.pinned && !this.p1.stuck) { this.p1.x -= offsetX; this.p1.y -= offsetY; }
+            if (!this.p2.pinned && !this.p2.stuck) { this.p2.x += offsetX; this.p2.y += offsetY; }
+        }
+    }
+
+    // --- GAME LOGIC ---
+
+    function createOctopus(startX, startY) {
+        points = []; sticks = [];
+        
+        // Head
+        octoHead = new Point(startX, startY, CONFIG.HEAD_MASS, true, false);
+        points.push(octoHead);
+
+        let pId = 0;
+        for (let i = 0; i < LEG_COUNT; i++) {
+            let parent = octoHead;
+            for (let j = 0; j < LEG_SEGMENTS; j++) {
+                // MASS INVERSION: Tips are now much heavier than the base
+                // This simulates "string with weights on the end"
+                let taper = 0.5 + (j / LEG_SEGMENTS) * 1.5; 
+                let mass = taper * CONFIG.LEG_MASS;
+                
+                let isTip = (j === LEG_SEGMENTS - 1);
+                let p = new Point(startX + j * 5, startY + j * 5, mass, false, isTip);
+                p.taper = taper; 
+                p.id = pId++; points.push(p);
+                
+                sticks.push(new Stick(parent, p, LEG_LENGTH, CONFIG.LEG_STIFFNESS));
+                
+                // REMOVED WEBBING:
+                // The inter-leg connection loop was removed here to allow full dangling.
+                
+                parent = p;
+            }
+        }
+    }
+
+    function spawnEntity() {
+        if (entities.length > 25) return; 
+        let roll = Math.random();
+        
+        let eY = cameraY + height + Math.random() * 200;
+        let eX = width + 50 + Math.random() * 100;
+        
+        let type = '';
+        let props = {};
+
+        if (roll < CONFIG.SPAWN_RATE_FOOD) {
+            if (Math.random() < 0.2) {
+                 type = 'gold_shrimp'; 
+                 props = { r: 8, val: 15, color: '#fd0', vx: -2.5, speedVar: 0.5 };
+            } else {
+                 type = 'shrimp'; 
+                 props = { r: 6, val: 5, color: '#f80', vx: -1.5, speedVar: 0.2 };
+            }
+        } else if (roll < CONFIG.SPAWN_RATE_FOOD + CONFIG.SPAWN_RATE_ENEMY) {
+            let subRoll = Math.random();
+            if (subRoll < 0.4) {
+                type = 'jelly'; 
+                props = { r: 18, hp: 1, vx: -0.8, vy: 0, color: '#e0f', wobble: true };
+            } else if (subRoll < 0.7) {
+                type = 'eel'; 
+                props = { r: 12, hp: 1, vx: -4.0, vy: 0, color: '#5f5' };
+            } else {
+                type = 'spike'; 
+                props = { r: 15, hp: 1, vx: -1.2, vy: -0.5, color: '#f04' };
+            }
+        } else if (Math.random() < 0.005) {
+            type = 'pearl';
+            eX = wallX(eY) + 10;
+            props = { r: 8, val: 50, color: '#fff' };
+        }
+
+        if (type) {
+            entities.push({ 
+                type: type, x: eX, y: eY, vx: props.vx || 0, vy: props.vy || 0, ...props 
+            });
+        }
+    }
+
+    function createParticles(x, y, color, count) {
+        for(let i=0; i<count; i++) {
+            particles.push({
+                x: x, y: y, z: 1,
+                vx: (Math.random()-0.5)*5, vy: (Math.random()-0.5)*5,
+                life: 1.0, color: color, size: Math.random()*3
+            });
+        }
+    }
+
+    function manageStuckPoints() {
+        let stuckPoints = points.filter(p => p.stuck);
+        if (stuckPoints.length > CONFIG.MAX_STUCK_POINTS) {
+            stuckPoints.sort((a, b) => a.y - b.y);
+            let toRemove = stuckPoints.length - CONFIG.MAX_STUCK_POINTS;
+            for(let i=0; i<toRemove; i++) stuckPoints[i].unstick();
+        }
+    }
+
+    // --- MAIN LOOP ---
+
+    function init() {
+        resize();
+        window.addEventListener('resize', resize);
+        
+        setupControls(); 
+        resetGame();
+        
+        canvas.addEventListener('mousedown', onDown);
+        canvas.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0]); }, {passive:false});
+        canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(e.touches[0]); }, {passive:false});
+        window.addEventListener('touchend', onUp);
+        
+        document.getElementById('resetBtn').onclick = resetGame;
+        document.getElementById('restartBtn').onclick = resetGame;
+        document.getElementById('pauseBtn').onclick = () => running = !running;
+
+        requestAnimationFrame(loop);
+    }
+
+    function resetGame() {
+        score = 0; health = CONFIG.MAX_HEALTH; cameraY = 0;
+        gameOver = false; running = true;
+        entities = [];
+        elGameOver.style.display = 'none';
+        createOctopus(width/2, 200);
+    }
+
+    function resize() {
+        width = window.innerWidth; height = window.innerHeight;
+        canvas.width = width; canvas.height = height;
+    }
+    
+    function onDown(e) {
+        if (gameOver) return;
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = e.clientX - rect.left;
+        mouse.y = e.clientY - rect.top + cameraY;
+        mouse.down = true;
+
+        let nearest = null, minD = 100;
+        if (dist(mouse, octoHead) < 50) nearest = octoHead;
+        if (!nearest) {
+            for (let p of points) {
+                let d = dist(mouse, p);
+                if (d < minD) { minD = d; nearest = p; }
+            }
+        }
+        if (nearest) {
+            mouse.dragBody = nearest;
+            nearest.pinned = true; nearest.stuck = false; 
+        }
+    }
+
+    function onMove(e) {
+        const rect = canvas.getBoundingClientRect();
+        mouse.px = mouse.x; mouse.py = mouse.y;
+        mouse.x = e.clientX - rect.left;
+        mouse.y = e.clientY - rect.top + cameraY;
+    }
+
+    function onUp() {
+        mouse.down = false;
+        if (mouse.dragBody) {
+            mouse.dragBody.pinned = false;
+            mouse.dragBody.x += (mouse.x - mouse.px) * 2;
+            mouse.dragBody.y += (mouse.y - mouse.py) * 2;
+            mouse.dragBody = null;
+        }
+    }
+
+    function update() {
+        if (!running || gameOver) return;
+        physicsTime += 0.016;
+
+        if (mouse.dragBody) {
+            mouse.dragBody.x = mouse.x; mouse.dragBody.y = mouse.y;
+            mouse.dragBody.ox = mouse.x - (mouse.x - mouse.px)*0.5; 
+            mouse.dragBody.oy = mouse.y - (mouse.y - mouse.py)*0.5;
+        }
+
+        // Global Rescue Logic
+        let stuckCount = 0; points.forEach(p => { if(p.stuck) stuckCount++; });
+        if (stuckCount === 0 && !mouse.dragBody) {
+            const headWx = wallX(octoHead.y);
+            if (octoHead.x > headWx) {
+                octoHead.x -= 0.6; 
+                points.forEach(p => { if (p.isTip) p.x -= 0.9; });
+            }
+        }
+
+        for (let step = 0; step < 3; step++) {
+            points.forEach(p => p.update());
+            sticks.forEach(s => s.update());
+        }
+
+        manageStuckPoints();
+
+        let targetY = octoHead.y - height * 0.3;
+        if (targetY < 0) targetY = 0;
+        cameraY += (targetY - cameraY) * 0.05;
+        cameraY += CONFIG.WALL_SPEED; 
+
+        spawnEntity();
+        if(particles.length < 80 && Math.random() > 0.5) {
+             particles.push({
+                x: Math.random() * width, y: cameraY + height + Math.random() * 200, z: Math.random() * 2 + 0.5,
+                size: Math.random() * 2, alpha: Math.random() * 0.5
+            });
+        }
+
+        for (let i = entities.length - 1; i >= 0; i--) {
+            let e = entities[i];
+            
+            // Movement Logic
+            if (e.type === 'pearl') {
+                e.x = wallX(e.y) + 10;
+            } else {
+                e.x += e.vx;
+                if (e.type === 'jelly') {
+                    e.y += Math.sin(physicsTime * 4 + i) * 1.5; 
+                } else if (e.type === 'shrimp' || e.type === 'gold_shrimp') {
+                    e.y += Math.cos(physicsTime * 5 + i) * 0.5; 
+                } else if (e.type === 'spike') {
+                    e.x += Math.sin(physicsTime + i) * 1; 
+                    e.y += e.vy;
+                }
+            }
+
+            if (e.y < cameraY - 50 || e.x < -50) { 
+                entities.splice(i, 1); continue; 
+            }
+
+            let hit = false;
+            for (let p of points) {
+                if (dist(p, e) < e.r + 8) {
+                    if (e.type === 'shrimp' || e.type === 'gold_shrimp' || e.type === 'pearl') {
+                        score += e.val; health = Math.min(health + 5, CONFIG.MAX_HEALTH);
+                        createParticles(e.x, e.y, e.color, 5); hit = true;
+                    } 
+                    else {
+                        let vel = Math.hypot(p.x - p.ox, p.y - p.oy) * 10;
+                        if (vel > CONFIG.WHIP_DAMAGE_THRESH) {
+                            createParticles(e.x, e.y, '#f04', 10); score += 10; hit = true;
+                        } else {
+                            if (!hit) { health -= 10; createParticles(p.x, p.y, '#f00', 3); octoHead.ox += (Math.random()-0.5)*10; }
+                        }
+                    }
+                }
+                if (hit) break;
+            }
+            if (hit) entities.splice(i, 1);
+        }
+
+        if (cameraY > 500) health -= CONFIG.DEPTH_DAMAGE;
+
+        if (health <= 0 || octoHead.y < cameraY - 100) {
+            gameOver = true;
+            elFinalScore.innerText = Math.floor(score);
+            elFinalDepth.innerText = Math.floor(cameraY / 10);
+            elGameOver.style.display = 'flex';
+        }
+
+        elScore.innerText = Math.floor(score);
+        elDepth.innerText = Math.floor(cameraY / 10);
+        elHealth.style.width = Math.max(0, health) + '%';
+        elHealth.style.background = health < 30 ? '#f44' : 'linear-gradient(90deg, #ff4d4d, #ff9e4d)';
+    }
+
+    function draw() {
+        let depthFactor = Math.min(1, cameraY / 5000);
+        let grad = ctx.createLinearGradient(0, 0, 0, height);
+        grad.addColorStop(0, `rgb(${20 * (1-depthFactor)}, ${40 * (1-depthFactor)}, ${60 * (1-depthFactor)})`);
+        grad.addColorStop(1, '#00050a');
+        ctx.fillStyle = grad; ctx.fillRect(0, 0, width, height);
+
+        // God Rays
+        ctx.save(); ctx.globalCompositeOperation = 'screen';
+        let rayOffset = Math.sin(physicsTime * 0.5) * 50;
+        let rayGrad = ctx.createLinearGradient(width/2 + rayOffset, 0, width/2 - rayOffset, height);
+        rayGrad.addColorStop(0, 'rgba(100, 200, 255, 0.08)'); rayGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = rayGrad;
+        ctx.beginPath(); ctx.moveTo(width*0.2, 0); ctx.lineTo(width*0.8, 0);
+        ctx.lineTo(width*0.6 - rayOffset, height); ctx.lineTo(width*0.4 - rayOffset, height);
+        ctx.fill(); ctx.restore();
+
+        particles.forEach((p, i) => {
+            if (p.life !== undefined) {
+                p.x += p.vx; p.y += p.vy; p.life -= 0.05;
+                ctx.globalAlpha = p.life; ctx.fillStyle = p.color;
+                ctx.beginPath(); ctx.arc(p.x, p.y - cameraY, p.size, 0, Math.PI*2); ctx.fill();
+                if(p.life <= 0) particles.splice(i, 1);
+            } else {
+                let screenY = (p.y - cameraY * p.z);
+                if (screenY < -10) p.y += height + 50;
+                ctx.globalAlpha = p.alpha * (1 - depthFactor * 0.5);
+                ctx.fillStyle = '#fff';
+                ctx.beginPath(); ctx.arc(p.x, screenY, p.size, 0, Math.PI*2); ctx.fill();
+                p.y -= 0.2;
+            }
+        });
+        ctx.globalAlpha = 1;
+
+        // Wall
+        ctx.beginPath(); ctx.moveTo(0, height); ctx.lineTo(0, 0);
+        for (let y = 0; y <= height + 10; y += 10) { ctx.lineTo(wallX(Math.floor(cameraY + y)), y); }
+        ctx.lineTo(0, height + 10);
+        ctx.fillStyle = '#0a1015'; ctx.fill(); ctx.strokeStyle = '#1e3040'; ctx.lineWidth = 3; ctx.stroke();
+
+        entities.forEach(e => {
+            let scrY = e.y - cameraY;
+            ctx.shadowBlur = 10; ctx.shadowColor = e.color; ctx.fillStyle = e.color;
+            
+            if (e.type.includes('shrimp')) {
+                ctx.beginPath(); ctx.ellipse(e.x, scrY, e.r, e.r*0.6, 0, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(e.x-3, scrY-2, 2, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = e.color; ctx.beginPath(); ctx.moveTo(e.x+5, scrY); ctx.lineTo(e.x+10, scrY-3); ctx.lineTo(e.x+10, scrY+3); ctx.stroke();
+            } 
+            else if (e.type === 'jelly') {
+                ctx.beginPath(); ctx.arc(e.x, scrY, e.r, Math.PI, 0); 
+                ctx.lineTo(e.x + e.r, scrY + 5); 
+                ctx.lineTo(e.x - e.r, scrY + 5); ctx.fill();
+                ctx.strokeStyle = e.color; ctx.lineWidth = 2;
+                for(let k=-1; k<=1; k++) {
+                    ctx.beginPath(); ctx.moveTo(e.x + k*5, scrY+5);
+                    ctx.lineTo(e.x + k*5, scrY + 15 + Math.sin(physicsTime*10 + k)*5); ctx.stroke();
+                }
+            }
+            else if (e.type === 'eel') {
+                ctx.beginPath(); ctx.ellipse(e.x, scrY, e.r*1.5, e.r*0.5, 0, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(e.x-10, scrY, 2, 0, Math.PI*2); ctx.fill();
+            }
+            else if (e.type === 'spike') {
+                ctx.beginPath();
+                for(let j=0; j<8; j++) {
+                    let ang = (j/8)*Math.PI*2 + physicsTime*2; let r = e.r + Math.sin(ang*3)*5;
+                    ctx.lineTo(e.x + Math.cos(ang)*r, scrY + Math.sin(ang)*r);
+                } ctx.fill();
+                ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(e.x, scrY, 4, 0, Math.PI*2); ctx.fill();
+            } 
+            else if (e.type === 'pearl') {
+                let grad = ctx.createRadialGradient(e.x-2, scrY-2, 0, e.x, scrY, e.r);
+                grad.addColorStop(0, '#fff'); grad.addColorStop(1, '#ccc');
+                ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(e.x, scrY, e.r, 0, Math.PI*2); ctx.fill();
+            } 
+            ctx.shadowBlur = 0;
+        });
+
+        if (points.length) {
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            for (let i = 0; i < LEG_COUNT; i++) {
+                let startIdx = 1 + i * LEG_SEGMENTS;
+                ctx.beginPath(); ctx.moveTo(octoHead.x, octoHead.y - cameraY);
+                for (let j = 0; j < LEG_SEGMENTS; j++) { let p = points[startIdx + j]; ctx.lineTo(p.x, p.y - cameraY); }
+                ctx.strokeStyle = 'rgba(255, 100, 150, 0.4)'; ctx.lineWidth = 12; ctx.stroke();
+                ctx.strokeStyle = 'rgba(255, 180, 200, 0.8)'; ctx.lineWidth = 4; ctx.stroke();
+                
+                ctx.fillStyle = 'rgba(255, 200, 220, 0.6)';
+                for (let j = 0; j < LEG_SEGMENTS; j++) {
+                    if (j % 2 === 0) { let p = points[startIdx + j]; ctx.beginPath(); ctx.arc(p.x, p.y - cameraY, 3, 0, Math.PI*2); ctx.fill(); }
+                }
+            }
+            let hx = octoHead.x; let hy = octoHead.y - cameraY;
+            let headGrad = ctx.createRadialGradient(hx-5, hy-5, 5, hx, hy, HEAD_RADIUS);
+            headGrad.addColorStop(0, '#ff99aa'); headGrad.addColorStop(1, '#cc4466');
+            ctx.fillStyle = headGrad; ctx.beginPath(); ctx.ellipse(hx, hy - 5, HEAD_RADIUS, HEAD_RADIUS * 1.2, 0, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.beginPath(); ctx.ellipse(hx - 10, hy - 15, 6, 10, -0.5, 0, Math.PI*2); ctx.fill();
+
+            function drawEye(ex, ey) {
+                ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ex, ey, 8, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#000';
+                let dx = clamp((mouse.x - ex) * 0.1, -4, 4); let dy = clamp((mouse.y - cameraY - ey) * 0.1, -4, 4);
+                ctx.beginPath(); ctx.arc(ex + dx, ey + dy, 3, 0, Math.PI*2); ctx.fill();
+            }
+            drawEye(hx - 10, hy); drawEye(hx + 10, hy);
+            ctx.beginPath();
+            if (health < 30) ctx.arc(hx, hy + 15, 5, 0, Math.PI, true); else ctx.arc(hx, hy + 12, 5, 0, Math.PI, false);
+            ctx.strokeStyle = '#520'; ctx.lineWidth = 2; ctx.stroke();
+        }
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1;
+        if(Math.random() < 0.1 && points.length) {
+            let p = points[Math.floor(Math.random()*points.length)];
+            particles.push({
+                x: p.x, y: p.y, z: 1.5, vx: (Math.random()-0.5), vy: -2, life: 2.0, color: '#fff', size: Math.random()*2+1
+            });
+        }
+    }
+
+    function loop() { if(running) update(); draw(); requestAnimationFrame(loop); }
+    init();
+
+  })();
+  </script>
+</body>
+</html>
