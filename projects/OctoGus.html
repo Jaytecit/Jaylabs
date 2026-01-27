@@ -74,15 +74,18 @@
     .ctrl-val { color: #fff; font-weight: bold; font-family: monospace; }
     input[type=range] { width: 100%; accent-color: #0af; cursor: pointer; }
 
-    #game-over {
+    #game-over, #start-screen {
         position: fixed; inset: 0;
         background: radial-gradient(circle at center, rgba(10,20,30,0.9), #000);
         display: none; flex-direction: column; justify-content: center; align-items: center;
         z-index: 100; text-align: center; backdrop-filter: blur(5px);
     }
-    #game-over h1 { font-size: 64px; margin: 0 0 20px 0; color: #fff; text-shadow: 0 0 30px #0af; }
-    #game-over p { font-size: 24px; color: #add; margin-bottom: 30px; }
-    #game-over button { font-size: 18px; padding: 12px 30px; border-radius: 50px; }
+    #start-screen { display: flex; z-index: 101; }
+    
+    h1 { font-size: 64px; margin: 0 0 20px 0; color: #fff; text-shadow: 0 0 30px #0af; }
+    p { font-size: 24px; color: #add; margin-bottom: 30px; }
+    .big-btn { font-size: 18px; padding: 12px 30px; border-radius: 50px; cursor: pointer; }
+    
     .tutorial {
         position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
         color: rgba(255,255,255,0.5); font-size: 14px; text-shadow: 0 2px 4px #000;
@@ -177,10 +180,16 @@
 
   <div class="tutorial">Drag to throw. Whip tentacles to attack.<br>Use Gear Icon to tweak Physics!</div>
 
+  <div id="start-screen">
+      <h1>OctoGus</h1>
+      <p>Physics Sandbox & Deep Sea Audio</p>
+      <button class="big-btn" id="startBtn">Click to Dive</button>
+  </div>
+
   <div id="game-over">
       <h1>Crushed</h1>
       <p>Depth Reached: <span id="finalDepth">0</span>m | Score: <span id="finalScore">0</span></p>
-      <button id="restartBtn">Dive Again</button>
+      <button class="big-btn" id="restartBtn">Dive Again</button>
   </div>
 
   <canvas id="c"></canvas>
@@ -205,9 +214,9 @@
         HEAD_MASS: 1.0,
         LEG_MASS: 5.0,          
         LEG_STIFFNESS: 0.5,
-        HEAD_STICKY: false,     // New parameter
+        HEAD_STICKY: false,
         
-        // Constants (not in UI)
+        // Constants
         WHIP_DAMAGE_THRESH: 10,
         WALL_BASE_X: 500,       
         WALL_ROUGHNESS: 150,     
@@ -218,7 +227,7 @@
         DEPTH_DAMAGE: 0.01,
     };
 
-    // Current Config (Clone defaults)
+    // Current Config
     const CONFIG = { ...DEFAULTS };
 
     const canvas = document.getElementById('c');
@@ -229,6 +238,7 @@
     const elDepth = document.getElementById('depthVal');
     const elHealth = document.getElementById('healthBar');
     const elGameOver = document.getElementById('game-over');
+    const elStartScreen = document.getElementById('start-screen');
     const elFinalScore = document.getElementById('finalScore');
     const elFinalDepth = document.getElementById('finalDepth');
 
@@ -237,7 +247,7 @@
     let cameraY = 0;
     let score = 0;
     let health = 1000;
-    let running = true;
+    let running = false; // Wait for start
     let gameOver = false;
     let physicsTime = 0;
     
@@ -248,11 +258,86 @@
     let particles = [];
     let octoHead;
     
+    // Face Tracking State
+    let eyeFocusEntity = null;
+    let smoothedFocus = { x: 0, y: 0 };
+    
     const LEG_COUNT = 8;
     const LEG_SEGMENTS = 20;
     const LEG_LENGTH = 6;
     const HEAD_RADIUS = 24;
     const mouse = { x: 0, y: 0, px: 0, py: 0, down: false, dragBody: null };
+
+    // --- AUDIO SYSTEM ---
+    let audioCtx;
+    let audioGain;
+    let nextNoteTime = 0;
+    
+    // C Minor Pentatonic Scale Frequencies (C3 to C5 approx)
+    const SCALE = [130.81, 155.56, 174.61, 196.00, 233.08, 261.63, 311.13, 349.23, 392.00, 466.16, 523.25];
+
+    function initAudio() {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+        audioGain = audioCtx.createGain();
+        audioGain.gain.value = 0.3; // Master volume
+        audioGain.connect(audioCtx.destination);
+    }
+
+    function playTone(freq, type, duration, vol) {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        
+        gain.gain.setValueAtTime(0, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + duration * 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        
+        osc.connect(gain);
+        gain.connect(audioGain);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function updateAudio() {
+        if (!audioCtx || !running || gameOver) return;
+
+        // Generative Logic based on time
+        if (physicsTime > nextNoteTime) {
+            // Determine depth factor (0 to 1)
+            let depthFactor = Math.min(1, cameraY / 4000);
+            
+            // Choose note based on scale
+            let scaleIndex = Math.floor(Math.random() * SCALE.length);
+            
+            // Shift down an octave if deep
+            let freq = SCALE[scaleIndex];
+            let type = 'sine';
+            let duration = 2.0;
+            
+            if (depthFactor > 0.3) {
+                freq *= 0.5; // Drop octave
+                duration = 3.0;
+                type = 'triangle';
+            }
+            if (depthFactor > 0.7) {
+                freq *= 0.5; // Drop another octave
+                duration = 4.0;
+                type = 'sine'; // Deep sub
+            }
+            
+            // Play note
+            playTone(freq, type, duration, 0.2 + Math.random() * 0.1);
+            
+            // Schedule next note (slower when deeper)
+            let tempo = 1.0 + (depthFactor * 2.0); 
+            nextNoteTime = physicsTime + tempo + Math.random(); 
+        }
+    }
 
     // --- SETUP CONTROLS ---
     function setupControls() {
@@ -297,11 +382,10 @@
 
     resetDefaults = function() {
         Object.assign(CONFIG, DEFAULTS);
-        setupControls(); // Refresh slider positions
+        setupControls(); 
         applyLivePhysics();
     };
 
-    // Update existing objects when sliders move
     function applyLivePhysics() {
         if(!octoHead) return;
         octoHead.mass = CONFIG.HEAD_MASS;
@@ -372,32 +456,23 @@
             if (this.stuck) {
                 vx = 0; vy = 0;
                 this.x = wx;
-                
                 this.stuckTimer++;
-
-                // Unstick Conditions: Tension, Duration, or Random Chance
                 let durationExceeded = this.stuckTimer > CONFIG.STICK_DURATION;
                 let randomSlip = Math.random() < CONFIG.RANDOM_UNSTICK_PROB;
                 let tensionBreak = distToWall > CONFIG.STICK_BREAK_DIST;
-
                 if (tensionBreak || durationExceeded || randomSlip) {
                     this.unstick();
                 }
-
             } else {
                 this.stuckTimer = 0;
-                
-                // Stick Logic (Head can stick if enabled)
                 let canStick = (this.isHead && CONFIG.HEAD_STICKY) || 
                                this.isTip || 
-                               (this.id % 3 === 0 && !this.isHead); // Middle segments
-
+                               (this.id % 3 === 0 && !this.isHead);
                 if (canStick && this.cooldown === 0 && this.x < wx + 6) {
                     this.x = wx; this.ox = this.x; this.stuck = true;
                     if(Math.random() > 0.7) createParticles(this.x, this.y, '#88aaff', 1);
                 }
             }
-            
             this.x += vx; this.y += vy;
         }
 
@@ -431,42 +506,32 @@
 
     function createOctopus(startX, startY) {
         points = []; sticks = [];
-        
-        // Head
         octoHead = new Point(startX, startY, CONFIG.HEAD_MASS, true, false);
         points.push(octoHead);
-
         let pId = 0;
         for (let i = 0; i < LEG_COUNT; i++) {
             let parent = octoHead;
             for (let j = 0; j < LEG_SEGMENTS; j++) {
-                // MASS INVERSION: Tips are now much heavier than the base
-                // This simulates "string with weights on the end"
                 let taper = 0.5 + (j / LEG_SEGMENTS) * 1.5; 
                 let mass = taper * CONFIG.LEG_MASS;
-                
                 let isTip = (j === LEG_SEGMENTS - 1);
                 let p = new Point(startX + j * 5, startY + j * 5, mass, false, isTip);
                 p.taper = taper; 
                 p.id = pId++; points.push(p);
-                
                 sticks.push(new Stick(parent, p, LEG_LENGTH, CONFIG.LEG_STIFFNESS));
-                
-                // REMOVED WEBBING:
-                // The inter-leg connection loop was removed here to allow full dangling.
-                
                 parent = p;
             }
         }
+        // Init face smoothing
+        smoothedFocus.x = startX;
+        smoothedFocus.y = startY;
     }
 
     function spawnEntity() {
         if (entities.length > 25) return; 
         let roll = Math.random();
-        
         let eY = cameraY + height + Math.random() * 200;
         let eX = width + 50 + Math.random() * 100;
-        
         let type = '';
         let props = {};
 
@@ -529,18 +594,24 @@
         window.addEventListener('resize', resize);
         
         setupControls(); 
-        resetGame();
         
+        // Setup Button Listeners
+        document.getElementById('startBtn').onclick = () => {
+            initAudio();
+            resetGame();
+            elStartScreen.style.display = 'none';
+        };
+
+        document.getElementById('resetBtn').onclick = resetGame;
+        document.getElementById('restartBtn').onclick = resetGame;
+        document.getElementById('pauseBtn').onclick = () => running = !running;
+
         canvas.addEventListener('mousedown', onDown);
         canvas.addEventListener('mousemove', onMove);
         window.addEventListener('mouseup', onUp);
         canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0]); }, {passive:false});
         canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(e.touches[0]); }, {passive:false});
         window.addEventListener('touchend', onUp);
-        
-        document.getElementById('resetBtn').onclick = resetGame;
-        document.getElementById('restartBtn').onclick = resetGame;
-        document.getElementById('pauseBtn').onclick = () => running = !running;
 
         requestAnimationFrame(loop);
     }
@@ -548,7 +619,10 @@
     function resetGame() {
         score = 0; health = CONFIG.MAX_HEALTH; cameraY = 0;
         gameOver = false; running = true;
+        physicsTime = 0;
+        nextNoteTime = 0;
         entities = [];
+        eyeFocusEntity = null;
         elGameOver.style.display = 'none';
         createOctopus(width/2, 200);
     }
@@ -600,6 +674,8 @@
         if (!running || gameOver) return;
         physicsTime += 0.016;
 
+        updateAudio();
+
         if (mouse.dragBody) {
             mouse.dragBody.x = mouse.x; mouse.dragBody.y = mouse.y;
             mouse.dragBody.ox = mouse.x - (mouse.x - mouse.px)*0.5; 
@@ -636,6 +712,41 @@
             });
         }
 
+        // --- FACE TRACKING LOGIC ---
+        // 1. Validate current target
+        if (eyeFocusEntity) {
+            if (!entities.includes(eyeFocusEntity)) eyeFocusEntity = null; // Died
+            else if (eyeFocusEntity.y < cameraY - 100) eyeFocusEntity = null; // Off screen
+        }
+
+        // 2. Find new target if null
+        if (!eyeFocusEntity && entities.length > 0) {
+            let minDist = 1000;
+            entities.forEach(e => {
+                let d = dist(octoHead, e);
+                if (d < minDist && e.y > cameraY) {
+                    minDist = d;
+                    eyeFocusEntity = e;
+                }
+            });
+        }
+
+        // 3. Set Target Coordinates (Screen Space)
+        let tx, ty;
+        if (eyeFocusEntity) {
+            tx = eyeFocusEntity.x;
+            ty = eyeFocusEntity.y - cameraY;
+        } else {
+            // Default to mouse
+            tx = mouse.x;
+            ty = mouse.y - cameraY;
+        }
+
+        // 4. Smooth transition
+        smoothedFocus.x += (tx - smoothedFocus.x) * 0.1;
+        smoothedFocus.y += (ty - smoothedFocus.y) * 0.1;
+
+        // --- ENTITY LOGIC ---
         for (let i = entities.length - 1; i >= 0; i--) {
             let e = entities[i];
             
@@ -664,13 +775,22 @@
                     if (e.type === 'shrimp' || e.type === 'gold_shrimp' || e.type === 'pearl') {
                         score += e.val; health = Math.min(health + 5, CONFIG.MAX_HEALTH);
                         createParticles(e.x, e.y, e.color, 5); hit = true;
+                        // Happy sound
+                        playTone(523.25, 'sine', 0.1, 0.1); 
+                        playTone(659.25, 'sine', 0.1, 0.1); 
                     } 
                     else {
                         let vel = Math.hypot(p.x - p.ox, p.y - p.oy) * 10;
                         if (vel > CONFIG.WHIP_DAMAGE_THRESH) {
                             createParticles(e.x, e.y, '#f04', 10); score += 10; hit = true;
+                            // Hit sound
+                            playTone(100 + Math.random()*100, 'sawtooth', 0.1, 0.05);
                         } else {
-                            if (!hit) { health -= 10; createParticles(p.x, p.y, '#f00', 3); octoHead.ox += (Math.random()-0.5)*10; }
+                            if (!hit) { 
+                                health -= 10; createParticles(p.x, p.y, '#f00', 3); octoHead.ox += (Math.random()-0.5)*10; 
+                                // Hurt sound
+                                playTone(80, 'sawtooth', 0.3, 0.1);
+                            }
                         }
                     }
                 }
@@ -788,6 +908,10 @@
                 }
             }
             let hx = octoHead.x; let hy = octoHead.y - cameraY;
+            
+            // Calculate head velocity for reaction
+            let headVel = Math.hypot(octoHead.x - octoHead.ox, octoHead.y - octoHead.oy);
+
             let headGrad = ctx.createRadialGradient(hx-5, hy-5, 5, hx, hy, HEAD_RADIUS);
             headGrad.addColorStop(0, '#ff99aa'); headGrad.addColorStop(1, '#cc4466');
             ctx.fillStyle = headGrad; ctx.beginPath(); ctx.ellipse(hx, hy - 5, HEAD_RADIUS, HEAD_RADIUS * 1.2, 0, 0, Math.PI*2); ctx.fill();
@@ -796,13 +920,34 @@
             function drawEye(ex, ey) {
                 ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ex, ey, 8, 0, Math.PI*2); ctx.fill();
                 ctx.fillStyle = '#000';
-                let dx = clamp((mouse.x - ex) * 0.1, -4, 4); let dy = clamp((mouse.y - cameraY - ey) * 0.1, -4, 4);
-                ctx.beginPath(); ctx.arc(ex + dx, ey + dy, 3, 0, Math.PI*2); ctx.fill();
+                // Look at smoothed target
+                let lookX = smoothedFocus.x;
+                let lookY = smoothedFocus.y;
+                let dx = clamp((lookX - ex) * 0.1, -4, 4); 
+                let dy = clamp((lookY - ey) * 0.1, -4, 4);
+                
+                // Widen eyes on speed
+                let pupilSize = headVel > 3 ? 4 : 3;
+
+                ctx.beginPath(); ctx.arc(ex + dx, ey + dy, pupilSize, 0, Math.PI*2); ctx.fill();
             }
             drawEye(hx - 10, hy); drawEye(hx + 10, hy);
+            
+            // Mouth Reaction
             ctx.beginPath();
-            if (health < 30) ctx.arc(hx, hy + 15, 5, 0, Math.PI, true); else ctx.arc(hx, hy + 12, 5, 0, Math.PI, false);
-            ctx.strokeStyle = '#520'; ctx.lineWidth = 2; ctx.stroke();
+            if (headVel > 5) {
+                // "O" face for high speed
+                ctx.ellipse(hx, hy + 15, 3, 5, 0, 0, Math.PI*2);
+                ctx.fillStyle = '#520'; ctx.fill();
+            } else if (health < 30) {
+                // Sad face
+                ctx.arc(hx, hy + 18, 6, Math.PI, 0, false);
+                ctx.strokeStyle = '#520'; ctx.lineWidth = 2; ctx.stroke();
+            } else {
+                // Happy Smile
+                ctx.arc(hx, hy + 12, 5, 0, Math.PI, false);
+                ctx.strokeStyle = '#520'; ctx.lineWidth = 2; ctx.stroke();
+            }
         }
 
         ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1;
